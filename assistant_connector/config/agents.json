@@ -653,7 +653,7 @@
     {
       "name": "register_contact_memory",
       "description": "Registra um contato em memória persistente (contacts.csv).",
-      "prompt_guidance": "Use register_contact_memory quando o usuário pedir para salvar ou registrar um contato na memória. Exija ao menos email ou telefone.",
+      "prompt_guidance": "Use register_contact_memory quando o usuário pedir para salvar ou registrar um contato na memória, ou quando o usuário confirmar o salvamento após um email enviado a um endereço direto (suggest_save_contact). Exija ao menos email ou telefone.",
       "guidance_priority": 20,
       "handler": "assistant_connector.tools.contacts_tools:register_contact_memory",
       "write_operation": true,
@@ -798,7 +798,7 @@
     {
       "name": "send_email",
       "description": "Envia email pelo Gmail. O destinatário deve ser informado explicitamente pelo usuário e o assunto deve ser definido pela LLM.",
-      "prompt_guidance": "No uso de send_email, preserve fidelidade ao texto solicitado pelo usuário e não invente conteúdo adicional. O destinatário pode ser um email direto ou uma referência de contato explícita do usuário (ex.: 'meu email pessoal', 'contato profissional'). Se a identificação do contato for ambígua, peça desambiguação; se for única e clara, prossiga.",
+      "prompt_guidance": "No uso de send_email, preserve fidelidade ao texto solicitado pelo usuário e não invente conteúdo adicional. O destinatário pode ser um email direto ou uma referência de contato explícita do usuário (ex.: 'meu email pessoal', 'contato profissional'). Se a identificação do contato for ambígua, peça desambiguação; se for única e clara, prossiga. Após o envio, se o resultado incluir 'suggest_save_contact: true', pergunte ao usuário se deseja salvar este contato na memória de contatos (contacts.csv), sugerindo o email já usado. Se confirmar, colete nome e relacionamento (e opcionalmente telefone) e chame register_contact_memory.",
       "guidance_priority": 20,
       "handler": "assistant_connector.tools.email_tools:send_email",
       "write_operation": true,

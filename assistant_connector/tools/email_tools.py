@@ -12,10 +12,10 @@ def send_email(arguments, context):
     subject = str(arguments.get("subject", "")).strip()
     body = str(arguments.get("body", "")).strip()
     recipient_input = str(arguments.get("recipient_email", "")).strip()
-    recipient = (
+    recipient, recipient_source = (
         _resolve_recipient_email(recipient_input, context)
         if recipient_input
-        else _get_default_recipient(context)
+        else (_get_default_recipient(context), "contacts_csv")
     )
     reply_to_message_id = str(arguments.get("reply_to_message_id", "")).strip()
     if not recipient:
@@ -41,7 +41,7 @@ def send_email(arguments, context):
         user_id=context.user_id,
         credential_store=context.user_credential_store,
     )
-    return {
+    result = {
         "status": "sent",
         "subject": final_subject,
         "recipient_email": recipient,
@@ -49,6 +49,9 @@ def send_email(arguments, context):
         "signature_applied": bool(signature),
         "provider_result": send_result,
     }
+    if recipient_source == "explicit_email":
+        result["suggest_save_contact"] = True
+    return result
 
 
 def search_emails(arguments, context):
@@ -189,16 +192,16 @@ def _body_already_has_signature(body: str, signature: str) -> bool:
     return bool(normalized_signature and normalized_signature in normalized_tail)
 
 
-def _resolve_recipient_email(recipient_input: str, context=None) -> str:
+def _resolve_recipient_email(recipient_input: str, context=None) -> tuple[str, str]:
     from assistant_connector.tools import contacts_tools
 
     clean_recipient = str(recipient_input or "").strip()
     if not clean_recipient:
-        return ""
+        return "", "explicit_email"
     if _looks_like_email(clean_recipient):
-        return clean_recipient
+        return clean_recipient, "explicit_email"
     resolved = contacts_tools.resolve_contact_email(clean_recipient, context)
-    return str(resolved["email"]).strip()
+    return str(resolved["email"]).strip(), str(resolved.get("source", "contacts_csv"))
 
 
 def _resolve_default_contact_recipient(context=None) -> str:
