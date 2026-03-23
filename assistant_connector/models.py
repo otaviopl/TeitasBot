@@ -51,6 +51,7 @@ class ToolDefinition:
     input_schema: dict[str, Any]
     handler: str
     write_operation: bool = False
+    auto_confirm: bool = False
     prompt_guidance: str = ""
     guidance_priority: int = 100
 

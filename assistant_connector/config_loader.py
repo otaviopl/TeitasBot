@@ -60,6 +60,7 @@ def load_assistant_configuration(config_path: str | None = None) -> AssistantCon
             input_schema=tool.get("input_schema", {"type": "object", "properties": {}}),
             handler=tool["handler"],
             write_operation=bool(tool.get("write_operation", False)),
+            auto_confirm=bool(tool.get("auto_confirm", False)),
             prompt_guidance=str(tool.get("prompt_guidance", "")).strip(),
             guidance_priority=int(tool.get("guidance_priority", 100)),
         )

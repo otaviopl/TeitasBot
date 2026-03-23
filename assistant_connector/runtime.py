@@ -173,7 +173,7 @@ class AssistantRuntime:
                     }
                 else:
                     tool_definition = self._tool_registry.get_tool_definition(tool_name)
-                    if tool_definition.write_operation and write_confirmation_granted:
+                    if tool_definition.write_operation and (write_confirmation_granted or tool_definition.auto_confirm):
                         if not bool(arguments.get("confirmed", False)):
                             arguments = {**arguments, "confirmed": True}
                             warn_log = getattr(context.project_logger, "warning", None)
@@ -235,12 +235,12 @@ class AssistantRuntime:
         system_message = (
             f"{self._agent.system_prompt}\n\n"
             "Se o usuário perguntar quais tools existem, use list_available_tools para listar nomes e finalidade.\n\n"
-            "Formato obrigatório para resposta no Telegram:\n"
+            "Formato para resposta no Telegram:\n"
             "- Sempre responda em Markdown.\n"
-            "- Use título H2 no início (## ...) com emoji contextual (ex.: ## 📋 Tarefas, ## 📅 Agenda).\n"
-            "- Use emojis para enriquecer visualmente: ✅ concluído, ⚠️ atenção, 🔴 urgente, 🟡 médio, 🟢 baixo, 📅 data, 💡 dica, 🎯 foco.\n"
-            "- Use listas para itens múltiplos e negrito (**) para destacar o que é mais importante.\n"
-            "- Use blockquote (> texto) para destacar observações ou alertas importantes.\n"
+            "- Use estrutura (títulos H2, listas, emojis) apenas quando isso organiza a informação de verdade: listas de tarefas, agenda, análises com múltiplos itens. Para respostas curtas, conversacionais, motivacionais ou diretas, escreva em prosa — sem título forçado, sem bullet points desnecessários.\n"
+            "- Quando usar emojis, prefira os que têm função visual clara: ✅ concluído, ⚠️ atenção, 🔴 urgente, 🟡 médio, 🟢 baixo, 📅 data, 💡 dica, 🎯 foco.\n"
+            "- Use negrito (**) para destacar o que é realmente importante, não para decorar.\n"
+            "- Use blockquote (> texto) para alertas ou observações que merecem destaque.\n"
             "- Mire em respostas com até 1500 caracteres e, sempre que possível, não ultrapasse 1800.\n"
             "- Nunca responda em JSON bruto.\n\n"
             f"{self._build_email_style_guidance()}\n\n"
@@ -408,7 +408,7 @@ class AssistantRuntime:
                     ),
                 }
         tool_definition = self._tool_registry.get_tool_definition(tool_name)
-        if tool_definition.write_operation and not bool(arguments.get("confirmed", False)):
+        if tool_definition.write_operation and not tool_definition.auto_confirm and not bool(arguments.get("confirmed", False)):
             if callable(warn_log):
                 warn_log(
                     "Blocked write tool without confirmation: tool=%s session_id=%s user_id=%s",

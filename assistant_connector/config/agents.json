@@ -920,10 +920,11 @@
     {
       "name": "register_notion_meal",
       "description": "Registra alimento consumido no Notion Meals usando calorias estimadas pela LLM e quantidade na unidade informada pelo usuário.",
-      "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Calorias estimadas devem ser informadas. Se não houver confiança para estimar calorias, peça confirmação ao usuário em vez de registrar dados parciais.",
+      "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte as memórias de saúde (health.md) para obter a quantidade rotineira daquele suplemento específico e use-a sem perguntar; (2) use sempre calorias_estimadas=1 para suplementos, pois não afetam o cômputo calórico mas precisam passar a validação. Para refeições normais, estime as calorias com base no alimento e na quantidade. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
       "handler": "assistant_connector.tools.notion_tools:register_notion_meal",
       "write_operation": true,
+      "auto_confirm": true,
       "input_schema": {
         "type": "object",
         "properties": {
@@ -948,11 +949,7 @@
           },
           "confirmed": {
             "type": "boolean",
-            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
-          },
-          "data": {
-            "type": "string",
-            "description": "Data de consumo no formato YYYY-MM-DD. Se omitida, usa hoje."
+            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
           },
           "calorias_estimadas": {
             "type": "number",
@@ -1003,10 +1000,11 @@
     {
       "name": "register_notion_exercise",
       "description": "Registra atividade física no Notion Exercises com calorias e status de conclusão (Done), incluindo planejamento futuro. Detecta duplicatas automaticamente.",
-      "prompt_guidance": "Antes de registrar um exercício, verifique se já existe um registro planejado (done=false) para a mesma atividade e data. Se register_notion_exercise retornar 'duplicate_exercise_found', use edit_notion_exercise com o page_id retornado para atualizar o registro existente (preencher detalhes e marcar done=true). Use done=false ao planejar atividades futuras e done=true quando a atividade estiver concluída.",
+      "prompt_guidance": "Antes de registrar um exercício, verifique se já existe um registro planejado (done=false) para a mesma atividade e data. Se register_notion_exercise retornar 'duplicate_exercise_found', use edit_notion_exercise com o page_id retornado para atualizar o registro existente (preencher detalhes e marcar done=true). Use done=false ao planejar atividades futuras e done=true quando a atividade estiver concluída. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
       "handler": "assistant_connector.tools.notion_tools:register_notion_exercise",
       "write_operation": true,
+      "auto_confirm": true,
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1028,7 +1026,7 @@
           },
           "confirmed": {
             "type": "boolean",
-            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
           },
           "done": {
             "type": "boolean",
@@ -1045,10 +1043,11 @@
     {
       "name": "edit_notion_exercise",
       "description": "Edita um registro de atividade física no Notion Exercises, incluindo o campo de conclusão (Done).",
-      "prompt_guidance": "Use edit_notion_exercise para atualizar exercícios já existentes no Notion. O page_id pode ser obtido via analyze_notion_exercises ou pela resposta de duplicate_exercise_found de register_notion_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true.",
+      "prompt_guidance": "Use edit_notion_exercise para atualizar exercícios já existentes no Notion. O page_id pode ser obtido via analyze_notion_exercises ou pela resposta de duplicate_exercise_found de register_notion_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true. Não peça confirmação ao usuário — execute diretamente e informe o que foi atualizado.",
       "guidance_priority": 30,
       "handler": "assistant_connector.tools.notion_tools:edit_notion_exercise",
       "write_operation": true,
+      "auto_confirm": true,
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1074,7 +1073,7 @@
           },
           "confirmed": {
             "type": "boolean",
-            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
           },
           "done": {
             "type": "boolean",
@@ -1519,7 +1518,7 @@
       "model": "gpt-4.1-mini",
       "max_tool_rounds": 6,
       "memory_window": 20,
-      "system_prompt": "Você é um assistente pessoal digital no Telegram e deve responder em português do Brasil. Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas. Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário. Se o usuário pedir quais tools existem, liste os nomes e para que servem. Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento. Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Notion (tarefas, notas, despesas, refeições, exercícios): requer notion_api_key e notion_database_id; bancos adicionais são opcionais (notion_notes_db_id, notion_expenses_db_id, notion_meals_db_id, notion_exercises_db_id, notion_monthly_bills_db_id).\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando, o que ela permite fazer e quais credenciais são necessárias. Sugira que o usuário envie /setup para ver o painel de configuração ou diga algo como 'configure notion_api_key: valor' para salvar uma credencial diretamente.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve usar /google_auth, clicar no link gerado e autenticar no navegador. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.",
+      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Notion (tarefas, notas, despesas, refeições, exercícios): requer notion_api_key e notion_database_id; bancos adicionais são opcionais (notion_notes_db_id, notion_expenses_db_id, notion_meals_db_id, notion_exercises_db_id, notion_monthly_bills_db_id).\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando, o que ela permite fazer e quais credenciais são necessárias. Sugira que o usuário envie /setup para ver o painel de configuração ou diga algo como 'configure notion_api_key: valor' para salvar uma credencial diretamente.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve usar /google_auth, clicar no link gerado e autenticar no navegador. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.",
       "tools": [
         "list_available_tools",
         "list_available_agents",
