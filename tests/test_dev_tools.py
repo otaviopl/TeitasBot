@@ -1,0 +1,176 @@
+import unittest
+from unittest.mock import MagicMock, patch, call
+
+from assistant_connector.models import AgentDefinition, ToolExecutionContext
+from assistant_connector.tools import dev_tools
+
+
+class _FakeLogger:
+    def debug(self, *_args, **_kwargs):
+        return None
+
+    def info(self, *_args, **_kwargs):
+        return None
+
+    def warning(self, *_args, **_kwargs):
+        return None
+
+    def error(self, *_args, **_kwargs):
+        return None
+
+    def exception(self, *_args, **_kwargs):
+        return None
+
+
+def _build_context():
+    agent = AgentDefinition(
+        agent_id="personal_assistant",
+        description="desc",
+        model="model",
+        system_prompt="prompt",
+        tools=[],
+    )
+    return ToolExecutionContext(
+        session_id="session",
+        user_id="user",
+        channel_id="channel",
+        guild_id="guild",
+        project_logger=_FakeLogger(),
+        agent=agent,
+        available_tools=[],
+        available_agents=[],
+    )
+
+
+class TestRunCopilotTask(unittest.TestCase):
+    def test_missing_task_description_returns_error(self):
+        result = dev_tools.run_copilot_task({}, _build_context())
+        self.assertIn("error", result)
+
+    def test_empty_task_description_returns_error(self):
+        result = dev_tools.run_copilot_task({"task_description": "  "}, _build_context())
+        self.assertIn("error", result)
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_successful_execution_returns_output(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Changes applied successfully",
+            stderr="",
+        )
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Fix the bug"},
+            _build_context(),
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("Changes applied", result["output"])
+
+        args, kwargs = mock_run.call_args
+        cmd = args[0]
+        self.assertIn("-p", cmd)
+        self.assertIn("Fix the bug", cmd)
+        self.assertIn("--yolo", cmd)
+        self.assertIn("--autopilot", cmd)
+        self.assertIn("--no-ask-user", cmd)
+        self.assertTrue(kwargs.get("capture_output"))
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_nonzero_exit_code_returns_failure(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="Error occurred",
+            stderr="fatal: something",
+        )
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Bad task"},
+            _build_context(),
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(result["exit_code"], 1)
+        self.assertIn("fatal", result["stderr"])
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_binary_not_found_returns_error(self, mock_run):
+        mock_run.side_effect = FileNotFoundError("No such file")
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Some task"},
+            _build_context(),
+        )
+        self.assertEqual(result["error"], "copilot_cli_not_found")
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_timeout_returns_error(self, mock_run):
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="copilot", timeout=300)
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Long task"},
+            _build_context(),
+        )
+        self.assertEqual(result["error"], "timeout")
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_long_output_is_truncated(self, mock_run):
+        big_output = "x" * 10000
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=big_output,
+            stderr="",
+        )
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Big output task"},
+            _build_context(),
+        )
+        self.assertTrue(result["success"])
+        self.assertLessEqual(len(result["output"]), dev_tools._MAX_OUTPUT_CHARS + 50)
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    def test_uses_project_dir_as_cwd(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        dev_tools.run_copilot_task(
+            {"task_description": "Check cwd"},
+            _build_context(),
+        )
+        _, kwargs = mock_run.call_args
+        self.assertEqual(kwargs["cwd"], dev_tools._PROJECT_DIR)
+
+
+class TestRestartBotService(unittest.TestCase):
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    def test_schedules_restart_with_default_delay(self, mock_popen):
+        result = dev_tools.restart_bot_service({}, _build_context())
+        self.assertEqual(result["status"], "restart_scheduled")
+        self.assertEqual(result["delay_seconds"], 3)
+        mock_popen.assert_called_once()
+        cmd_arg = mock_popen.call_args[0][0]
+        self.assertIn("sleep 3", " ".join(cmd_arg))
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    def test_custom_delay_is_clamped(self, mock_popen):
+        result = dev_tools.restart_bot_service(
+            {"delay_seconds": 50}, _build_context()
+        )
+        self.assertEqual(result["delay_seconds"], 30)
+
+        result = dev_tools.restart_bot_service(
+            {"delay_seconds": -5}, _build_context()
+        )
+        self.assertEqual(result["delay_seconds"], 1)
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    def test_popen_failure_returns_error(self, mock_popen):
+        mock_popen.side_effect = OSError("Permission denied")
+        result = dev_tools.restart_bot_service({}, _build_context())
+        self.assertEqual(result["error"], "restart_failed")
+        self.assertIn("Permission denied", result["message"])
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    def test_popen_called_with_new_session(self, mock_popen):
+        dev_tools.restart_bot_service({}, _build_context())
+        _, kwargs = mock_popen.call_args
+        self.assertTrue(kwargs["start_new_session"])
+
+
+if __name__ == "__main__":
+    unittest.main()

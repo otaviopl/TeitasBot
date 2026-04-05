@@ -1,0 +1,2 @@
+# Allow carlos to restart the personal-assistant-bot service without password
+carlos ALL=(root) NOPASSWD: /usr/bin/systemctl restart personal-assistant-bot

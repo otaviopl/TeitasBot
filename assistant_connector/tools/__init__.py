@@ -37,6 +37,7 @@ from assistant_connector.tools.scheduled_task_tools import (
     edit_scheduled_task,
     list_scheduled_tasks,
 )
+from assistant_connector.tools.dev_tools import restart_bot_service, run_copilot_task
 from assistant_connector.tools.system_tools import get_application_hardware_status
 
 __all__ = [
@@ -76,4 +77,6 @@ __all__ = [
     "get_metabolism_history",
     "cancel_scheduled_task",
     "get_application_hardware_status",
+    "run_copilot_task",
+    "restart_bot_service",
 ]
