@@ -177,6 +177,19 @@ class TestRunCopilotTask(unittest.TestCase):
         )
         self.assertTrue(result["success"])
         self.assertLessEqual(len(result["output"]), dev_tools._MAX_OUTPUT_CHARS + 50)
+        self.assertTrue(result["output"].startswith("...(truncated)"))
+
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
+    def test_long_stderr_is_truncated(self, mock_popen):
+        big_stderr = "e" * 2000
+        mock_popen.return_value = _mock_popen(stderr=big_stderr)
+        result = dev_tools.run_copilot_task(
+            {"task_description": "Stderr task"},
+            _build_context(),
+        )
+        self.assertTrue(result["stderr"].endswith("...(truncated)"))
+        self.assertLessEqual(len(result["stderr"]), 1050)
 
     @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)

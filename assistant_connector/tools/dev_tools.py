@@ -103,7 +103,7 @@ def run_copilot_task(arguments: dict, context) -> dict:
     stderr = (stderr or "").strip()
 
     if len(output) > _MAX_OUTPUT_CHARS:
-        output = output[-_MAX_OUTPUT_CHARS:] + "\n...(truncated)"
+        output = "...(truncated)\n" + output[-_MAX_OUTPUT_CHARS:]
 
     logger.info(
         "Copilot CLI finished with exit code %d (%d chars output)",
@@ -114,7 +114,7 @@ def run_copilot_task(arguments: dict, context) -> dict:
     return {
         "exit_code": proc.returncode,
         "output": output,
-        "stderr": stderr[:1000] if stderr else "",
+        "stderr": (stderr[:1000] + "\n...(truncated)") if stderr and len(stderr) > 1000 else (stderr or ""),
         "success": proc.returncode == 0,
     }
 
