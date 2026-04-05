@@ -565,6 +565,65 @@
         if (!document.hidden) checkGoogleStatus();
     });
 
+    // ---- Notion Status ----
+    var notionBtn = document.getElementById('btn-notion-status');
+    var notionLabel = document.getElementById('notion-status-label');
+    var notionOverlay = document.getElementById('notion-modal-overlay');
+    var notionContent = document.getElementById('notion-modal-content');
+    var notionClose = document.getElementById('notion-modal-close');
+
+    notionBtn.addEventListener('click', async function () {
+        notionOverlay.classList.add('visible');
+        notionContent.innerHTML = '<div class="notion-spinner"></div>';
+        try {
+            var resp = await fetch('/api/notion/check', { headers: authHeaders() });
+            if (!resp.ok) throw new Error();
+            var data = await resp.json();
+            var html = '';
+            if (!data.api_key_configured) {
+                html = '<p style="color:var(--color-text-muted);text-align:center;padding:12px 0">API Key não configurada</p>';
+            } else {
+                var dbs = data.databases;
+                for (var name in dbs) {
+                    var st = dbs[name];
+                    var icon = st === 'ok' ? '<span class="status-ok">✓</span>'
+                             : st === 'error' ? '<span class="status-error">✗</span>'
+                             : '<span class="status-na">—</span>';
+                    html += '<div class="notion-modal-item"><span>' + name + '</span>' + icon + '</div>';
+                }
+            }
+            notionContent.innerHTML = html;
+
+            // Update sidebar button
+            if (data.api_key_configured) {
+                var allOk = Object.values(data.databases).every(function(s) { return s === 'ok'; });
+                var anyOk = Object.values(data.databases).some(function(s) { return s === 'ok'; });
+                if (allOk) {
+                    notionLabel.textContent = 'Notion: conectado ✓';
+                    notionBtn.className = 'btn-notion-status connected';
+                } else if (anyOk) {
+                    notionLabel.textContent = 'Notion: parcial ⚠';
+                    notionBtn.className = 'btn-notion-status partial';
+                } else {
+                    notionLabel.textContent = 'Notion: erro ✗';
+                    notionBtn.className = 'btn-notion-status disconnected';
+                }
+            } else {
+                notionLabel.textContent = 'Notion: não configurado';
+                notionBtn.className = 'btn-notion-status disconnected';
+            }
+        } catch (_) {
+            notionContent.innerHTML = '<p style="color:#dc2626;text-align:center;padding:12px 0">Erro ao verificar</p>';
+        }
+    });
+
+    notionOverlay.addEventListener('click', function (e) {
+        if (e.target === notionOverlay) notionOverlay.classList.remove('visible');
+    });
+    notionClose.addEventListener('click', function () {
+        notionOverlay.classList.remove('visible');
+    });
+
     // ---- Init ----
     inputEl.focus();
     updateSendButton();

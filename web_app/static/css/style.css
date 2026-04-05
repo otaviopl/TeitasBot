@@ -353,6 +353,116 @@ html, body {
     border-color: #dc262644;
 }
 
+.sidebar-footer .btn-notion-status {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-footer .btn-notion-status:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--color-text);
+}
+
+.sidebar-footer .btn-notion-status.connected {
+    color: #16a34a;
+    border-color: #16a34a44;
+}
+
+.sidebar-footer .btn-notion-status.disconnected {
+    color: #dc2626;
+    border-color: #dc262644;
+}
+
+.sidebar-footer .btn-notion-status.partial {
+    color: #d97706;
+    border-color: #d9770644;
+}
+
+/* Notion status modal */
+.notion-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+}
+.notion-modal-overlay.visible {
+    display: flex;
+}
+.notion-modal {
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    min-width: 280px;
+    max-width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.notion-modal h3 {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.notion-modal-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--color-border);
+}
+.notion-modal-item:last-child {
+    border-bottom: none;
+}
+.notion-modal-item .status-ok { color: #16a34a; }
+.notion-modal-item .status-error { color: #dc2626; }
+.notion-modal-item .status-na { color: var(--color-text-muted); }
+.notion-modal-close {
+    margin-top: 16px;
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+.notion-modal-close:hover {
+    background: rgba(0,0,0,0.04);
+    color: var(--color-text);
+}
+.notion-spinner {
+    display: flex;
+    justify-content: center;
+    padding: 24px 0;
+}
+.notion-spinner::after {
+    content: '';
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-blue-start);
+    border-radius: 50%;
+    animation: notion-spin 0.6s linear infinite;
+}
+@keyframes notion-spin {
+    to { transform: rotate(360deg); }
+}
+
 .sidebar-footer .btn-logout {
     width: 100%;
     display: flex;

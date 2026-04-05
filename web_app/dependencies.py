@@ -16,6 +16,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 _user_store: Optional[WebUserStore] = None
 _assistant_service = None
 _google_oauth: Optional[WebGoogleOAuth] = None
+_credential_store = None
 
 
 def get_user_store() -> WebUserStore:
@@ -73,6 +74,20 @@ def get_google_oauth() -> Optional[WebGoogleOAuth]:
             logger=logger,
         )
     return _google_oauth
+
+
+def get_credential_store():
+    global _credential_store
+    if _credential_store is None:
+        load_dotenv()
+        from assistant_connector.user_credential_store import UserCredentialStore
+
+        default_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "assistant_memory.sqlite3")
+        )
+        memory_path = os.getenv("ASSISTANT_MEMORY_PATH", default_path)
+        _credential_store = UserCredentialStore(db_path=memory_path)
+    return _credential_store
 
 
 async def get_current_user(
