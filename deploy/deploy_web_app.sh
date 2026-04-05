@@ -91,7 +91,7 @@ WEB_JWT_EXPIRY_HOURS=72
 
 # Web server
 WEB_HOST=127.0.0.1
-WEB_PORT=8000
+WEB_PORT=8001
 
 # Notion
 NOTION_API_KEY=
@@ -200,7 +200,7 @@ server {
 
     # PWA — cache de assets estáticos
     location /static/ {
-        proxy_pass http://127.0.0.1:8000/static/;
+        proxy_pass http://127.0.0.1:8001/static/;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400, immutable";
         proxy_set_header Host \$host;
@@ -208,7 +208,7 @@ server {
 
     # Proxy para o FastAPI
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8001;
         proxy_http_version 1.1;
         proxy_set_header Host              \$host;
         proxy_set_header X-Real-IP         \$remote_addr;
@@ -278,7 +278,7 @@ fi
 # 10. Verificação final
 # =============================================================================
 info "Verificando resposta da aplicação..."
-HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://${DOMAIN}/api/health" || echo "000")
+HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "http://127.0.0.1:8001/api/health" || echo "000")
 if [[ "${HTTP_STATUS}" == "200" ]]; then
     info "✅ Deploy concluído com sucesso!"
     info "   URL: https://${DOMAIN}"
