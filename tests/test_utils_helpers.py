@@ -29,11 +29,18 @@ class _LoggerStub:
 
 class TestUtilsHelpers(unittest.TestCase):
     def test_create_logger_creates_and_reuses_handlers(self):
+        from logging.handlers import RotatingFileHandler
+
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {"LOG_PATH": temp_dir}, clear=False):
             logger = create_logger.create_logger()
             self.assertEqual(logger.name, "personal_notion_integration")
             self.assertGreaterEqual(len(logger.handlers), 2)
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "log_file.txt")))
+
+            file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+            self.assertEqual(len(file_handlers), 1, "Expected one RotatingFileHandler")
+            self.assertGreater(file_handlers[0].maxBytes, 0)
+            self.assertGreater(file_handlers[0].backupCount, 0)
 
             handler_count = len(logger.handlers)
             logger_again = create_logger.create_logger()

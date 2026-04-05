@@ -1,6 +1,11 @@
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
+
+# Rotating log defaults (overridable via env vars)
+_DEFAULT_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
+_DEFAULT_BACKUP_COUNT = 3             # keep 3 rotated copies
 
 
 def create_logger():
@@ -16,7 +21,12 @@ def create_logger():
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
-    file_handler = logging.FileHandler(log_file)
+    max_bytes = int(os.getenv("LOG_MAX_BYTES", str(_DEFAULT_MAX_BYTES)))
+    backup_count = int(os.getenv("LOG_BACKUP_COUNT", str(_DEFAULT_BACKUP_COUNT)))
+
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    )
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
