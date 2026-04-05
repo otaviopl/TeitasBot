@@ -530,14 +530,21 @@ html, body {
 
 /* ---- Input bar ---- */
 
+.chat-input-wrapper {
+    flex-shrink: 0;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(229, 231, 235, 0.7);
+}
+
 .chat-input-bar {
     display: flex;
     align-items: flex-end;
     gap: 8px;
     padding: 10px 16px;
-    border-top: 1px solid var(--color-border);
-    flex-shrink: 0;
-    background: var(--color-bg);
+    background: transparent;
     max-width: 768px;
     width: 100%;
     margin: 0 auto;
@@ -570,6 +577,8 @@ html, body {
     padding: 0;
     border-radius: 50%;
     flex-shrink: 0;
+    background: linear-gradient(90deg, rgba(15, 70, 180, 1) 0%, rgba(22, 99, 222, 1) 100%);
+    box-shadow: 0 2px 8px rgba(22, 99, 222, 0.35);
 }
 
 .chat-input-bar .btn-icon {
@@ -609,8 +618,8 @@ html, body {
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    border-top: 1px solid var(--color-border);
-    background: var(--color-assistant-bubble);
+    border-top: 1px solid rgba(229, 231, 235, 0.7);
+    background: rgba(243, 244, 246, 0.7);
     font-size: 0.85rem;
     color: var(--color-text-muted);
     max-width: 768px;
@@ -745,7 +754,10 @@ html, body {
 
 /* Safe area for iOS notch */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .chat-input-wrapper {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
     .chat-input-bar {
-        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        padding-bottom: 10px;
     }
 }
