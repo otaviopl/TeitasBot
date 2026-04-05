@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from jose import JWTError, jwt
+import jwt
 
 _ALGORITHM = "HS256"
 
@@ -45,5 +45,5 @@ def verify_token(token: str) -> Optional[dict[str, str]]:
         if not user_id or not username:
             return None
         return {"user_id": user_id, "username": username}
-    except (JWTError, ValueError):
+    except (jwt.PyJWTError, ValueError):
         return None
