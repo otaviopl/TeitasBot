@@ -41,6 +41,19 @@ class WebUserStore:
                     updated_at TEXT NOT NULL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_conversations (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    title TEXT NOT NULL DEFAULT 'Nova conversa',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_conversations_user
+                    ON web_conversations (user_id, updated_at DESC)
+            """)
 
     def create_user(
         self,
@@ -176,6 +189,71 @@ class WebUserStore:
                 (password_hash, now, clean_username),
             )
         return cursor.rowcount > 0
+
+    # ---- Conversation management ----
+
+    def create_conversation(self, user_id: str, title: str = "Nova conversa") -> dict:
+        conv_id = uuid.uuid4().hex
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_conversations (id, user_id, title, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (conv_id, user_id, title.strip() or "Nova conversa", now, now),
+            )
+        return {"id": conv_id, "user_id": user_id, "title": title.strip() or "Nova conversa", "created_at": now, "updated_at": now}
+
+    def list_conversations(self, user_id: str, limit: int = 50) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, user_id, title, created_at, updated_at FROM web_conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                (user_id, max(1, limit)),
+            ).fetchall()
+        return [
+            {"id": r["id"], "user_id": r["user_id"], "title": r["title"], "created_at": r["created_at"], "updated_at": r["updated_at"]}
+            for r in rows
+        ]
+
+    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, user_id, title, created_at, updated_at FROM web_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            ).fetchone()
+        if not row:
+            return None
+        return {"id": row["id"], "user_id": row["user_id"], "title": row["title"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+    def rename_conversation(self, conversation_id: str, user_id: str, title: str) -> bool:
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE web_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+                (title.strip(), now, conversation_id, user_id),
+            )
+        return cursor.rowcount > 0
+
+    def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM web_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            )
+            deleted = cursor.rowcount > 0
+            if deleted:
+                conn.commit()
+        return deleted
+
+    def touch_conversation(self, conversation_id: str) -> None:
+        """Update the updated_at timestamp of a conversation."""
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "UPDATE web_conversations SET updated_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
 
 
 def _utc_now_iso() -> str:

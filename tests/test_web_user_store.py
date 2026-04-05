@@ -131,3 +131,84 @@ class TestChangePassword:
 
     def test_change_password_nonexistent(self, store):
         assert store.change_password("nobody", "newpass123") is False
+
+
+class TestConversations:
+    def test_create_conversation(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"], "Test chat")
+        assert conv["title"] == "Test chat"
+        assert conv["user_id"] == user["id"]
+        assert conv["id"]
+
+    def test_create_conversation_default_title(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"])
+        assert conv["title"] == "Nova conversa"
+
+    def test_list_conversations_empty(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.list_conversations(user["id"]) == []
+
+    def test_list_conversations_ordered_by_updated(self, store):
+        user = store.create_user("alice", "secret123")
+        c1 = store.create_conversation(user["id"], "First")
+        c2 = store.create_conversation(user["id"], "Second")
+        # Touch c1 so it has a newer updated_at
+        import time
+        time.sleep(1.1)
+        store.touch_conversation(c1["id"])
+        convs = store.list_conversations(user["id"])
+        assert len(convs) == 2
+        # c1 was touched most recently, should be first
+        assert convs[0]["id"] == c1["id"]
+
+    def test_get_conversation(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"], "Chat")
+        fetched = store.get_conversation(conv["id"], user["id"])
+        assert fetched is not None
+        assert fetched["title"] == "Chat"
+
+    def test_get_conversation_wrong_user(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        conv = store.create_conversation(u1["id"], "Alice's chat")
+        assert store.get_conversation(conv["id"], u2["id"]) is None
+
+    def test_get_conversation_nonexistent(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.get_conversation("nonexistent", user["id"]) is None
+
+    def test_rename_conversation(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"], "Old title")
+        assert store.rename_conversation(conv["id"], user["id"], "New title") is True
+        fetched = store.get_conversation(conv["id"], user["id"])
+        assert fetched["title"] == "New title"
+
+    def test_rename_conversation_wrong_user(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        conv = store.create_conversation(u1["id"], "Chat")
+        assert store.rename_conversation(conv["id"], u2["id"], "Hijacked") is False
+
+    def test_delete_conversation(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"], "Delete me")
+        assert store.delete_conversation(conv["id"], user["id"]) is True
+        assert store.get_conversation(conv["id"], user["id"]) is None
+
+    def test_delete_conversation_nonexistent(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.delete_conversation("nonexistent", user["id"]) is False
+
+    def test_touch_conversation(self, store):
+        user = store.create_user("alice", "secret123")
+        conv = store.create_conversation(user["id"], "Touch me")
+        original_updated = conv["updated_at"]
+        import time
+        time.sleep(1.1)
+        store.touch_conversation(conv["id"])
+        fetched = store.get_conversation(conv["id"], user["id"])
+        assert fetched["updated_at"] >= original_updated

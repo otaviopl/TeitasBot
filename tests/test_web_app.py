@@ -177,3 +177,121 @@ class TestChatEndpoints:
             assert res.json()["text"] == "File received"
         finally:
             app.dependency_overrides.clear()
+
+
+class TestConversationEndpoints:
+    def test_create_conversation(self, client, auth_token):
+        res = client.post(
+            "/api/conversations",
+            json={"title": "My chat"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 201
+        data = res.json()
+        assert data["title"] == "My chat"
+        assert data["id"]
+
+    def test_list_conversations(self, client, auth_token):
+        # Create two conversations
+        client.post("/api/conversations", json={"title": "First"}, headers=auth_headers(auth_token))
+        client.post("/api/conversations", json={"title": "Second"}, headers=auth_headers(auth_token))
+
+        res = client.get("/api/conversations", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        convs = res.json()["conversations"]
+        assert len(convs) == 2
+
+    def test_rename_conversation(self, client, auth_token):
+        res = client.post("/api/conversations", json={"title": "Old"}, headers=auth_headers(auth_token))
+        conv_id = res.json()["id"]
+
+        res = client.patch(
+            f"/api/conversations/{conv_id}",
+            json={"title": "New title"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+
+    def test_rename_conversation_empty_title(self, client, auth_token):
+        res = client.post("/api/conversations", json={"title": "Chat"}, headers=auth_headers(auth_token))
+        conv_id = res.json()["id"]
+
+        res = client.patch(
+            f"/api/conversations/{conv_id}",
+            json={"title": "   "},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 400
+
+    def test_rename_nonexistent_conversation(self, client, auth_token):
+        res = client.patch(
+            "/api/conversations/nonexistent",
+            json={"title": "X"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 404
+
+    def test_delete_conversation(self, client, auth_token):
+        mock_service = MagicMock()
+
+        from web_app.app import app
+        from web_app.dependencies import get_assistant_service
+        app.dependency_overrides[get_assistant_service] = lambda: mock_service
+
+        try:
+            res = client.post("/api/conversations", json={"title": "Delete me"}, headers=auth_headers(auth_token))
+            conv_id = res.json()["id"]
+
+            res = client.delete(f"/api/conversations/{conv_id}", headers=auth_headers(auth_token))
+            assert res.status_code == 200
+
+            # Verify it's gone
+            res = client.get("/api/conversations", headers=auth_headers(auth_token))
+            convs = res.json()["conversations"]
+            assert all(c["id"] != conv_id for c in convs)
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_delete_nonexistent_conversation(self, client, auth_token):
+        mock_service = MagicMock()
+
+        from web_app.app import app
+        from web_app.dependencies import get_assistant_service
+        app.dependency_overrides[get_assistant_service] = lambda: mock_service
+
+        try:
+            res = client.delete("/api/conversations/nonexistent", headers=auth_headers(auth_token))
+            assert res.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_conversations_unauthenticated(self, client):
+        res = client.get("/api/conversations")
+        assert res.status_code == 401 or res.status_code == 403
+
+    def test_chat_with_conversation_id(self, client, auth_token):
+        mock_service = MagicMock()
+        mock_service.chat.return_value = ChatResponse(text="Reply", image_paths=[])
+
+        from web_app.app import app
+        from web_app.dependencies import get_assistant_service
+        app.dependency_overrides[get_assistant_service] = lambda: mock_service
+
+        try:
+            # Create a conversation first
+            res = client.post("/api/conversations", json={"title": "Chat"}, headers=auth_headers(auth_token))
+            conv_id = res.json()["id"]
+
+            res = client.post(
+                "/api/chat",
+                json={"message": "Hello", "conversation_id": conv_id},
+                headers=auth_headers(auth_token),
+            )
+            assert res.status_code == 200
+            assert res.json()["text"] == "Reply"
+
+            # Verify channel_id includes conversation_id
+            call_kwargs = mock_service.chat.call_args
+            assert conv_id in call_kwargs.kwargs.get("channel_id", call_kwargs[1].get("channel_id", ""))
+        finally:
+            app.dependency_overrides.clear()

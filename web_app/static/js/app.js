@@ -1,4 +1,4 @@
-/* app.js — Chat interface logic */
+/* app.js — Chat interface logic with sidebar conversations */
 (function () {
     'use strict';
 
@@ -16,6 +16,7 @@
     const sendBtn = document.getElementById('btn-send');
     const resetBtn = document.getElementById('btn-reset');
     const logoutBtn = document.getElementById('btn-logout');
+    const logoutSidebarBtn = document.getElementById('btn-logout-sidebar');
     const attachBtn = document.getElementById('btn-attach');
     const fileInput = document.getElementById('file-input');
     const filePreview = document.getElementById('file-preview');
@@ -24,8 +25,16 @@
     const micBtn = document.getElementById('btn-mic');
     const toastEl = document.getElementById('toast');
 
+    // Sidebar refs
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    const hamburgerBtn = document.getElementById('btn-hamburger');
+    const newChatBtn = document.getElementById('btn-new-chat');
+    const conversationListEl = document.getElementById('conversation-list');
+
     let pendingFile = null;
     let isSending = false;
+    let activeConversationId = localStorage.getItem('pa_active_conversation') || null;
 
     // ---- Markdown setup ----
     if (typeof marked !== 'undefined') {
@@ -41,7 +50,6 @@
         if (typeof marked !== 'undefined') {
             return marked.parse(text);
         }
-        // Fallback: just escape HTML and wrap in <p>
         return '<p>' + text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
     }
 
@@ -50,16 +58,19 @@
         return { 'Authorization': 'Bearer ' + token, ...extra };
     }
 
-    async function apiPost(url, body, isFormData) {
-        const headers = authHeaders(isFormData ? {} : { 'Content-Type': 'application/json' });
-        const res = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: isFormData ? body : JSON.stringify(body),
-        });
+    async function apiRequest(method, url, body, isFormData) {
+        const headers = authHeaders(
+            isFormData ? {} : (body !== undefined ? { 'Content-Type': 'application/json' } : {})
+        );
+        const opts = { method: method, headers: headers };
+        if (body !== undefined) {
+            opts.body = isFormData ? body : JSON.stringify(body);
+        }
+        const res = await fetch(url, opts);
         if (res.status === 401) {
             localStorage.removeItem('pa_token');
             localStorage.removeItem('pa_user');
+            localStorage.removeItem('pa_active_conversation');
             window.location.href = '/';
             return null;
         }
@@ -68,6 +79,22 @@
             throw new Error(data.detail || 'Erro no servidor');
         }
         return res.json();
+    }
+
+    async function apiPost(url, body, isFormData) {
+        return apiRequest('POST', url, body, isFormData);
+    }
+
+    async function apiGet(url) {
+        return apiRequest('GET', url);
+    }
+
+    async function apiDelete(url) {
+        return apiRequest('DELETE', url);
+    }
+
+    async function apiPatch(url, body) {
+        return apiRequest('PATCH', url, body);
     }
 
     // ---- UI helpers ----
@@ -92,8 +119,13 @@
         setTimeout(() => toastEl.classList.remove('visible'), duration || 3000);
     }
 
+    function clearMessages() {
+        var messages = messagesEl.querySelectorAll('.message');
+        messages.forEach(function (m) { m.remove(); });
+    }
+
     function addMessage(role, content, imageUrls) {
-        const div = document.createElement('div');
+        var div = document.createElement('div');
         div.className = 'message message-' + role;
 
         if (role === 'assistant') {
@@ -102,10 +134,8 @@
             div.textContent = content;
         }
 
-        // Insert before typing indicator
         messagesEl.insertBefore(div, typingEl);
 
-        // Append images if any
         if (imageUrls && imageUrls.length) {
             imageUrls.forEach(function (url) {
                 var img = document.createElement('img');
@@ -125,10 +155,164 @@
     }
 
     function updateSendButton() {
-        const hasText = inputEl.value.trim().length > 0;
-        const hasFile = pendingFile !== null;
+        var hasText = inputEl.value.trim().length > 0;
+        var hasFile = pendingFile !== null;
         sendBtn.disabled = (!hasText && !hasFile) || isSending;
     }
+
+    // ================================================
+    // Sidebar — Conversation management
+    // ================================================
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+        sidebarOverlay.classList.add('visible');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('visible');
+    }
+
+    hamburgerBtn.addEventListener('click', function () {
+        if (sidebar.classList.contains('open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    });
+
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    async function loadConversations() {
+        try {
+            var data = await apiGet('/api/conversations');
+            if (!data) return;
+            renderConversationList(data.conversations);
+
+            if (data.conversations.length === 0) {
+                await createConversation();
+            } else if (!activeConversationId || !data.conversations.find(function (c) { return c.id === activeConversationId; })) {
+                await switchConversation(data.conversations[0].id);
+            } else {
+                highlightActiveConversation();
+                await loadConversationMessages(activeConversationId);
+            }
+        } catch (err) {
+            showToast('Erro ao carregar conversas');
+        }
+    }
+
+    function renderConversationList(conversations) {
+        conversationListEl.innerHTML = '';
+        conversations.forEach(function (conv) {
+            var item = document.createElement('div');
+            item.className = 'conversation-item' + (conv.id === activeConversationId ? ' active' : '');
+            item.dataset.id = conv.id;
+
+            var title = document.createElement('span');
+            title.className = 'conversation-item-title';
+            title.textContent = conv.title;
+
+            var deleteBtn = document.createElement('button');
+            deleteBtn.className = 'conversation-item-delete';
+            deleteBtn.textContent = '✕';
+            deleteBtn.title = 'Excluir';
+            deleteBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                deleteConversation(conv.id);
+            });
+
+            item.appendChild(title);
+            item.appendChild(deleteBtn);
+
+            item.addEventListener('click', function () {
+                switchConversation(conv.id);
+                closeSidebar();
+            });
+
+            conversationListEl.appendChild(item);
+        });
+    }
+
+    function highlightActiveConversation() {
+        var items = conversationListEl.querySelectorAll('.conversation-item');
+        items.forEach(function (item) {
+            if (item.dataset.id === activeConversationId) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    }
+
+    async function createConversation() {
+        try {
+            var data = await apiPost('/api/conversations', { title: 'Nova conversa' });
+            if (!data) return;
+            activeConversationId = data.id;
+            localStorage.setItem('pa_active_conversation', data.id);
+            clearMessages();
+            await loadConversations();
+            inputEl.focus();
+        } catch (err) {
+            showToast('Erro ao criar conversa');
+        }
+    }
+
+    async function switchConversation(conversationId) {
+        if (conversationId === activeConversationId) return;
+        activeConversationId = conversationId;
+        localStorage.setItem('pa_active_conversation', conversationId);
+        highlightActiveConversation();
+        clearMessages();
+        await loadConversationMessages(conversationId);
+        inputEl.focus();
+    }
+
+    async function loadConversationMessages(conversationId) {
+        try {
+            var data = await apiGet('/api/conversations/' + conversationId + '/messages');
+            if (!data) return;
+            data.messages.forEach(function (msg) {
+                addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+            });
+        } catch (_) {
+            // Conversation may be empty
+        }
+    }
+
+    async function deleteConversation(conversationId) {
+        try {
+            await apiDelete('/api/conversations/' + conversationId);
+            if (conversationId === activeConversationId) {
+                activeConversationId = null;
+                localStorage.removeItem('pa_active_conversation');
+                clearMessages();
+            }
+            await loadConversations();
+        } catch (err) {
+            showToast('Erro ao excluir conversa');
+        }
+    }
+
+    async function autoTitleConversation(conversationId, userMessage) {
+        var title = userMessage.substring(0, 40).trim();
+        if (userMessage.length > 40) title += '…';
+        try {
+            await apiPatch('/api/conversations/' + conversationId, { title: title });
+            // Update sidebar
+            var item = conversationListEl.querySelector('[data-id="' + conversationId + '"] .conversation-item-title');
+            if (item) item.textContent = title;
+        } catch (_) {
+            // Non-critical
+        }
+    }
+
+    newChatBtn.addEventListener('click', function () {
+        createConversation();
+        closeSidebar();
+    });
 
     // ---- Textarea auto-resize ----
     inputEl.addEventListener('input', function () {
@@ -148,8 +332,8 @@
 
     // ---- Send text message ----
     async function sendMessage() {
-        const text = inputEl.value.trim();
-        const file = pendingFile;
+        var text = inputEl.value.trim();
+        var file = pendingFile;
 
         if (!text && !file) return;
         if (isSending) return;
@@ -168,19 +352,30 @@
         inputEl.style.height = 'auto';
         showTyping();
 
+        // Check if this is the first message in the conversation (auto-title)
+        var isFirstMessage = messagesEl.querySelectorAll('.message').length === 1;
+
         try {
-            let data;
+            var data;
             if (file) {
-                const formData = new FormData();
+                var formData = new FormData();
                 formData.append('file', file);
                 formData.append('caption', text);
+                if (activeConversationId) formData.append('conversation_id', activeConversationId);
                 data = await apiPost('/api/chat/upload', formData, true);
             } else {
-                data = await apiPost('/api/chat', { message: text });
+                data = await apiPost('/api/chat', {
+                    message: text,
+                    conversation_id: activeConversationId
+                });
             }
 
             if (data) {
                 addMessage('assistant', data.text, data.image_urls);
+            }
+
+            if (isFirstMessage && activeConversationId && text) {
+                autoTitleConversation(activeConversationId, text);
             }
         } catch (err) {
             showToast('Erro: ' + err.message);
@@ -220,17 +415,17 @@
 
     // ---- Audio recording ----
     if (typeof AudioRecorder !== 'undefined') {
-        const recorder = new AudioRecorder();
+        var recorder = new AudioRecorder();
 
         micBtn.addEventListener('click', async function () {
             if (recorder.isRecording()) {
                 micBtn.classList.remove('recording');
-                const blob = await recorder.stop();
+                var blob = await recorder.stop();
                 if (blob && blob.size > 0) {
                     await sendAudio(blob);
                 }
             } else {
-                const started = await recorder.start();
+                var started = await recorder.start();
                 if (started) {
                     micBtn.classList.add('recording');
                 } else {
@@ -250,18 +445,24 @@
         addMessage('user', '🎙️ Mensagem de voz');
         showTyping();
 
+        var isFirstMessage = messagesEl.querySelectorAll('.message').length === 1;
+
         try {
-            const formData = new FormData();
+            var formData = new FormData();
             formData.append('audio', blob, 'recording.webm');
-            const data = await apiPost('/api/chat/audio', formData, true);
+            if (activeConversationId) formData.append('conversation_id', activeConversationId);
+            var data = await apiPost('/api/chat/audio', formData, true);
 
             if (data) {
                 if (data.transcribed_text) {
-                    // Update the user message to show what was said
                     var userMessages = messagesEl.querySelectorAll('.message-user');
                     var lastUserMsg = userMessages[userMessages.length - 1];
                     if (lastUserMsg) {
                         lastUserMsg.textContent = '🎙️ ' + data.transcribed_text;
+                    }
+
+                    if (isFirstMessage && activeConversationId) {
+                        autoTitleConversation(activeConversationId, data.transcribed_text);
                     }
                 }
                 addMessage('assistant', data.text, data.image_urls);
@@ -279,24 +480,31 @@
     resetBtn.addEventListener('click', async function () {
         if (isSending) return;
         try {
-            await apiPost('/api/chat/reset', {});
-            // Clear messages from UI
-            var messages = messagesEl.querySelectorAll('.message');
-            messages.forEach(function (m) { m.remove(); });
-            showToast('Nova conversa iniciada');
+            var url = '/api/chat/reset';
+            if (activeConversationId) {
+                url += '?conversation_id=' + encodeURIComponent(activeConversationId);
+            }
+            await apiPost(url, {});
+            clearMessages();
+            showToast('Conversa limpa');
         } catch (err) {
-            showToast('Erro ao resetar conversa');
+            showToast('Erro ao limpar conversa');
         }
     });
 
     // ---- Logout ----
-    logoutBtn.addEventListener('click', function () {
+    function doLogout() {
         localStorage.removeItem('pa_token');
         localStorage.removeItem('pa_user');
+        localStorage.removeItem('pa_active_conversation');
         window.location.href = '/';
-    });
+    }
+
+    logoutBtn.addEventListener('click', doLogout);
+    logoutSidebarBtn.addEventListener('click', doLogout);
 
     // ---- Init ----
     inputEl.focus();
     updateSendButton();
+    loadConversations();
 })();
