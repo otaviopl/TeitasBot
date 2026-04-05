@@ -175,5 +175,4 @@ cython_debug/
 memories/*
 !memories/README.md
 
-# Web app generated files
-web_app/static/icons/*.png
+# Web app generated files (keep icons tracked)
