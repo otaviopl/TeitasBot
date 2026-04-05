@@ -13,11 +13,36 @@ _DEFAULT_TIMEOUT = 300  # 5 minutes
 _SERVICE_NAME = "personal-assistant-bot"
 _MAX_OUTPUT_CHARS = 6000
 
+# Owner user ID loaded once at import time.  Env var is the single source
+# of truth and cannot be changed at runtime by the LLM or tool arguments.
+_OWNER_USER_ID: str = os.getenv("COPILOT_OWNER_USER_ID", "").strip()
+
 logger = logging.getLogger(__name__)
 
 
-def run_copilot_task(arguments: dict, _context) -> dict:
+def _assert_owner(context) -> dict | None:
+    """Return an error dict if the caller is not the owner, else None."""
+    if not _OWNER_USER_ID:
+        return {
+            "error": "not_configured",
+            "message": "COPILOT_OWNER_USER_ID env var is not set.",
+        }
+    if str(context.user_id) != _OWNER_USER_ID:
+        logger.warning(
+            "Blocked dev tool call from non-owner user_id=%s", context.user_id
+        )
+        return {
+            "error": "unauthorized",
+            "message": "Only the project owner can use this tool.",
+        }
+    return None
+
+
+def run_copilot_task(arguments: dict, context) -> dict:
     """Execute the Copilot CLI in autopilot mode with a given task prompt."""
+
+    if (deny := _assert_owner(context)) is not None:
+        return deny
 
     task_description = str(arguments.get("task_description", "")).strip()
     if not task_description:
@@ -80,12 +105,15 @@ def run_copilot_task(arguments: dict, _context) -> dict:
     }
 
 
-def restart_bot_service(arguments: dict, _context) -> dict:
+def restart_bot_service(arguments: dict, context) -> dict:
     """Schedule a delayed restart of the bot systemd service.
 
     A short delay (3s) is used so the current response can be sent
     to the user before the process is terminated by systemd.
     """
+
+    if (deny := _assert_owner(context)) is not None:
+        return deny
 
     delay_seconds = int(arguments.get("delay_seconds", 3))
     delay_seconds = max(1, min(delay_seconds, 30))

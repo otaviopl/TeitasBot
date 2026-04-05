@@ -17,6 +17,8 @@ BLOCKED_SCHEDULED_EXECUTION_TOOLS = {
     "edit_scheduled_task",
     "cancel_scheduled_task",
     "list_scheduled_tasks",
+    "run_copilot_task",
+    "restart_bot_service",
 }
 
 

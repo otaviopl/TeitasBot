@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch, call
 from assistant_connector.models import AgentDefinition, ToolExecutionContext
 from assistant_connector.tools import dev_tools
 
+OWNER_ID = "123456"
+
 
 class _FakeLogger:
     def debug(self, *_args, **_kwargs):
@@ -22,7 +24,7 @@ class _FakeLogger:
         return None
 
 
-def _build_context():
+def _build_context(user_id=OWNER_ID):
     agent = AgentDefinition(
         agent_id="personal_assistant",
         description="desc",
@@ -32,7 +34,7 @@ def _build_context():
     )
     return ToolExecutionContext(
         session_id="session",
-        user_id="user",
+        user_id=user_id,
         channel_id="channel",
         guild_id="guild",
         project_logger=_FakeLogger(),
@@ -42,16 +44,53 @@ def _build_context():
     )
 
 
+class TestOwnerGuard(unittest.TestCase):
+    """Verify that both tools reject non-owner callers."""
+
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
+    def test_run_copilot_task_rejects_non_owner(self):
+        result = dev_tools.run_copilot_task(
+            {"task_description": "hack"}, _build_context(user_id="intruder")
+        )
+        self.assertEqual(result["error"], "unauthorized")
+
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
+    def test_restart_bot_service_rejects_non_owner(self):
+        result = dev_tools.restart_bot_service({}, _build_context(user_id="intruder"))
+        self.assertEqual(result["error"], "unauthorized")
+
+    @patch.object(dev_tools, "_OWNER_USER_ID", "")
+    def test_run_copilot_task_rejects_when_env_not_set(self):
+        result = dev_tools.run_copilot_task(
+            {"task_description": "anything"}, _build_context()
+        )
+        self.assertEqual(result["error"], "not_configured")
+
+    @patch.object(dev_tools, "_OWNER_USER_ID", "")
+    def test_restart_bot_service_rejects_when_env_not_set(self):
+        result = dev_tools.restart_bot_service({}, _build_context())
+        self.assertEqual(result["error"], "not_configured")
+
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
+    def test_context_user_id_is_immutable(self):
+        ctx = _build_context()
+        with self.assertRaises(AttributeError):
+            ctx.user_id = "attacker"
+
+
 class TestRunCopilotTask(unittest.TestCase):
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_missing_task_description_returns_error(self):
         result = dev_tools.run_copilot_task({}, _build_context())
         self.assertIn("error", result)
 
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_empty_task_description_returns_error(self):
         result = dev_tools.run_copilot_task({"task_description": "  "}, _build_context())
         self.assertIn("error", result)
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_successful_execution_returns_output(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -76,6 +115,7 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertTrue(kwargs.get("capture_output"))
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_nonzero_exit_code_returns_failure(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=1,
@@ -91,6 +131,7 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertIn("fatal", result["stderr"])
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_binary_not_found_returns_error(self, mock_run):
         mock_run.side_effect = FileNotFoundError("No such file")
         result = dev_tools.run_copilot_task(
@@ -100,6 +141,7 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertEqual(result["error"], "copilot_cli_not_found")
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_timeout_returns_error(self, mock_run):
         import subprocess
 
@@ -111,6 +153,7 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertEqual(result["error"], "timeout")
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_long_output_is_truncated(self, mock_run):
         big_output = "x" * 10000
         mock_run.return_value = MagicMock(
@@ -126,6 +169,7 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertLessEqual(len(result["output"]), dev_tools._MAX_OUTPUT_CHARS + 50)
 
     @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_uses_project_dir_as_cwd(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
         dev_tools.run_copilot_task(
@@ -138,6 +182,7 @@ class TestRunCopilotTask(unittest.TestCase):
 
 class TestRestartBotService(unittest.TestCase):
     @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_schedules_restart_with_default_delay(self, mock_popen):
         result = dev_tools.restart_bot_service({}, _build_context())
         self.assertEqual(result["status"], "restart_scheduled")
@@ -147,6 +192,7 @@ class TestRestartBotService(unittest.TestCase):
         self.assertIn("sleep 3", " ".join(cmd_arg))
 
     @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_custom_delay_is_clamped(self, mock_popen):
         result = dev_tools.restart_bot_service(
             {"delay_seconds": 50}, _build_context()
@@ -159,6 +205,7 @@ class TestRestartBotService(unittest.TestCase):
         self.assertEqual(result["delay_seconds"], 1)
 
     @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_popen_failure_returns_error(self, mock_popen):
         mock_popen.side_effect = OSError("Permission denied")
         result = dev_tools.restart_bot_service({}, _build_context())
@@ -166,6 +213,7 @@ class TestRestartBotService(unittest.TestCase):
         self.assertIn("Permission denied", result["message"])
 
     @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_popen_called_with_new_session(self, mock_popen):
         dev_tools.restart_bot_service({}, _build_context())
         _, kwargs = mock_popen.call_args
