@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import subprocess
 
 _PROJECT_DIR = os.path.dirname(
@@ -64,12 +65,13 @@ def run_copilot_task(arguments: dict, context) -> dict:
     logger.info("Running Copilot CLI task: %s", task_description[:120])
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=_PROJECT_DIR,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            start_new_session=True,
         )
     except FileNotFoundError:
         return {
@@ -79,29 +81,41 @@ def run_copilot_task(arguments: dict, context) -> dict:
                 "Set COPILOT_CLI_PATH env var to the correct path."
             ),
         }
+
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        # Kill the entire process group to avoid orphan children
+        pgid = os.getpgid(proc.pid)
+        os.killpg(pgid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(pgid, signal.SIGKILL)
+            proc.wait()
+        logger.warning("Copilot CLI killed after %ds timeout (pgid=%d)", timeout, pgid)
         return {
             "error": "timeout",
             "message": f"Copilot CLI did not finish within {timeout}s.",
         }
 
-    output = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
+    output = (stdout or "").strip()
+    stderr = (stderr or "").strip()
 
     if len(output) > _MAX_OUTPUT_CHARS:
         output = output[-_MAX_OUTPUT_CHARS:] + "\n...(truncated)"
 
     logger.info(
         "Copilot CLI finished with exit code %d (%d chars output)",
-        result.returncode,
+        proc.returncode,
         len(output),
     )
 
     return {
-        "exit_code": result.returncode,
+        "exit_code": proc.returncode,
         "output": output,
         "stderr": stderr[:1000] if stderr else "",
-        "success": result.returncode == 0,
+        "success": proc.returncode == 0,
     }
 
 

@@ -78,6 +78,15 @@ class TestOwnerGuard(unittest.TestCase):
             ctx.user_id = "attacker"
 
 
+def _mock_popen(stdout="", stderr="", returncode=0):
+    """Build a MagicMock that behaves like subprocess.Popen."""
+    proc = MagicMock()
+    proc.communicate.return_value = (stdout, stderr)
+    proc.returncode = returncode
+    proc.pid = 99999
+    return proc
+
+
 class TestRunCopilotTask(unittest.TestCase):
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
     def test_missing_task_description_returns_error(self):
@@ -89,13 +98,11 @@ class TestRunCopilotTask(unittest.TestCase):
         result = dev_tools.run_copilot_task({"task_description": "  "}, _build_context())
         self.assertIn("error", result)
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_successful_execution_returns_output(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0,
+    def test_successful_execution_returns_output(self, mock_popen):
+        mock_popen.return_value = _mock_popen(
             stdout="Changes applied successfully",
-            stderr="",
         )
         result = dev_tools.run_copilot_task(
             {"task_description": "Fix the bug"},
@@ -105,22 +112,22 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("Changes applied", result["output"])
 
-        args, kwargs = mock_run.call_args
+        args, kwargs = mock_popen.call_args
         cmd = args[0]
         self.assertIn("-p", cmd)
         self.assertIn("Fix the bug", cmd)
         self.assertIn("--yolo", cmd)
         self.assertIn("--autopilot", cmd)
         self.assertIn("--no-ask-user", cmd)
-        self.assertTrue(kwargs.get("capture_output"))
+        self.assertTrue(kwargs.get("start_new_session"))
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_nonzero_exit_code_returns_failure(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=1,
+    def test_nonzero_exit_code_returns_failure(self, mock_popen):
+        mock_popen.return_value = _mock_popen(
             stdout="Error occurred",
             stderr="fatal: something",
+            returncode=1,
         )
         result = dev_tools.run_copilot_task(
             {"task_description": "Bad task"},
@@ -130,37 +137,40 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertEqual(result["exit_code"], 1)
         self.assertIn("fatal", result["stderr"])
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_binary_not_found_returns_error(self, mock_run):
-        mock_run.side_effect = FileNotFoundError("No such file")
+    def test_binary_not_found_returns_error(self, mock_popen):
+        mock_popen.side_effect = FileNotFoundError("No such file")
         result = dev_tools.run_copilot_task(
             {"task_description": "Some task"},
             _build_context(),
         )
         self.assertEqual(result["error"], "copilot_cli_not_found")
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.os.killpg")
+    @patch("assistant_connector.tools.dev_tools.os.getpgid", return_value=99999)
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_timeout_returns_error(self, mock_run):
-        import subprocess
+    def test_timeout_returns_error(self, mock_popen, mock_getpgid, mock_killpg):
+        import subprocess as _subprocess
 
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="copilot", timeout=300)
+        mock_proc = _mock_popen()
+        mock_proc.communicate.side_effect = _subprocess.TimeoutExpired(
+            cmd="copilot", timeout=300
+        )
+        mock_popen.return_value = mock_proc
         result = dev_tools.run_copilot_task(
             {"task_description": "Long task"},
             _build_context(),
         )
         self.assertEqual(result["error"], "timeout")
+        mock_killpg.assert_called()
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_long_output_is_truncated(self, mock_run):
+    def test_long_output_is_truncated(self, mock_popen):
         big_output = "x" * 10000
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=big_output,
-            stderr="",
-        )
+        mock_popen.return_value = _mock_popen(stdout=big_output)
         result = dev_tools.run_copilot_task(
             {"task_description": "Big output task"},
             _build_context(),
@@ -168,15 +178,15 @@ class TestRunCopilotTask(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertLessEqual(len(result["output"]), dev_tools._MAX_OUTPUT_CHARS + 50)
 
-    @patch("assistant_connector.tools.dev_tools.subprocess.run")
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
     @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
-    def test_uses_project_dir_as_cwd(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+    def test_uses_project_dir_as_cwd(self, mock_popen):
+        mock_popen.return_value = _mock_popen(stdout="ok")
         dev_tools.run_copilot_task(
             {"task_description": "Check cwd"},
             _build_context(),
         )
-        _, kwargs = mock_run.call_args
+        _, kwargs = mock_popen.call_args
         self.assertEqual(kwargs["cwd"], dev_tools._PROJECT_DIR)
 
 
