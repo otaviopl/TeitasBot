@@ -417,6 +417,7 @@ html, body {
     overflow-y: auto;
     padding: 16px;
     padding-top: calc(var(--header-height) + 16px);
+    padding-bottom: 80px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -531,8 +532,11 @@ html, body {
 /* ---- Input bar ---- */
 
 .chat-input-wrapper {
-    flex-shrink: 0;
-    width: 100%;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
     background: rgba(255, 255, 255, 0.85);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
@@ -727,6 +731,7 @@ html, body {
     .chat-messages {
         padding: 12px;
         padding-top: calc(var(--header-height) + 12px);
+        padding-bottom: 80px;
     }
 
     .chat-input-bar {
@@ -756,8 +761,5 @@ html, body {
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
     .chat-input-wrapper {
         padding-bottom: env(safe-area-inset-bottom);
-    }
-    .chat-input-bar {
-        padding-bottom: 10px;
     }
 }
