@@ -503,8 +503,71 @@
     logoutBtn.addEventListener('click', doLogout);
     logoutSidebarBtn.addEventListener('click', doLogout);
 
+    // ---- Google OAuth ----
+    var googleBtn = document.getElementById('btn-google-connect');
+    var googleLabel = document.getElementById('google-connect-label');
+
+    async function checkGoogleStatus() {
+        try {
+            var resp = await fetch('/api/google/status', { headers: authHeaders() });
+            if (!resp.ok) throw new Error();
+            var data = await resp.json();
+            if (!data.configured) {
+                googleBtn.style.display = 'none';
+                return;
+            }
+            if (data.connected) {
+                googleLabel.textContent = 'Google: conectado ✓';
+                googleBtn.classList.remove('disconnected');
+                googleBtn.classList.add('connected');
+                googleBtn.title = 'Clique para desconectar';
+            } else {
+                googleLabel.textContent = 'Conectar Google';
+                googleBtn.classList.remove('connected');
+                googleBtn.classList.add('disconnected');
+                googleBtn.title = 'Clique para autorizar Google';
+            }
+        } catch (_) {
+            googleBtn.style.display = 'none';
+        }
+    }
+
+    googleBtn.addEventListener('click', async function () {
+        if (googleBtn.classList.contains('connected')) {
+            if (!confirm('Desconectar conta Google?')) return;
+            try {
+                await fetch('/api/google/disconnect', { method: 'DELETE', headers: authHeaders() });
+                showToast('Google desconectado');
+            } catch (_) {
+                showToast('Erro ao desconectar');
+            }
+            checkGoogleStatus();
+            return;
+        }
+        try {
+            var resp = await fetch('/api/google/auth-url', { headers: authHeaders() });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return {}; });
+                showToast(err.detail || 'Erro ao iniciar autenticação Google');
+                return;
+            }
+            var data = await resp.json();
+            window.open(data.auth_url, '_blank');
+            showToast('Complete a autorização na nova aba');
+            setTimeout(checkGoogleStatus, 15000);
+        } catch (_) {
+            showToast('Erro ao iniciar autenticação Google');
+        }
+    });
+
+    // Re-check Google status when user comes back to the tab
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) checkGoogleStatus();
+    });
+
     // ---- Init ----
     inputEl.focus();
     updateSendButton();
     loadConversations();
+    checkGoogleStatus();
 })();

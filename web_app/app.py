@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from web_app.auth import create_access_token
-from web_app.dependencies import get_assistant_service, get_current_user, get_user_store
+from web_app.dependencies import get_assistant_service, get_current_user, get_google_oauth, get_user_store
 from web_app.user_store import WebUserStore
 
 load_dotenv()
@@ -338,6 +338,67 @@ async def get_chat_image(filename: str, user: dict = Depends(get_current_user)):
         if os.path.isfile(candidate):
             return FileResponse(candidate)
     raise HTTPException(status_code=404, detail="Image not found")
+
+
+# ---- Google OAuth endpoints ----
+
+@app.get("/api/google/status")
+async def google_status(user: dict = Depends(get_current_user)):
+    oauth = get_google_oauth()
+    if oauth is None:
+        return {"configured": False, "connected": False}
+    user_id = f"web:{user['username']}"
+    connected = oauth.has_valid_token(user_id)
+    return {"configured": True, "connected": connected}
+
+
+@app.get("/api/google/auth-url")
+async def google_auth_url(user: dict = Depends(get_current_user)):
+    oauth = get_google_oauth()
+    if oauth is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth not configured. Set GOOGLE_OAUTH_CALLBACK_URL in .env.",
+        )
+    user_id = f"web:{user['username']}"
+    try:
+        auth_url = oauth.start_flow(user_id)
+        return {"auth_url": auth_url}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+
+@app.get("/auth/google/callback", response_class=HTMLResponse)
+async def google_oauth_callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    from web_app.google_oauth import _ERROR_HTML, _SUCCESS_HTML
+
+    if error:
+        return HTMLResponse(_ERROR_HTML.format(message=f"Google recusou: {error}"), status_code=400)
+    if not code or not state:
+        return HTMLResponse(_ERROR_HTML.format(message="Parâmetros ausentes."), status_code=400)
+
+    oauth = get_google_oauth()
+    if oauth is None:
+        return HTMLResponse(_ERROR_HTML.format(message="Google OAuth não configurado no servidor."), status_code=500)
+
+    ok, message, _user_id = oauth.handle_callback(code, state)
+    if ok:
+        return HTMLResponse(_SUCCESS_HTML, status_code=200)
+    return HTMLResponse(_ERROR_HTML.format(message=message), status_code=400)
+
+
+@app.delete("/api/google/disconnect")
+async def google_disconnect(user: dict = Depends(get_current_user)):
+    oauth = get_google_oauth()
+    if oauth is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google OAuth not configured.")
+    user_id = f"web:{user['username']}"
+    oauth.revoke_token(user_id)
+    return {"status": "ok"}
 
 
 @app.get("/api/health")

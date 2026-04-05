@@ -320,6 +320,38 @@ html, body {
     flex-shrink: 0;
 }
 
+.sidebar-footer .btn-google-connect {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-footer .btn-google-connect:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--color-text);
+}
+
+.sidebar-footer .btn-google-connect.connected {
+    color: #16a34a;
+    border-color: #16a34a44;
+}
+
+.sidebar-footer .btn-google-connect.disconnected {
+    color: #dc2626;
+    border-color: #dc262644;
+}
+
 .sidebar-footer .btn-logout {
     width: 100%;
     display: flex;

@@ -8,12 +8,14 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from web_app.auth import verify_token
+from web_app.google_oauth import WebGoogleOAuth
 from web_app.user_store import WebUserStore
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 _user_store: Optional[WebUserStore] = None
 _assistant_service = None
+_google_oauth: Optional[WebGoogleOAuth] = None
 
 
 def get_user_store() -> WebUserStore:
@@ -47,6 +49,30 @@ def get_assistant_service():
             user_credential_store=credential_store,
         )
     return _assistant_service
+
+
+def get_google_oauth() -> Optional[WebGoogleOAuth]:
+    global _google_oauth
+    if _google_oauth is None:
+        load_dotenv()
+        callback_url = os.getenv("GOOGLE_OAUTH_CALLBACK_URL", "").strip()
+        if not callback_url:
+            return None
+        from assistant_connector.user_credential_store import UserCredentialStore
+        from utils import create_logger
+
+        logger = create_logger.create_logger()
+        default_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "assistant_memory.sqlite3")
+        )
+        memory_path = os.getenv("ASSISTANT_MEMORY_PATH", default_path)
+        credential_store = UserCredentialStore(db_path=memory_path)
+        _google_oauth = WebGoogleOAuth(
+            credential_store=credential_store,
+            callback_url=callback_url,
+            logger=logger,
+        )
+    return _google_oauth
 
 
 async def get_current_user(
