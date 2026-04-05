@@ -57,7 +57,7 @@ def gmail_connect(project_logger, user_id=None, credential_store=None):
 
     if not creds:
         raise ValueError(
-            "Google não autorizado. Use /google_auth para autorizar sua conta Google."
+            "Google não autorizado. Autorize sua conta Google para usar Gmail."
         )
 
     if not creds.valid:
@@ -70,7 +70,7 @@ def gmail_connect(project_logger, user_id=None, credential_store=None):
                     token.write(creds.to_json())
         else:
             raise ValueError(
-                "Token do Google inválido ou expirado. Use /google_auth para reautorizar."
+                "Token do Google inválido ou expirado. Autorize novamente sua conta Google."
             )
 
     return build("gmail", "v1", credentials=creds)
