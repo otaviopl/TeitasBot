@@ -621,7 +621,7 @@ def create_telegram_application(project_logger=None):
         await application.bot.set_my_commands(commands)
         logger.info("Telegram bot online")
 
-        owner_id = os.getenv("COPILOT_OWNER_USER_ID", "").strip()
+        owner_id = os.getenv("BOT_OWNER_USER_ID", "").strip()
         if owner_id:
             try:
                 await application.bot.send_message(

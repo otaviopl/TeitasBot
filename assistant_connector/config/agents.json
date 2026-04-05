@@ -1522,62 +1522,6 @@
       },
       "prompt_guidance": "Gere o gráfico somente quando o usuário pedir explicitamente uma visualização, gráfico ou chart. Para consultas simples de texto (ex.: 'o que eu comi hoje?', 'quantas calorias?'), responda em texto sem chamar esta tool. Por padrão, para gráficos de nutrição, inclua apenas calories_consumed, calories_goal, protein_g e protein_goal_g (mais calories_burned se disponível). Somente inclua carbs_g, carbs_goal_g, fat_g ou fat_goal_g se o usuário pedir explicitamente essas métricas.",
       "guidance_priority": 90
-    },
-    {
-      "name": "run_copilot_task",
-      "description": "Executa o Copilot CLI no modo autopilot para realizar alterações de código no projeto (novas features, correções, melhorias). Retorna o output do Copilot CLI com o resultado da execução.",
-      "handler": "assistant_connector.tools.dev_tools:run_copilot_task",
-      "write_operation": true,
-      "auto_confirm": false,
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "task_description": {
-            "type": "string",
-            "description": "Descrição detalhada da tarefa de desenvolvimento: feature a implementar, bug a corrigir, ou melhoria a fazer no projeto. Seja específico e inclua contexto relevante."
-          },
-          "confirmed": {
-            "type": "boolean",
-            "description": "Confirmação do usuário para executar a operação."
-          }
-        },
-        "required": [
-          "task_description",
-          "confirmed"
-        ],
-        "additionalProperties": false
-      },
-      "prompt_guidance": "Use esta ferramenta quando o usuário pedir explicitamente para fazer alterações no código do projeto (implementar feature, corrigir bug, refatorar, melhorar algo). Descreva a tarefa de forma clara e detalhada no task_description, incluindo arquivos relevantes e comportamento esperado. Após a execução bem-sucedida, pergunte ao usuário se deseja reiniciar o serviço do bot (restart_bot_service) para aplicar as mudanças. NUNCA execute sem confirmação explícita do usuário.",
-      "guidance_priority": 5
-    },
-    {
-      "name": "restart_bot_service",
-      "description": "Agenda o restart do serviço do bot (systemd) com um atraso curto para que a resposta atual seja enviada antes do processo ser terminado. Após o restart, o bot volta a operar com as alterações aplicadas.",
-      "handler": "assistant_connector.tools.dev_tools:restart_bot_service",
-      "write_operation": true,
-      "auto_confirm": false,
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "delay_seconds": {
-            "type": "integer",
-            "description": "Segundos de atraso antes do restart (padrão: 3, máximo: 30).",
-            "default": 3,
-            "minimum": 1,
-            "maximum": 30
-          },
-          "confirmed": {
-            "type": "boolean",
-            "description": "Confirmação do usuário para reiniciar o serviço."
-          }
-        },
-        "required": [
-          "confirmed"
-        ],
-        "additionalProperties": false
-      },
-      "prompt_guidance": "Use apenas após o usuário confirmar que deseja reiniciar o bot. Normalmente usado após run_copilot_task para aplicar mudanças no código. Avise o usuário que o bot ficará indisponível por alguns segundos durante o restart.",
-      "guidance_priority": 6
     }
   ],
   "agents": [
@@ -1633,9 +1577,7 @@
         "list_user_files",
         "read_file_content",
         "delete_user_file",
-        "generate_nutrition_chart",
-        "run_copilot_task",
-        "restart_bot_service"
+        "generate_nutrition_chart"
       ]
     }
   ]
