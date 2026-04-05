@@ -7,7 +7,9 @@ Este arquivo complementa `/home/carlos/AGENTS.md` com regras específicas deste 
 - Fluxo principal: coletar tarefas no Notion -> gerar resumo com OpenAI -> enviar email formatado.
 
 ## Estrutura principal
-- `run.py`: orquestração do fluxo completo.
+- `run.py`: orquestração do fluxo completo (Telegram bot).
+- `run_web.py`: entry point do web app PWA (FastAPI + uvicorn).
+- `web_app/`: interface web PWA (FastAPI, auth JWT, frontend vanilla JS).
 - `notion_connector/`: coleta e filtro das tarefas no Notion.
 - `openai_connector/`: geração de resumo/conteúdo com OpenAI.
 - `gmail_connector/`: autenticação e envio de email.
@@ -26,12 +28,24 @@ Este arquivo complementa `/home/carlos/AGENTS.md` com regras específicas deste 
 python3 -m venv ./env
 source ./env/bin/activate
 pip install -r requirements.txt
+
+# Telegram bot
 python run.py
+
+# Web app PWA
+python run_web.py
+```
+
+## Gerenciamento de usuários web
+```bash
+python -m web_app.manage_users create --username carlos --password <senha>
+python -m web_app.manage_users list
 ```
 
 ## Configuração esperada
 - Arquivos/segredos locais (não versionar):
   - `.env` com `NOTION_DATABASE_ID`, `NOTION_API_KEY`, `OPENAI_KEY`, `EMAIL_FROM`, `EMAIL_TO`, `DISPLAY_NAME`, `LOG_PATH`
+  - `.env` com `WEB_JWT_SECRET`, `WEB_JWT_EXPIRY_HOURS`, `WEB_HOST`, `WEB_PORT` (web app)
   - `credentials.json` (Google OAuth)
   - `token.json` (gerado após autenticação Gmail)
 

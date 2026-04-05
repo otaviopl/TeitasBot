@@ -174,3 +174,6 @@ cython_debug/
 # Memories content (keep only folder + README tracked)
 memories/*
 !memories/README.md
+
+# Web app generated files
+web_app/static/icons/*.png
