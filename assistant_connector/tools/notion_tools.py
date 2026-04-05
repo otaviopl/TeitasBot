@@ -698,6 +698,46 @@ def analyze_notion_meals(arguments, context):
     }
 
 
+def check_daily_logging_status(arguments, context):
+    today = today_in_configured_timezone()
+    today_iso = today.isoformat()
+    start_datetime = f"{today_iso}T00:00:00Z"
+    end_datetime = f"{today_iso}T23:59:59Z"
+
+    meals = notion_connector.collect_meals_from_database(
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        project_logger=context.project_logger,
+        user_id=context.user_id,
+        credential_store=context.user_credential_store,
+    )
+    exercises = notion_connector.collect_exercises_from_database(
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        project_logger=context.project_logger,
+        user_id=context.user_id,
+        credential_store=context.user_credential_store,
+    )
+
+    meal_types_logged = set()
+    for meal in meals:
+        meal_type = str(meal.get("meal_type") or "").strip()
+        if meal_type:
+            meal_types_logged.add(meal_type)
+
+    exercise_names = [str(e.get("activity") or "").strip() for e in exercises if str(e.get("activity") or "").strip()]
+
+    return {
+        "today": today_iso,
+        "meals_logged": len(meals) > 0,
+        "meal_count": len(meals),
+        "meal_types_logged": sorted(meal_types_logged),
+        "exercises_logged": len(exercises) > 0,
+        "exercise_count": len(exercises),
+        "exercise_names": exercise_names,
+    }
+
+
 def _build_meal_insights(meals, meal_breakdown, average_calories_per_day):
     insights = []
     if not meals:

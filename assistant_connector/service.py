@@ -430,12 +430,61 @@ def _get_env_int(name: str, default: int, *, minimum: int) -> int:
     return max(parsed, minimum)
 
 
+_MEAL_EXERCISE_KEYWORDS = (
+    "refeicao",
+    "refeição",
+    "refeicões",
+    "refeições",
+    "alimenta",
+    "comida",
+    "comi",
+    "almoço",
+    "almoco",
+    "jantar",
+    "janta",
+    "café da manhã",
+    "cafe da manha",
+    "lanche",
+    "meal",
+    "breakfast",
+    "lunch",
+    "dinner",
+    "snack",
+    "exercicio",
+    "exercício",
+    "atividade fisica",
+    "atividade física",
+    "treino",
+    "academia",
+    "workout",
+    "exercise",
+    "musculaçao",
+    "musculação",
+    "musculacao",
+    "corrida",
+    "caminhada",
+)
+
+
+def _is_logging_reminder(message: str) -> bool:
+    lower = message.lower()
+    return any(keyword in lower for keyword in _MEAL_EXERCISE_KEYWORDS)
+
+
 def _build_scheduled_execution_message(task_message: str) -> str:
     message = str(task_message or "").strip()
-    return (
+    base = (
         "Contexto: execução automática de tarefa agendada.\n"
         "Ação obrigatória: execute o pedido abaixo agora e devolva o resultado final para o usuário.\n"
         "Regra: não criar, editar, listar ou cancelar tarefas agendadas durante esta execução.\n\n"
-        "Pedido agendado:\n"
-        f"{message}"
     )
+    if _is_logging_reminder(message):
+        base += (
+            "Instrução adicional: antes de responder, use a ferramenta check_daily_logging_status para "
+            "verificar se refeições e/ou exercícios já foram registrados hoje.\n"
+            "- Se já houver registros suficientes, parabenize o usuário pelo comprometimento como reforço positivo.\n"
+            "- Se NÃO houver registros (ou faltarem registros importantes), cobre o preenchimento de forma direta e motivadora.\n"
+            "Baseie sua resposta nos dados retornados pela ferramenta.\n\n"
+        )
+    base += f"Pedido agendado:\n{message}"
+    return base

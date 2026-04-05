@@ -920,7 +920,7 @@
     {
       "name": "register_notion_meal",
       "description": "Registra alimento consumido no Notion Meals usando calorias estimadas pela LLM e quantidade na unidade informada pelo usuário.",
-      "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte as memórias de saúde (health.md) para obter a quantidade rotineira daquele suplemento específico e use-a sem perguntar; (2) use sempre calorias_estimadas=1 para suplementos, pois não afetam o cômputo calórico mas precisam passar a validação. Para refeições normais, estime as calorias com base no alimento e na quantidade. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
+      "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte as memórias de saúde (health.md) para obter a quantidade rotineira daquele suplemento específico e use-a sem perguntar; (2) para calorias_estimadas, consulte health.md — cada suplemento tem seu valor de kcal registrado; use exatamente esse valor. Se o suplemento não tiver kcal definido em health.md, pergunte ao usuário antes de registrar. Para refeições normais, estime as calorias com base no alimento e na quantidade. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
       "handler": "assistant_connector.tools.notion_tools:register_notion_meal",
       "write_operation": true,
@@ -1119,6 +1119,19 @@
             "description": "Quando true, correlaciona calorias das refeições no mesmo período."
           }
         },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_daily_logging_status",
+      "description": "Verifica se refeições e exercícios já foram registrados hoje no Notion. Retorna contagens e tipos registrados.",
+      "prompt_guidance": "Use esta ferramenta em lembretes agendados de refeição/exercício. Se o usuário já registrou, parabenize pelo comprometimento como reforço positivo. Se não registrou, cobre o preenchimento de forma direta e motivadora.",
+      "guidance_priority": 35,
+      "handler": "assistant_connector.tools.notion_tools:check_daily_logging_status",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
         "additionalProperties": false
       }
     },
@@ -1553,6 +1566,7 @@
         "register_notion_exercise",
         "analyze_notion_meals",
         "analyze_notion_exercises",
+        "check_daily_logging_status",
         "calculate_metabolism_profile",
         "register_metabolism_profile",
         "get_metabolism_history",

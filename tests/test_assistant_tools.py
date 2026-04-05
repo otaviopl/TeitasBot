@@ -1346,6 +1346,90 @@ class TestAssistantTools(unittest.TestCase):
                     _build_context(memories_dir=temp_dir),
                 )
 
+    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
+    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
+    def test_check_daily_logging_status_returns_counts_when_logged(self, mock_meals, mock_exercises):
+        mock_meals.return_value = [
+            {"id": "m1", "food": "Arroz", "meal_type": "ALMOÇO", "calories": 300.0, "date": "2026-03-25"},
+            {"id": "m2", "food": "Frango", "meal_type": "ALMOÇO", "calories": 200.0, "date": "2026-03-25"},
+            {"id": "m3", "food": "Café", "meal_type": "CAFÉ DA MANHÃ", "calories": 50.0, "date": "2026-03-25"},
+        ]
+        mock_exercises.return_value = [
+            {"id": "e1", "activity": "Corrida", "calories": 400.0, "date": "2026-03-25"},
+        ]
+
+        result = notion_tools.check_daily_logging_status({}, _build_context())
+
+        self.assertTrue(result["meals_logged"])
+        self.assertEqual(result["meal_count"], 3)
+        self.assertIn("ALMOÇO", result["meal_types_logged"])
+        self.assertIn("CAFÉ DA MANHÃ", result["meal_types_logged"])
+        self.assertTrue(result["exercises_logged"])
+        self.assertEqual(result["exercise_count"], 1)
+        self.assertEqual(result["exercise_names"], ["Corrida"])
+
+    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
+    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
+    def test_check_daily_logging_status_returns_false_when_empty(self, mock_meals, mock_exercises):
+        mock_meals.return_value = []
+        mock_exercises.return_value = []
+
+        result = notion_tools.check_daily_logging_status({}, _build_context())
+
+        self.assertFalse(result["meals_logged"])
+        self.assertEqual(result["meal_count"], 0)
+        self.assertEqual(result["meal_types_logged"], [])
+        self.assertFalse(result["exercises_logged"])
+        self.assertEqual(result["exercise_count"], 0)
+        self.assertEqual(result["exercise_names"], [])
+
+
+class TestBuildScheduledExecutionMessage(unittest.TestCase):
+    def test_plain_message_has_no_logging_instruction(self):
+        from assistant_connector.service import _build_scheduled_execution_message
+
+        result = _build_scheduled_execution_message("Enviar relatório financeiro")
+
+        self.assertIn("Pedido agendado:", result)
+        self.assertIn("Enviar relatório financeiro", result)
+        self.assertNotIn("check_daily_logging_status", result)
+
+    def test_meal_keyword_triggers_logging_instruction(self):
+        from assistant_connector.service import _build_scheduled_execution_message
+
+        for msg in [
+            "Lembrar de registrar refeições",
+            "Cobrar preenchimento de alimentação",
+            "Verificar se já registrou o almoço",
+            "Registrou as refeições do jantar?",
+        ]:
+            result = _build_scheduled_execution_message(msg)
+            self.assertIn("check_daily_logging_status", result, f"Failed for: {msg}")
+            self.assertIn("parabenize", result, f"Failed for: {msg}")
+
+    def test_exercise_keyword_triggers_logging_instruction(self):
+        from assistant_connector.service import _build_scheduled_execution_message
+
+        for msg in [
+            "Lembrar de registrar exercícios",
+            "Cobrar preenchimento de atividade física",
+            "Verificar se já registrou o treino",
+            "Registrou a musculação de hoje?",
+        ]:
+            result = _build_scheduled_execution_message(msg)
+            self.assertIn("check_daily_logging_status", result, f"Failed for: {msg}")
+
+    def test_is_logging_reminder_detection(self):
+        from assistant_connector.service import _is_logging_reminder
+
+        self.assertTrue(_is_logging_reminder("Cobrar registro de refeições"))
+        self.assertTrue(_is_logging_reminder("Lembrete de exercício"))
+        self.assertTrue(_is_logging_reminder("Hora do treino!"))
+        self.assertTrue(_is_logging_reminder("Registrou a corrida?"))
+        self.assertTrue(_is_logging_reminder("Cadê a caminhada?"))
+        self.assertFalse(_is_logging_reminder("Enviar relatório financeiro"))
+        self.assertFalse(_is_logging_reminder("Verificar notícias"))
+
 
 if __name__ == "__main__":
     unittest.main()
