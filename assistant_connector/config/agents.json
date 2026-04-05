@@ -116,6 +116,7 @@
     {
       "name": "create_scheduled_task",
       "description": "Cria uma nova tarefa agendada no SQLite para execução futura via scheduler. O resultado é entregue sempre por DM no Discord e opcionalmente por email.",
+      "prompt_guidance": "Ao criar tarefas de lembrete sobre refeições, alimentação, exercícios ou atividade física, use task_type='logging_reminder'. Para todas as outras tarefas, use task_type='general' (padrão).",
       "handler": "assistant_connector.tools.scheduled_task_tools:create_scheduled_task",
       "write_operation": true,
       "input_schema": {
@@ -168,6 +169,14 @@
           "confirmed": {
             "type": "boolean",
             "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          },
+          "task_type": {
+            "type": "string",
+            "description": "Tipo da tarefa. Use 'logging_reminder' para lembretes de registro de refeições ou exercícios.",
+            "enum": [
+              "general",
+              "logging_reminder"
+            ]
           }
         },
         "required": [
@@ -224,6 +233,14 @@
           "confirmed": {
             "type": "boolean",
             "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          },
+          "task_type": {
+            "type": "string",
+            "description": "Novo tipo da tarefa. Use 'logging_reminder' para lembretes de registro de refeições ou exercícios.",
+            "enum": [
+              "general",
+              "logging_reminder"
+            ]
           }
         },
         "required": [

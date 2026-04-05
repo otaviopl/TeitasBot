@@ -275,6 +275,7 @@ class ConversationMemoryStore:
         notify_email_to: str = "",
         recurrence_pattern: str = "none",
         max_attempts: int = 3,
+        task_type: str = "general",
     ) -> str:
         clean_message = str(message).strip()
         if not clean_message:
@@ -283,6 +284,7 @@ class ConversationMemoryStore:
         safe_scheduled_timezone = str(scheduled_timezone or "UTC").strip() or "UTC"
         safe_notify_email_to = str(notify_email_to or "").strip()
         safe_recurrence_pattern = self._normalize_recurrence_pattern(recurrence_pattern)
+        safe_task_type = str(task_type or "general").strip().lower() or "general"
         now_utc = self._normalize_utc_iso(self._utc_now_iso())
         scheduled_for_utc = self._normalize_utc_iso(scheduled_for)
         initial_last_success_at = None
@@ -312,6 +314,7 @@ class ConversationMemoryStore:
                     scheduled_timezone,
                     notify_email_to,
                     recurrence_pattern,
+                    task_type,
                     status,
                     attempt_count,
                     max_attempts,
@@ -321,7 +324,7 @@ class ConversationMemoryStore:
                     updated_at,
                     last_success_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task_id,
@@ -332,6 +335,7 @@ class ConversationMemoryStore:
                     self._truncate_text(safe_scheduled_timezone, 64),
                     self._truncate_text(safe_notify_email_to, 320),
                     safe_recurrence_pattern,
+                    safe_task_type,
                     safe_max_attempts,
                     scheduled_for_utc,
                     scheduled_for_utc,
@@ -637,6 +641,7 @@ class ConversationMemoryStore:
         notify_email_to: str | None = None,
         recurrence_pattern: str | None = None,
         max_attempts: int | None = None,
+        task_type: str | None = None,
     ) -> bool:
         set_clauses = ["updated_at = ?"]
         params: list[Any] = [self._normalize_utc_iso(updated_at)]
@@ -669,6 +674,9 @@ class ConversationMemoryStore:
             safe_max_attempts = max(1, int(max_attempts))
             set_clauses.append("max_attempts = ?")
             params.append(safe_max_attempts)
+        if task_type is not None:
+            set_clauses.append("task_type = ?")
+            params.append(str(task_type).strip().lower() or "general")
 
         if len(set_clauses) == 1:
             return False
@@ -970,6 +978,7 @@ class ConversationMemoryStore:
                     last_success_at TEXT,
                     last_error TEXT NOT NULL DEFAULT '',
                     last_response TEXT NOT NULL DEFAULT '',
+                    task_type TEXT NOT NULL DEFAULT 'general',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -1045,6 +1054,10 @@ class ConversationMemoryStore:
         if "last_success_at" not in columns:
             connection.execute(
                 "ALTER TABLE scheduled_tasks ADD COLUMN last_success_at TEXT"
+            )
+        if "task_type" not in columns:
+            connection.execute(
+                "ALTER TABLE scheduled_tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'general'"
             )
 
     @staticmethod

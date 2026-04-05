@@ -185,7 +185,10 @@ class AssistantService:
                 user_id=str(task["user_id"]),
                 channel_id=str(task["channel_id"]),
                 guild_id=str(task["guild_id"]) if task["guild_id"] else None,
-                message=_build_scheduled_execution_message(str(task["message"])),
+                message=_build_scheduled_execution_message(
+                    str(task["message"]),
+                    task_type=str(task.get("task_type", "general")),
+                ),
             )
             response_text = chat_response.text
         except Exception as error:
@@ -282,6 +285,7 @@ class AssistantService:
         notify_email_to: str | None = None,
         recurrence_pattern: str | None = None,
         max_attempts: int | None = None,
+        task_type: str | None = None,
     ) -> bool:
         return self._runtime._memory_store.update_scheduled_task(
             task_id=task_id,
@@ -292,6 +296,7 @@ class AssistantService:
             notify_email_to=notify_email_to,
             recurrence_pattern=recurrence_pattern,
             max_attempts=max_attempts,
+            task_type=task_type,
         )
 
     def cancel_scheduled_task(self, *, task_id: str, reason: str = "") -> bool:
@@ -430,55 +435,14 @@ def _get_env_int(name: str, default: int, *, minimum: int) -> int:
     return max(parsed, minimum)
 
 
-_MEAL_EXERCISE_KEYWORDS = (
-    "refeicao",
-    "refeição",
-    "refeicões",
-    "refeições",
-    "alimenta",
-    "comida",
-    "comi",
-    "almoço",
-    "almoco",
-    "jantar",
-    "janta",
-    "café da manhã",
-    "cafe da manha",
-    "lanche",
-    "meal",
-    "breakfast",
-    "lunch",
-    "dinner",
-    "snack",
-    "exercicio",
-    "exercício",
-    "atividade fisica",
-    "atividade física",
-    "treino",
-    "academia",
-    "workout",
-    "exercise",
-    "musculaçao",
-    "musculação",
-    "musculacao",
-    "corrida",
-    "caminhada",
-)
-
-
-def _is_logging_reminder(message: str) -> bool:
-    lower = message.lower()
-    return any(keyword in lower for keyword in _MEAL_EXERCISE_KEYWORDS)
-
-
-def _build_scheduled_execution_message(task_message: str) -> str:
+def _build_scheduled_execution_message(task_message: str, *, task_type: str = "general") -> str:
     message = str(task_message or "").strip()
     base = (
         "Contexto: execução automática de tarefa agendada.\n"
         "Ação obrigatória: execute o pedido abaixo agora e devolva o resultado final para o usuário.\n"
         "Regra: não criar, editar, listar ou cancelar tarefas agendadas durante esta execução.\n\n"
     )
-    if _is_logging_reminder(message):
+    if task_type == "logging_reminder":
         base += (
             "Instrução adicional: antes de responder, use a ferramenta check_daily_logging_status para "
             "verificar se refeições e/ou exercícios já foram registrados hoje.\n"

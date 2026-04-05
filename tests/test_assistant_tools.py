@@ -1394,41 +1394,32 @@ class TestBuildScheduledExecutionMessage(unittest.TestCase):
         self.assertIn("Enviar relatório financeiro", result)
         self.assertNotIn("check_daily_logging_status", result)
 
-    def test_meal_keyword_triggers_logging_instruction(self):
+    def test_general_task_type_has_no_logging_instruction(self):
+        from assistant_connector.service import _build_scheduled_execution_message
+
+        result = _build_scheduled_execution_message(
+            "Lembrar de registrar refeições", task_type="general"
+        )
+        self.assertNotIn("check_daily_logging_status", result)
+
+    def test_logging_reminder_triggers_logging_instruction(self):
         from assistant_connector.service import _build_scheduled_execution_message
 
         for msg in [
             "Lembrar de registrar refeições",
             "Cobrar preenchimento de alimentação",
             "Verificar se já registrou o almoço",
-            "Registrou as refeições do jantar?",
+            "Verificar se já registrou o treino",
         ]:
-            result = _build_scheduled_execution_message(msg)
+            result = _build_scheduled_execution_message(msg, task_type="logging_reminder")
             self.assertIn("check_daily_logging_status", result, f"Failed for: {msg}")
             self.assertIn("parabenize", result, f"Failed for: {msg}")
 
-    def test_exercise_keyword_triggers_logging_instruction(self):
+    def test_default_task_type_is_general(self):
         from assistant_connector.service import _build_scheduled_execution_message
 
-        for msg in [
-            "Lembrar de registrar exercícios",
-            "Cobrar preenchimento de atividade física",
-            "Verificar se já registrou o treino",
-            "Registrou a musculação de hoje?",
-        ]:
-            result = _build_scheduled_execution_message(msg)
-            self.assertIn("check_daily_logging_status", result, f"Failed for: {msg}")
-
-    def test_is_logging_reminder_detection(self):
-        from assistant_connector.service import _is_logging_reminder
-
-        self.assertTrue(_is_logging_reminder("Cobrar registro de refeições"))
-        self.assertTrue(_is_logging_reminder("Lembrete de exercício"))
-        self.assertTrue(_is_logging_reminder("Hora do treino!"))
-        self.assertTrue(_is_logging_reminder("Registrou a corrida?"))
-        self.assertTrue(_is_logging_reminder("Cadê a caminhada?"))
-        self.assertFalse(_is_logging_reminder("Enviar relatório financeiro"))
-        self.assertFalse(_is_logging_reminder("Verificar notícias"))
+        result = _build_scheduled_execution_message("Cobrar registro de exercícios")
+        self.assertNotIn("check_daily_logging_status", result)
 
 
 if __name__ == "__main__":

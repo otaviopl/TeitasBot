@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from assistant_connector.memory_store import ConversationMemoryStore
 
 SUPPORTED_RECURRENCE_PATTERNS = {"none", "daily", "weekly", "monthly"}
+SUPPORTED_TASK_TYPES = {"general", "logging_reminder"}
 
 
 def _utc_now_iso() -> str:
@@ -74,6 +75,13 @@ def _normalize_recurrence_pattern(value: object | None) -> str:
     return normalized
 
 
+def _normalize_task_type(value: object | None) -> str:
+    normalized = str(value or "general").strip().lower() or "general"
+    if normalized not in SUPPORTED_TASK_TYPES:
+        raise ValueError("task_type must be one of: general, logging_reminder")
+    return normalized
+
+
 def _coalesce_identifier(value: object, fallback: object) -> str:
     candidate = str(value if value is not None else "").strip()
     if candidate:
@@ -97,6 +105,7 @@ def create_scheduled_task(arguments, context):
     max_attempts = max(1, int(arguments.get("max_attempts", 3)))
     notify_email_to = str(arguments.get("notify_email_to", "")).strip()
     recurrence_pattern = _normalize_recurrence_pattern(arguments.get("recurrence"))
+    task_type = _normalize_task_type(arguments.get("task_type"))
 
     memory_store = _build_memory_store()
     task_id = memory_store.create_scheduled_task(
@@ -109,6 +118,7 @@ def create_scheduled_task(arguments, context):
         notify_email_to=notify_email_to,
         recurrence_pattern=recurrence_pattern,
         max_attempts=max_attempts,
+        task_type=task_type,
     )
     task = memory_store.get_scheduled_task(task_id)
     return {
@@ -174,6 +184,7 @@ def edit_scheduled_task(arguments, context):
     max_attempts = arguments.get("max_attempts")
     notify_email_to = arguments.get("notify_email_to")
     recurrence_pattern = arguments.get("recurrence")
+    raw_task_type = arguments.get("task_type")
     normalized_scheduled_for = None
     effective_timezone = None
     if scheduled_for is not None:
@@ -195,6 +206,11 @@ def edit_scheduled_task(arguments, context):
             else None
         ),
         max_attempts=int(max_attempts) if max_attempts is not None else None,
+        task_type=(
+            _normalize_task_type(raw_task_type)
+            if raw_task_type is not None
+            else None
+        ),
     )
     if not updated:
         raise ValueError("scheduled task cannot be edited in current status")
