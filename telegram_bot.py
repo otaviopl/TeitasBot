@@ -616,6 +616,17 @@ def create_telegram_application(project_logger=None):
         await application.bot.set_my_commands(commands)
         logger.info("Telegram bot online")
 
+        owner_id = os.getenv("COPILOT_OWNER_USER_ID", "").strip()
+        if owner_id:
+            try:
+                await application.bot.send_message(
+                    chat_id=int(owner_id),
+                    text="✅ Bot is now <b>ONLINE</b> and ready.",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as exc:
+                logger.warning("Failed to send startup notification: %s", exc)
+
     async def post_shutdown(application: Application) -> None:
         if scheduler_runner is not None:
             scheduler_runner.stop()
