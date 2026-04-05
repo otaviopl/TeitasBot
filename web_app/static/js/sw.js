@@ -1,5 +1,5 @@
 /* sw.js — Service Worker for PWA (cache-first static assets, network-first API) */
-var CACHE_NAME = 'pa-pwa-v2';
+var CACHE_NAME = 'pa-pwa-v3';
 var STATIC_ASSETS = [
     '/',
     '/chat',

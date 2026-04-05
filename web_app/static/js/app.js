@@ -98,9 +98,10 @@
     }
 
     // ---- UI helpers ----
+    var scrollContainer = document.querySelector('.chat-main');
     function scrollToBottom() {
         requestAnimationFrame(() => {
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
         });
     }
 
