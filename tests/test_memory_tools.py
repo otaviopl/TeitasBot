@@ -144,7 +144,10 @@ class TestEditMemoryFile(unittest.TestCase):
 
             self.assertEqual(result["action"], "appended")
             with open(os.path.join(tmp, "new-file.md"), encoding="utf-8") as f:
-                self.assertEqual(f.read(), "initial content")
+                written = f.read()
+                # append mode auto-prepends [YYYY-MM-DD] timestamp
+                self.assertRegex(written, r"^\[\d{4}-\d{2}-\d{2}\] initial content$")
+                self.assertIn("initial content", written)
 
     def test_accepts_unicode_and_spaces_in_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,6 +235,67 @@ class TestEditMemoryFile(unittest.TestCase):
                 memory_tools.edit_memory_file(
                     {"file_name": "symlinked.md", "content": "x"}, _build_context(memories_dir=tmp)
                 )
+
+
+class TestMemoryTimestamps(unittest.TestCase):
+    def test_append_prepends_date_stamp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_tools.edit_memory_file(
+                {"file_name": "notes.md", "content": "new fact", "mode": "append"},
+                _build_context(memories_dir=tmp),
+            )
+            with open(os.path.join(tmp, "notes.md"), encoding="utf-8") as f:
+                content = f.read()
+            import re
+            self.assertRegex(content, r"\[\d{4}-\d{2}-\d{2}\] new fact")
+
+    def test_replace_does_not_prepend_date_stamp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_tools.edit_memory_file(
+                {"file_name": "notes.md", "content": "full content", "mode": "replace"},
+                _build_context(memories_dir=tmp),
+            )
+            with open(os.path.join(tmp, "notes.md"), encoding="utf-8") as f:
+                content = f.read()
+            self.assertEqual(content, "full content")
+
+
+class TestMemoryAuditLog(unittest.TestCase):
+    def test_audit_log_called_on_edit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = _build_context(memories_dir=tmp)
+            mock_store = MagicMock()
+            ctx.memory_store = mock_store
+            memory_tools.edit_memory_file(
+                {"file_name": "test.md", "content": "data", "mode": "replace"},
+                ctx,
+            )
+            mock_store.log_memory_edit.assert_called_once()
+            call_kwargs = mock_store.log_memory_edit.call_args
+            self.assertEqual(call_kwargs.kwargs["file_name"], "test.md")
+            self.assertEqual(call_kwargs.kwargs["action"], "replaced")
+
+    def test_audit_log_failure_does_not_break_edit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = _build_context(memories_dir=tmp)
+            mock_store = MagicMock()
+            mock_store.log_memory_edit.side_effect = RuntimeError("db error")
+            ctx.memory_store = mock_store
+            result = memory_tools.edit_memory_file(
+                {"file_name": "test.md", "content": "data", "mode": "replace"},
+                ctx,
+            )
+            self.assertEqual(result["status"], "ok")
+
+    def test_no_audit_when_store_is_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = _build_context(memories_dir=tmp)
+            ctx.memory_store = None
+            result = memory_tools.edit_memory_file(
+                {"file_name": "test.md", "content": "data", "mode": "replace"},
+                ctx,
+            )
+            self.assertEqual(result["status"], "ok")
 
 
 if __name__ == "__main__":

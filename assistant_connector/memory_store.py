@@ -39,6 +39,23 @@ class ConversationMemoryStore:
     def db_path(self) -> str:
         return self._db_path
 
+    def log_memory_edit(
+        self,
+        user_id: str,
+        file_name: str,
+        action: str,
+        chars_written: int = 0,
+        source: str = "user",
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO memory_audit_log (user_id, file_name, action, chars_written, source)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (str(user_id), str(file_name), str(action), int(chars_written), str(source)),
+            )
+
     def append_message(self, session_id: str, role: str, content: str) -> None:
         safe_content = self._truncate_text(str(content), self._max_message_chars)
         with self._lock, self._connect() as connection:
@@ -903,6 +920,7 @@ class ConversationMemoryStore:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
         return connection
 
     def _ensure_schema(self) -> None:
@@ -987,6 +1005,19 @@ class ConversationMemoryStore:
                     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
                     PRIMARY KEY (telegram_user_id, credential_key)
                 );
+
+                CREATE TABLE IF NOT EXISTS memory_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    chars_written INTEGER NOT NULL DEFAULT 0,
+                    source TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_memory_audit_log_user
+                    ON memory_audit_log (user_id, created_at DESC);
                 """
             )
             self._ensure_scheduled_tasks_migrations(connection)

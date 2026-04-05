@@ -175,6 +175,28 @@ class TestFileStoreDeleteFile(unittest.TestCase):
             self.assertIsNone(store.get_file(user_id="u1", file_id=saved["file_id"]))
 
 
+class TestFileStorePathTraversal(unittest.TestCase):
+    def test_resolve_rejects_traversal_in_stored_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _make_store(tmp)
+            saved = store.save_file(
+                user_id="user1",
+                original_name="legit.txt",
+                file_bytes=b"safe content",
+            )
+            # Tamper with the SQLite record to simulate path traversal
+            conn = sqlite3.connect(os.path.join(tmp, "test.sqlite3"))
+            conn.execute(
+                "UPDATE user_files SET stored_name = ? WHERE file_id = ?",
+                ("../../etc/passwd", saved["file_id"]),
+            )
+            conn.commit()
+            conn.close()
+
+            result = store.resolve_file_path(user_id="user1", file_id=saved["file_id"])
+            self.assertIsNone(result)
+
+
 class TestSafeFilename(unittest.TestCase):
     def test_preserves_safe_chars(self):
         self.assertEqual(_safe_filename("my-file_1.pdf"), "my-file_1.pdf")

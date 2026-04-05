@@ -171,8 +171,13 @@ class FileStore:
         record = self.get_file(user_id=user_id, file_id=file_id)
         if record is None:
             return None
-        path = os.path.join(self._files_dir, str(user_id), record["stored_name"])
-        return path if os.path.isfile(path) else None
+        user_dir = os.path.abspath(os.path.join(self._files_dir, str(user_id)))
+        full_path = os.path.abspath(
+            os.path.join(user_dir, record["stored_name"])
+        )
+        if not full_path.startswith(user_dir + os.sep):
+            return None
+        return full_path if os.path.isfile(full_path) else None
 
 
 def _safe_filename(name: str) -> str:

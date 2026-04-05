@@ -80,4 +80,5 @@ class ToolExecutionContext:
     user_credential_store: Any = None  # UserCredentialStore | None
     memories_dir: str | None = None
     file_store: Any = None  # FileStore | None
+    memory_store: Any = None  # ConversationMemoryStore | None
     response_attachments: ResponseAttachments | None = None  # mutable; frozen ref, mutable contents

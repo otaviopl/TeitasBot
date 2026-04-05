@@ -102,6 +102,13 @@ class AssistantRuntime:
         self._openai_client = openai_client or self._create_openai_client()
         self._user_credential_store = user_credential_store
         self._file_store = file_store
+        # Pre-build cached values that don't change across requests
+        self._cached_openai_tools = self._tool_registry.get_openai_tools(self._agent.tools)
+        self._cached_tool_descriptions = self._tool_registry.describe_tools(self._agent.tools)
+        self._cached_email_guidance = self._build_email_style_guidance()
+        self._cached_static_system_prefix = self._build_static_system_prefix()
+        # Memory file cache: {filepath: (mtime, content)}
+        self._memory_file_cache: dict[str, tuple[float, str]] = {}
 
     def process_user_message(
         self,
@@ -125,7 +132,7 @@ class AssistantRuntime:
         )
         history = self._trim_history_by_chars(history)
 
-        available_tools = self._tool_registry.describe_tools(self._agent.tools)
+        available_tools = self._cached_tool_descriptions
         user_memories_dir = self._resolve_user_memories_dir(user_id)
         response_attachments = ResponseAttachments()
         context = ToolExecutionContext(
@@ -140,9 +147,10 @@ class AssistantRuntime:
             user_credential_store=self._user_credential_store,
             memories_dir=user_memories_dir,
             file_store=self._file_store,
+            memory_store=self._memory_store,
             response_attachments=response_attachments,
         )
-        openai_tools = self._tool_registry.get_openai_tools(self._agent.tools)
+        openai_tools = self._cached_openai_tools
         response = self._openai_client.responses.create(
             model=self._agent.model,
             input=self._build_input_messages(history, clean_message, user_memories),
@@ -228,13 +236,9 @@ class AssistantRuntime:
     def reset_session(self, *, session_id: str) -> None:
         self._memory_store.clear_session(session_id)
 
-    def _build_input_messages(
-        self,
-        history: list[dict[str, str]],
-        user_message: str,
-        user_memories: dict[str, str],
-    ) -> list[dict[str, str]]:
-        system_message = (
+    def _build_static_system_prefix(self) -> str:
+        """Build the portion of the system prompt that does not change across requests."""
+        prefix = (
             f"{self._agent.system_prompt}\n\n"
             "Se o usuário perguntar quais tools existem, use list_available_tools para listar nomes e finalidade.\n\n"
             "Formato para resposta no Telegram:\n"
@@ -245,15 +249,26 @@ class AssistantRuntime:
             "- Use blockquote (> texto) para alertas ou observações que merecem destaque.\n"
             "- Mire em respostas com até 1500 caracteres e, sempre que possível, não ultrapasse 1800.\n"
             "- Nunca responda em JSON bruto.\n\n"
-            f"{self._build_email_style_guidance()}\n\n"
-            f"{self._build_time_context_guidance()}"
+            f"{self._cached_email_guidance}"
         )
         if self._agent_memory_text:
-            system_message = (
-                f"{system_message}\n\n"
+            prefix = (
+                f"{prefix}\n\n"
                 "Memória persistente do agente (estilo, tom e prioridades operacionais):\n"
                 f"{self._truncate_text(self._agent_memory_text, 2000)}"
             )
+        return prefix
+
+    def _build_input_messages(
+        self,
+        history: list[dict[str, str]],
+        user_message: str,
+        user_memories: dict[str, str],
+    ) -> list[dict[str, str]]:
+        system_message = (
+            f"{self._cached_static_system_prefix}\n\n"
+            f"{self._build_time_context_guidance()}"
+        )
 
         messages = [{"role": "system", "content": system_message}]
         user_memory_context = self._select_user_memory_context(user_message, user_memories)
@@ -296,20 +311,90 @@ class AssistantRuntime:
     def _resolve_user_memories(self, user_id: str) -> dict[str, str]:
         """Load memory files for the given user from their memories subfolder.
 
+        Uses mtime-based caching to avoid re-reading unchanged files.
+
         Resolution order:
         1. memories/{user_id}/ — per-user subfolder
         2. memories/ — root fallback if no user subfolder exists
         3. Static memories passed at runtime init (legacy)
         """
         user_dir = self._resolve_user_memories_dir(user_id)
-        if user_dir:
+        if not user_dir or not os.path.isdir(user_dir):
+            return self._static_user_memories
+
+        needs_reload = False
+        current_files = sorted(
+            f for f in os.listdir(user_dir)
+            if f.lower().endswith(".md") and f.lower() != "readme.md"
+        )
+        cached_paths = {
+            k for k in self._memory_file_cache if k.startswith(user_dir + os.sep)
+        }
+        expected_paths = {os.path.join(user_dir, f) for f in current_files}
+        if cached_paths != expected_paths:
+            needs_reload = True
+        else:
+            for fpath in expected_paths:
+                try:
+                    mtime = os.path.getmtime(fpath)
+                except OSError:
+                    needs_reload = True
+                    break
+                cached = self._memory_file_cache.get(fpath)
+                if cached is None or cached[0] != mtime:
+                    needs_reload = True
+                    break
+
+        if needs_reload:
             _, user_memories = _load_memories_from_dir(
                 memories_dir=user_dir,
                 agent_memory_file=self._agent_memory_file,
                 user_memory_file=self._user_memory_file,
             )
+            # Update cache
+            for fpath in list(self._memory_file_cache):
+                if fpath.startswith(user_dir + os.sep):
+                    del self._memory_file_cache[fpath]
+            for fname, content in user_memories.items():
+                fpath = os.path.join(user_dir, fname)
+                try:
+                    mtime = os.path.getmtime(fpath)
+                except OSError:
+                    mtime = 0.0
+                self._memory_file_cache[fpath] = (mtime, content)
             return user_memories
-        return self._static_user_memories
+
+        # Build from cache
+        user_memories: dict[str, str] = {}
+        priority_file = self._user_memory_file
+        for fpath in sorted(expected_paths):
+            fname = os.path.basename(fpath)
+            if fname == self._agent_memory_file:
+                continue
+            user_memories[fname] = self._memory_file_cache[fpath][1]
+        if priority_file in user_memories:
+            priority_content = user_memories.pop(priority_file)
+            user_memories = {priority_file: priority_content, **user_memories}
+        return user_memories
+
+    # Synonym groups for memory relevance scoring
+    _SYNONYM_GROUPS: list[set[str]] = [
+        {"saúde", "saude", "health", "nutrição", "nutricao", "nutrition", "dieta", "diet", "calorias", "calories", "peso", "weight", "suplemento", "suplementação", "comer", "comida", "refeição", "refeicao", "meal"},
+        {"trabalho", "work", "emprego", "empresa", "draiven", "carreira", "career", "profissional"},
+        {"treino", "exercício", "exercicio", "exercise", "corrida", "running", "musculação", "musculacao", "academia", "gym", "tênis", "tenis", "tennis"},
+        {"comida", "food", "refeição", "refeicao", "meal", "almoço", "almoco", "jantar", "café", "cafe", "lanche", "snack", "comer", "cozinhar"},
+        {"pessoal", "personal", "sobre", "about", "quem", "nome", "idade", "aniversário", "aniversario"},
+        {"contato", "contact", "email", "telefone", "phone"},
+        {"agenda", "calendar", "evento", "event", "reunião", "reuniao", "meeting"},
+        {"finanças", "financas", "finance", "despesa", "gasto", "expense", "dinheiro", "money", "conta"},
+    ]
+
+    def _expand_tokens_with_synonyms(self, tokens: set[str]) -> set[str]:
+        expanded = set(tokens)
+        for group in self._SYNONYM_GROUPS:
+            if tokens & group:
+                expanded |= group
+        return expanded
 
     def _select_user_memory_context(self, user_message: str, user_memories: dict[str, str]) -> str:
         if not user_memories:
@@ -317,13 +402,22 @@ class AssistantRuntime:
 
         query = str(user_message or "").lower()
         tokens = set(re.findall(r"[a-z0-9à-ÿ_]{3,}", query))
+        expanded_tokens = self._expand_tokens_with_synonyms(tokens)
         scored = []
         for file_name, content in user_memories.items():
-            sample = f"{file_name.lower()} {content[:1200].lower()}"
+            fname_lower = file_name.lower()
+            sample = f"{fname_lower} {content[:1200].lower()}"
             score = 0
-            if file_name.lower() in ("about-me.md", "about_me.md", "about-user.md", "about_user.md"):
-                score += 1
-            score += sum(1 for token in tokens if token in sample)
+            # about-me always gets a baseline bonus
+            if fname_lower in ("about-me.md", "about_me.md", "about-user.md", "about_user.md"):
+                score += 2
+            # Filename thematic bonus: stem of filename matches any expanded token
+            stem = fname_lower.replace(".md", "").replace("-", " ").replace("_", " ")
+            stem_words = set(stem.split())
+            if stem_words & expanded_tokens:
+                score += 3
+            # Token matches in content (using expanded tokens for synonym coverage)
+            score += sum(1 for token in expanded_tokens if token in sample)
             if score > 0:
                 scored.append((score, file_name, content))
 
@@ -410,21 +504,23 @@ class AssistantRuntime:
                     ),
                 }
         tool_definition = self._tool_registry.get_tool_definition(tool_name)
-        if tool_definition.write_operation and not tool_definition.auto_confirm and not bool(arguments.get("confirmed", False)):
-            if callable(warn_log):
-                warn_log(
-                    "Blocked write tool without confirmation: tool=%s session_id=%s user_id=%s",
-                    tool_name,
-                    context.session_id,
-                    context.user_id,
-                )
-            return {
-                "error": "confirmation_required",
-                "message": (
-                    "Esta ação altera dados externos. "
-                    "Peça confirmação explícita do usuário e use confirmed=true."
-                ),
-            }
+        is_scheduled = self._is_scheduled_execution_session(context.session_id)
+        if tool_definition.write_operation and not bool(arguments.get("confirmed", False)):
+            if is_scheduled or not tool_definition.auto_confirm:
+                if callable(warn_log):
+                    warn_log(
+                        "Blocked write tool without confirmation: tool=%s session_id=%s user_id=%s",
+                        tool_name,
+                        context.session_id,
+                        context.user_id,
+                    )
+                return {
+                    "error": "confirmation_required",
+                    "message": (
+                        "Esta ação altera dados externos. "
+                        "Peça confirmação explícita do usuário e use confirmed=true."
+                    ),
+                }
         try:
             result = self._tool_registry.execute_tool(tool_name, arguments, context)
             if isinstance(result, dict) and result.get("error") and callable(warn_log):

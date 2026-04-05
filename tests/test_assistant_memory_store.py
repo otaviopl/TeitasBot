@@ -373,5 +373,47 @@ class TestConversationMemoryStore(unittest.TestCase):
             self.assertTrue(row["created_at"].endswith("Z"))
 
 
+class TestMemoryAuditLogStore(unittest.TestCase):
+    def test_log_memory_edit_persists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "assistant_memory.sqlite3")
+            store = ConversationMemoryStore(db_path)
+
+            store.log_memory_edit(
+                user_id="user-1",
+                file_name="health.md",
+                action="appended",
+                chars_written=42,
+                source="user",
+            )
+
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM memory_audit_log WHERE user_id = ?", ("user-1",)
+            ).fetchall()
+            conn.close()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["file_name"], "health.md")
+            self.assertEqual(rows[0]["action"], "appended")
+            self.assertEqual(rows[0]["chars_written"], 42)
+            self.assertEqual(rows[0]["source"], "user")
+            self.assertTrue(rows[0]["created_at"].endswith("Z"))
+
+    def test_log_memory_edit_multiple_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "assistant_memory.sqlite3")
+            store = ConversationMemoryStore(db_path)
+
+            store.log_memory_edit("u1", "a.md", "replaced", 10)
+            store.log_memory_edit("u1", "b.md", "appended", 20)
+            store.log_memory_edit("u2", "a.md", "appended", 5)
+
+            conn = sqlite3.connect(db_path)
+            count = conn.execute("SELECT COUNT(*) FROM memory_audit_log").fetchone()[0]
+            conn.close()
+            self.assertEqual(count, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

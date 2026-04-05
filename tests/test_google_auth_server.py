@@ -179,6 +179,22 @@ class TestTelegramNotification(unittest.TestCase):
         logger.warning.assert_called_once()
 
 
+class TestStateTTL(unittest.TestCase):
+    def test_state_ttl_seconds_equals_300(self):
+        self.assertEqual(STATE_TTL_SECONDS, 300)
+
+
+class TestServerBindsToLocalhost(unittest.TestCase):
+    @patch("google_auth_server.http.server.HTTPServer")
+    @patch("google_auth_server.threading.Thread")
+    def test_start_binds_to_127_0_0_1(self, _mock_thread_cls, mock_httpserver_cls):
+        server = _make_server(port=19999)
+        server.start()
+        mock_httpserver_cls.assert_called_once()
+        bind_address = mock_httpserver_cls.call_args[0][0]
+        self.assertEqual(bind_address, ("127.0.0.1", 19999))
+
+
 class TestHtmlEncoding(unittest.TestCase):
     def test_to_html_entities_converts_unicode_to_ascii_entities(self):
         converted = _to_html_entities("Você & autorização ✅")

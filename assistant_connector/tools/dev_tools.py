@@ -132,13 +132,11 @@ def restart_bot_service(arguments: dict, context) -> dict:
     delay_seconds = int(arguments.get("delay_seconds", 3))
     delay_seconds = max(1, min(delay_seconds, 30))
 
-    cmd = f"sleep {delay_seconds} && sudo systemctl restart {_SERVICE_NAME}"
-
     logger.info("Scheduling bot service restart in %ds", delay_seconds)
 
     try:
         subprocess.Popen(
-            ["bash", "-c", cmd],
+            ["bash", "-c", f"sleep {delay_seconds} && sudo systemctl restart -- {_SERVICE_NAME}"],
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

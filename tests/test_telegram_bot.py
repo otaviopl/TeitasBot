@@ -420,6 +420,24 @@ class TestTelegramBot(unittest.TestCase):
         self.assertTrue(any("auth.example.com/flow" in msg[0] for msg in sent_messages))
 
 
+    @unittest.mock.patch("assistant_connector.user_credential_store.UserCredentialStore")
+    @unittest.mock.patch("google_auth_server.GoogleOAuthCallbackServer")
+    def test_create_application_raises_with_empty_allowed_user_ids(
+        self,
+        _mock_google_server_cls,
+        _mock_store_cls,
+    ):
+        with unittest.mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token-z",
+                "TELEGRAM_ALLOWED_USER_IDS": "",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(ValueError):
+                telegram_bot.create_telegram_application(project_logger=unittest.mock.Mock())
+
     # --- Markdown → HTML converter ---
 
     def test_html_converts_h2_to_bold(self):

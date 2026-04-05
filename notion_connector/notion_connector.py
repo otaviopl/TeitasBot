@@ -2,7 +2,10 @@ import datetime
 import logging
 import os
 import re
-import requests
+
+import requests as _requests_lib
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from utils import load_credentials
 from utils.timezone_utils import (
@@ -10,6 +13,29 @@ from utils.timezone_utils import (
     today_in_configured_timezone,
     today_iso_in_configured_timezone,
 )
+
+_NOTION_TIMEOUT = int(os.getenv("NOTION_API_TIMEOUT", "30"))
+
+
+def _build_session() -> _requests_lib.Session:
+    """Create a requests.Session with retry and connection pooling."""
+    max_retries = int(os.getenv("NOTION_API_MAX_RETRIES", "2"))
+    session = _requests_lib.Session()
+    retry = Retry(
+        total=max_retries,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST", "PATCH"],
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
+    session.mount("https://", adapter)
+    return session
+
+
+# Shadow the `requests` name at module scope so that existing code
+# (`requests.post(...)`) and test mocks
+# (`@patch("notion_connector.notion_connector.requests.post")`) keep working.
+requests = _build_session()  # type: ignore[assignment]
 
 
 def collect_tasks_from_control_panel(n_days=0, project_logger=None, user_id=None, credential_store=None):
@@ -76,7 +102,7 @@ def collect_tasks_from_control_panel(n_days=0, project_logger=None, user_id=None
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("invalid_request_url", "object_not_found"):
@@ -95,7 +121,7 @@ def collect_tasks_from_control_panel(n_days=0, project_logger=None, user_id=None
                 "Notion-Version": selected_candidate["notion_version"],
                 "content-type": "application/json",
             }
-            response = requests.post(selected_candidate["url"], json=request_payload, headers=headers, timeout=30)
+            response = requests.post(selected_candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
             response.raise_for_status()
 
         data = response.json()
@@ -197,7 +223,7 @@ def create_task_in_control_panel(task_data, project_logger=None, user_id=None, c
             "https://api.notion.com/v1/pages",
             json=payload,
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         if response.status_code == 400 and response.json().get("code") == "validation_error":
             last_error = response
@@ -241,7 +267,7 @@ def _collect_page_block_ids(page_id, headers):
             f"https://api.notion.com/v1/blocks/{page_id}/children",
             headers=headers,
             params=params,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         response.raise_for_status()
         payload = response.json()
@@ -260,7 +286,7 @@ def _replace_page_content(page_id, headers):
             f"https://api.notion.com/v1/blocks/{block_id}",
             json={"archived": True},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         archive_response.raise_for_status()
 
@@ -293,7 +319,7 @@ def update_notion_page(page_data, project_logger=None, user_id=None, credential_
     page_response = requests.get(
         f"https://api.notion.com/v1/pages/{page_id}",
         headers=headers,
-        timeout=30,
+        timeout=_NOTION_TIMEOUT,
     )
     page_response.raise_for_status()
     page_payload = page_response.json()
@@ -411,7 +437,7 @@ def update_notion_page(page_data, project_logger=None, user_id=None, credential_
             f"https://api.notion.com/v1/pages/{page_id}",
             json={"properties": updates},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         response.raise_for_status()
         result = response.json()
@@ -424,7 +450,7 @@ def update_notion_page(page_data, project_logger=None, user_id=None, credential_
             f"https://api.notion.com/v1/blocks/{page_id}/children",
             json={"children": children},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         append_response.raise_for_status()
         updated_fields.append("content")
@@ -838,7 +864,7 @@ def _fetch_database_schema(database_id, api_key):
     response = requests.get(
         f"https://api.notion.com/v1/databases/{database_id}",
         headers=headers,
-        timeout=30,
+        timeout=_NOTION_TIMEOUT,
     )
     if response.status_code != 200:
         return {}
@@ -1061,7 +1087,7 @@ def create_note_in_notes_db(note_data, project_logger=None, user_id=None, creden
                 "https://api.notion.com/v1/pages",
                 json=payload,
                 headers=headers,
-                timeout=30,
+                timeout=_NOTION_TIMEOUT,
             )
             response_payload = {}
             try:
@@ -1178,7 +1204,7 @@ def collect_notes_around_today(days_back=5, days_forward=5, project_logger=None,
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("invalid_request_url", "object_not_found", "validation_error"):
@@ -1197,7 +1223,7 @@ def collect_notes_around_today(days_back=5, days_forward=5, project_logger=None,
                 "Notion-Version": selected_candidate["notion_version"],
                 "content-type": "application/json",
             }
-            response = requests.post(selected_candidate["url"], json=request_payload, headers=headers, timeout=30)
+            response = requests.post(selected_candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
             response.raise_for_status()
 
         data = response.json()
@@ -1380,7 +1406,7 @@ def create_expense_in_expenses_db(expense_data, project_logger=None, user_id=Non
             "https://api.notion.com/v1/pages",
             json={"parent": request_candidate["parent"], "properties": properties},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         if response.status_code in (400, 404):
             response_code = response.json().get("code", "")
@@ -1455,7 +1481,7 @@ def collect_expenses_from_expenses_db(*, start_date, end_date, project_logger=No
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("validation_error", "invalid_request_url", "object_not_found"):
@@ -1489,7 +1515,7 @@ def collect_expenses_from_expenses_db(*, start_date, end_date, project_logger=No
                 selected_candidate["url"],
                 json=request_payload,
                 headers=headers,
-                timeout=30,
+                timeout=_NOTION_TIMEOUT,
             )
             response.raise_for_status()
 
@@ -1708,7 +1734,7 @@ def create_meal_in_meals_db(meal_data, project_logger=None, user_id=None, creden
             "https://api.notion.com/v1/pages",
             json={"parent": request_candidate["parent"], "properties": properties},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         if response.status_code in (400, 404):
             response_code = response.json().get("code", "")
@@ -1821,7 +1847,7 @@ def collect_meals_from_database(*, start_datetime, end_datetime, project_logger=
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("validation_error", "invalid_request_url", "object_not_found"):
@@ -1844,7 +1870,7 @@ def collect_meals_from_database(*, start_datetime, end_datetime, project_logger=
                 selected_candidate["url"],
                 json=request_payload,
                 headers=headers,
-                timeout=30,
+                timeout=_NOTION_TIMEOUT,
             )
             response.raise_for_status()
 
@@ -2026,7 +2052,7 @@ def create_exercise_in_exercises_db(exercise_data, project_logger=None, user_id=
             "https://api.notion.com/v1/pages",
             json={"parent": request_candidate["parent"], "properties": properties},
             headers=headers,
-            timeout=30,
+            timeout=_NOTION_TIMEOUT,
         )
         if response.status_code in (400, 404):
             response_code = response.json().get("code", "")
@@ -2163,7 +2189,7 @@ def update_exercise_in_exercises_db(
         f"https://api.notion.com/v1/pages/{normalized_page_id}",
         json={"properties": properties},
         headers=headers,
-        timeout=30,
+        timeout=_NOTION_TIMEOUT,
     )
     response.raise_for_status()
     payload = response.json()
@@ -2261,7 +2287,7 @@ def collect_exercises_from_database(*, start_datetime, end_datetime, project_log
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("validation_error", "invalid_request_url", "object_not_found"):
@@ -2284,7 +2310,7 @@ def collect_exercises_from_database(*, start_datetime, end_datetime, project_log
                 selected_candidate["url"],
                 json=request_payload,
                 headers=headers,
-                timeout=30,
+                timeout=_NOTION_TIMEOUT,
             )
             response.raise_for_status()
 
@@ -2458,7 +2484,7 @@ def collect_monthly_bills_from_database(*, start_date, end_date, unpaid_only=Fal
                     "Notion-Version": candidate["notion_version"],
                     "content-type": "application/json",
                 }
-                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=30)
+                response = requests.post(candidate["url"], json=request_payload, headers=headers, timeout=_NOTION_TIMEOUT)
                 if response.status_code in (400, 404):
                     response_code = response.json().get("code", "")
                     if response_code in ("validation_error", "invalid_request_url", "object_not_found"):
@@ -2493,7 +2519,7 @@ def collect_monthly_bills_from_database(*, start_date, end_date, unpaid_only=Fal
                 selected_candidate["url"],
                 json=request_payload,
                 headers=headers,
-                timeout=30,
+                timeout=_NOTION_TIMEOUT,
             )
             response.raise_for_status()
 
@@ -2579,7 +2605,7 @@ def update_monthly_bill_payment(
         f"https://api.notion.com/v1/pages/{normalized_page_id}",
         json={"properties": properties},
         headers=headers,
-        timeout=30,
+        timeout=_NOTION_TIMEOUT,
     )
     response.raise_for_status()
     payload = response.json()

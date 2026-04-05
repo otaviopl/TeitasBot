@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 from assistant_connector.models import ToolExecutionContext
 
@@ -105,17 +106,34 @@ def edit_memory_file(arguments: dict, context: ToolExecutionContext) -> dict:
             f.write(content)
         action = "replaced"
     else:
+        today_stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        stamped_content = f"[{today_stamp}] {content}"
         with open(full_path, "a", encoding="utf-8") as f:
             current_size = f.seek(0, 2)  # Seek to end — atomic size check
             if current_size > 0:
                 f.write("\n")
-            f.write(content)
+            f.write(stamped_content)
         action = "appended"
 
-    return {
+    result = {
         "status": "ok",
         "file_name": file_name,
         "action": action,
         "chars_written": len(content),
         "memories_dir": memories_dir,
     }
+
+    store = getattr(context, "memory_store", None)
+    if store is not None:
+        try:
+            store.log_memory_edit(
+                user_id=context.user_id,
+                file_name=file_name,
+                action=action,
+                chars_written=len(content),
+                source="assistant" if getattr(context, "session_id", "").startswith("scheduled-") else "user",
+            )
+        except Exception:
+            pass  # audit is best-effort; never fail the actual edit
+
+    return result

@@ -272,6 +272,11 @@ def create_telegram_application(project_logger=None):
         for uid in raw_ids.split(",")
         if uid.strip().isdigit()
     }
+    if not allowed_user_ids:
+        raise ValueError(
+            "TELEGRAM_ALLOWED_USER_IDS is not configured. "
+            "Set at least one authorized Telegram user ID."
+        )
 
     bot_token = str(os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
     transcribe_model = str(os.getenv("AUDIO_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")).strip()

@@ -1337,6 +1337,62 @@ class TestAssistantRuntime(unittest.TestCase):
         self.assertEqual(len(guidance_blocks), 1)
         self.assertEqual(guidance_blocks[0].count("### guided_tool"), 1)
 
+    def test_runtime_blocks_auto_confirm_write_tool_during_scheduled_execution(self):
+        global WRITE_TOOL_CALL_COUNT
+        WRITE_TOOL_CALL_COUNT = 0
+
+        payloads = [
+            {
+                "id": "resp-1",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "edit_scheduled_task",
+                        "arguments": "{\"confirmed\":true}",
+                        "call_id": "call-1",
+                    }
+                ],
+                "output_text": "",
+            },
+            {
+                "id": "resp-2",
+                "output": [],
+                "output_text": "Bloqueio de auto_confirm em scheduled.",
+            },
+        ]
+        tool_definitions = {
+            "edit_scheduled_task": ToolDefinition(
+                name="edit_scheduled_task",
+                description="Edita agendamento",
+                input_schema={"type": "object", "properties": {"confirmed": {"type": "boolean"}}},
+                handler="tests.test_assistant_runtime:_write_tool",
+                write_operation=True,
+                auto_confirm=True,
+            )
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = self._build_runtime(
+                temp_dir=temp_dir,
+                payloads=payloads,
+                tool_definitions=tool_definitions,
+                tool_names=["edit_scheduled_task"],
+            )
+            answer = runtime.process_user_message(
+                session_id="guild:channel:user:scheduled:task-2",
+                user_id="user",
+                channel_id="channel",
+                guild_id="guild",
+                message="executar edição",
+            )
+
+        self.assertEqual(answer.text, "Bloqueio de auto_confirm em scheduled.")
+        self.assertEqual(WRITE_TOOL_CALL_COUNT, 0)
+        self.assertIn(
+            "tool_not_allowed_during_scheduled_execution",
+            runtime._openai_client.responses.calls[1]["input"][0]["output"],
+        )
+
 
 class TestResolveUserMemoriesDir(unittest.TestCase):
     """Security tests for _resolve_user_memories_dir path traversal guards."""
@@ -1405,6 +1461,63 @@ class TestResolveUserMemoriesDir(unittest.TestCase):
             rt = self._build_minimal_runtime(memories_dir=missing_base, db_path=os.path.join(base, "mem.sqlite3"))
             result = rt._resolve_user_memories_dir("12345")
             self.assertEqual(result, missing_base)
+
+
+class TestSelectUserMemoryContext(unittest.TestCase):
+    def _build_minimal_runtime(self, db_path):
+        return AssistantRuntime(
+            agent=AgentDefinition(
+                agent_id="test", description="test", model="gpt-4.1-mini",
+                system_prompt="prompt", tools=[], max_tool_rounds=1, memory_window=5,
+            ),
+            tool_registry=ToolRegistry({}),
+            memory_store=ConversationMemoryStore(db_path),
+            project_logger=_FakeLogger(),
+            available_agents=[],
+            openai_client=_FakeOpenAIClient([]),
+        )
+
+    def test_health_query_ranks_health_file_above_about_me(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rt = self._build_minimal_runtime(os.path.join(tmp, "mem.sqlite3"))
+            memories = {
+                "about-me.md": "Sou Carlos, desenvolvedor",
+                "health.md": "Peso 72 kg, meta 2050 kcal/dia, dieta low carb",
+            }
+            result = rt._select_user_memory_context("como está minha dieta", memories)
+            # health.md should appear first due to synonym match (dieta → health group)
+            health_pos = result.find("### health.md")
+            about_pos = result.find("### about-me.md")
+            self.assertGreater(about_pos, -1)
+            self.assertGreater(health_pos, -1)
+            self.assertLess(health_pos, about_pos)
+
+    def test_synonym_expansion_matches_related_terms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rt = self._build_minimal_runtime(os.path.join(tmp, "mem.sqlite3"))
+            memories = {
+                "work.md": "Draiven, plataforma de IA para decisões de negócio",
+                "health.md": "Peso 72 kg",
+            }
+            # "carreira" is a synonym for "trabalho" which maps to work
+            result = rt._select_user_memory_context("como vai minha carreira", memories)
+            self.assertIn("### work.md", result)
+
+    def test_about_me_always_gets_baseline_bonus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rt = self._build_minimal_runtime(os.path.join(tmp, "mem.sqlite3"))
+            memories = {
+                "about-me.md": "Sou Carlos",
+                "random.md": "dados aleatórios",
+            }
+            result = rt._select_user_memory_context("qualquer coisa xyz", memories)
+            self.assertIn("### about-me.md", result)
+
+    def test_empty_memories_returns_empty_string(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rt = self._build_minimal_runtime(os.path.join(tmp, "mem.sqlite3"))
+            result = rt._select_user_memory_context("teste", {})
+            self.assertEqual(result, "")
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
 ]
 
-STATE_TTL_SECONDS = 600
+STATE_TTL_SECONDS = 300
 CALLBACK_PATH = "/auth/google/callback"
 
 _SUCCESS_HTML = """<!DOCTYPE html>
@@ -155,7 +155,7 @@ class GoogleOAuthCallbackServer:
             def log_message(self, fmt, *args):
                 server_ref._logger.debug("OAuth callback: " + fmt, *args)
 
-        self._server = http.server.HTTPServer(("", self._port), _Handler)
+        self._server = http.server.HTTPServer(("127.0.0.1", self._port), _Handler)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             daemon=True,

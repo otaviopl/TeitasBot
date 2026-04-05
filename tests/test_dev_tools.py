@@ -243,5 +243,18 @@ class TestRestartBotService(unittest.TestCase):
         self.assertTrue(kwargs["start_new_session"])
 
 
+    @patch("assistant_connector.tools.dev_tools.subprocess.Popen")
+    @patch.object(dev_tools, "_OWNER_USER_ID", OWNER_ID)
+    def test_restart_command_uses_double_dash_separator(self, mock_popen):
+        dev_tools.restart_bot_service({}, _build_context())
+        cmd_arg = mock_popen.call_args[0][0]
+        cmd_str = " ".join(cmd_arg)
+        self.assertIn("-- ", cmd_str)
+        # The -- must appear before the service name to prevent argument injection
+        dash_pos = cmd_str.index("-- ")
+        service_pos = cmd_str.index(dev_tools._SERVICE_NAME)
+        self.assertLess(dash_pos, service_pos)
+
+
 if __name__ == "__main__":
     unittest.main()
