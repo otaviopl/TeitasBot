@@ -354,3 +354,60 @@ class TestAnalyzeBills:
         result = analyze_bills({"month": "2025-06"}, ctx)
         assert result["total_bills"] == 1
         assert result["total_budget"] == 50.0
+
+
+# ---------------------------------------------------------------------------
+# LLM calorie inference
+# ---------------------------------------------------------------------------
+
+class TestMealCalorieInference:
+    def test_infers_when_omitted(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories", return_value=250.0):
+            from assistant_connector.tools.health_tools import register_meal
+            result = register_meal({
+                "alimento": "Arroz", "refeicao": "ALMOÇO", "quantidade": "200g",
+            }, ctx)
+        assert result["status"] == "created"
+        assert result["meal"]["calories"] == 250.0
+        assert result["meal"]["calorie_estimation_method"] == "llm_inferred"
+
+    def test_provided_calories_take_precedence(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories") as mock_est:
+            from assistant_connector.tools.health_tools import register_meal
+            result = register_meal({
+                "alimento": "Arroz", "refeicao": "ALMOÇO",
+                "quantidade": "200g", "calorias_estimadas": 300,
+            }, ctx)
+        mock_est.assert_not_called()
+        assert result["meal"]["calorie_estimation_method"] == "provided"
+
+    def test_raises_when_inference_fails(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories", return_value=None):
+            from assistant_connector.tools.health_tools import register_meal
+            with pytest.raises(ValueError, match="LLM estimation also failed"):
+                register_meal({
+                    "alimento": "Arroz", "refeicao": "ALMOÇO", "quantidade": "200g",
+                }, ctx)
+
+
+class TestExerciseCalorieInference:
+    def test_infers_when_omitted(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories", return_value=400.0):
+            from assistant_connector.tools.health_tools import register_exercise
+            result = register_exercise({"atividade": "Corrida 30min"}, ctx)
+        assert result["status"] == "created"
+        assert result["exercise"]["calories"] == 400.0
+        assert result["exercise"]["calorie_estimation_method"] == "llm_inferred"
+
+    def test_provided_calories_take_precedence(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories") as mock_est:
+            from assistant_connector.tools.health_tools import register_exercise
+            result = register_exercise({"atividade": "Corrida", "calorias": 350}, ctx)
+        mock_est.assert_not_called()
+        assert result["exercise"]["calorie_estimation_method"] == "provided"
+
+    def test_raises_when_inference_fails(self, ctx):
+        with patch("assistant_connector.tools.health_tools.estimate_calories", return_value=None):
+            from assistant_connector.tools.health_tools import register_exercise
+            with pytest.raises(ValueError, match="LLM estimation also failed"):
+                register_exercise({"atividade": "Natação"}, ctx)

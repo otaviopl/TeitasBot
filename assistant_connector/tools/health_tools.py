@@ -5,6 +5,7 @@ import os
 import re
 
 from assistant_connector.health_store import HealthStore, normalize_quantity, parse_quantity_details
+from openai_connector.llm_api import estimate_calories
 from utils.timezone_utils import today_in_configured_timezone, today_iso_in_configured_timezone
 
 _default_db_path = os.path.abspath(
@@ -202,12 +203,20 @@ def register_meal(arguments, context):
         raise ValueError("alimento is required")
     if not quantity:
         raise ValueError("quantidade is required")
-    if estimated_calories is None:
-        raise ValueError("calorias_estimadas is required")
     try:
         datetime.date.fromisoformat(meal_date)
     except ValueError:
         raise ValueError("date must be a valid ISO date (YYYY-MM-DD)")
+
+    calorie_estimation_method = "provided"
+    if estimated_calories is None:
+        logger = getattr(context, "project_logger", None)
+        inferred = estimate_calories(f"{food}, {quantity}", category="meal", logger=logger)
+        if inferred is None:
+            raise ValueError("calorias_estimadas is required (LLM estimation also failed)")
+        estimated_calories = inferred
+        calorie_estimation_method = "llm_inferred"
+
     try:
         calories = float(str(estimated_calories).replace(",", "."))
     except ValueError:
@@ -217,7 +226,6 @@ def register_meal(arguments, context):
 
     normalized_amount = None
     normalized_unit = None
-    calorie_estimation_method = "provided"
     try:
         qty_details = parse_quantity_details(quantity)
         qty_normalized = normalize_quantity(qty_details)
@@ -321,8 +329,19 @@ def register_exercise(arguments, context):
         done = exercise_date_value <= today_in_configured_timezone()
     if not activity:
         raise ValueError("atividade is required")
+
+    calorie_estimation_method = "provided"
     if raw_calories is None:
-        raise ValueError("calorias is required")
+        logger = getattr(context, "project_logger", None)
+        desc_parts = [activity]
+        if observations:
+            desc_parts.append(observations)
+        inferred = estimate_calories(", ".join(desc_parts), category="exercise", logger=logger)
+        if inferred is None:
+            raise ValueError("calorias is required (LLM estimation also failed)")
+        raw_calories = inferred
+        calorie_estimation_method = "llm_inferred"
+
     try:
         calories = float(str(raw_calories).replace(",", "."))
     except ValueError:
@@ -351,6 +370,7 @@ def register_exercise(arguments, context):
         observations=observations,
         done=done,
     )
+    exercise["calorie_estimation_method"] = calorie_estimation_method
     return {"status": "created", "exercise": exercise}
 
 

@@ -307,6 +307,59 @@ def generate_note_metadata(content: str, project_logger) -> dict:
     return {"title": title, "tags": tags}
 
 
+def estimate_calories(description: str, category: str = "meal", logger=None) -> float | None:
+    """Use LLM to estimate calories for a meal or exercise.
+
+    Args:
+        description: Human-readable description (e.g. "200g arroz branco" or "corrida 30 min").
+        category: "meal" for food calories, "exercise" for calories burned.
+        logger: Optional logger instance.
+
+    Returns:
+        Estimated calories as float, or None if estimation fails.
+    """
+    description = (description or "").strip()
+    if not description:
+        return None
+
+    openai_client = _create_openai_client()
+    llm_model = _get_llm_model()
+
+    if category == "exercise":
+        prompt = (
+            "Estime as calorias gastas na seguinte atividade física. "
+            "Considere uma pessoa adulta de ~75 kg. "
+            "Responda APENAS com um número inteiro representando as kcal gastas. "
+            "Sem texto adicional, sem unidade — apenas o número.\n\n"
+            f"Atividade: {description}"
+        )
+    else:
+        prompt = (
+            "Estime as calorias (kcal) da seguinte refeição/alimento na quantidade indicada. "
+            "Responda APENAS com um número inteiro representando as kcal. "
+            "Sem texto adicional, sem unidade — apenas o número.\n\n"
+            f"Alimento: {description}"
+        )
+
+    try:
+        completion = _safe_openai_call(
+            lambda: openai_client.responses.create(model=llm_model, input=prompt),
+            description="estimate_calories",
+        )
+        raw = completion.output_text.strip().replace(",", ".").replace("kcal", "").strip()
+        # Extract first number-like token
+        import re as _re
+        match = _re.search(r"[\d]+(?:[.,]\d+)?", raw)
+        if match:
+            value = float(match.group().replace(",", "."))
+            if value > 0:
+                return round(value, 1)
+    except Exception:
+        if logger:
+            logger.warning("Failed to estimate calories via LLM for: %s", description)
+    return None
+
+
 def transcribe_audio_input(audio_bytes, filename, mime_type, project_logger):
     if not audio_bytes:
         raise ValueError("audio_bytes is required")

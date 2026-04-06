@@ -449,3 +449,44 @@ class TestSafeOpenAICall(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEstimateCalories(unittest.TestCase):
+    """Tests for estimate_calories LLM-based calorie estimation."""
+
+    def _patch_client(self, output_text):
+        fake_resp = _FakeResponse(output_text)
+        fake_client = unittest.mock.Mock()
+        fake_client.responses.create.return_value = fake_resp
+        return unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client)
+
+    def test_meal_returns_number(self):
+        with self._patch_client("350"):
+            result = llm_api.estimate_calories("200g arroz branco", category="meal")
+        self.assertEqual(result, 350.0)
+
+    def test_exercise_returns_number(self):
+        with self._patch_client("450"):
+            result = llm_api.estimate_calories("corrida 30 min", category="exercise")
+        self.assertEqual(result, 450.0)
+
+    def test_extracts_number_from_text(self):
+        with self._patch_client("Aproximadamente 280 kcal"):
+            result = llm_api.estimate_calories("150g frango grelhado", category="meal")
+        self.assertEqual(result, 280.0)
+
+    def test_empty_description_returns_none(self):
+        result = llm_api.estimate_calories("", category="meal")
+        self.assertIsNone(result)
+
+    def test_api_error_returns_none(self):
+        fake_client = unittest.mock.Mock()
+        fake_client.responses.create.side_effect = Exception("API down")
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            result = llm_api.estimate_calories("arroz", category="meal")
+        self.assertIsNone(result)
+
+    def test_non_numeric_response_returns_none(self):
+        with self._patch_client("Não sei estimar"):
+            result = llm_api.estimate_calories("algo desconhecido", category="meal")
+        self.assertIsNone(result)

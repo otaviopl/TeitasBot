@@ -864,14 +864,13 @@
           },
           "calorias_estimadas": {
             "type": "number",
-            "description": "Estimativa obrigatória de calorias calculada pela LLM para a porção informada."
+            "description": "Estimativa de calorias para a porção informada. Se omitida, o sistema usa LLM para inferir automaticamente."
           }
         },
         "required": [
           "alimento",
           "refeicao",
-          "quantidade",
-          "calorias_estimadas"
+          "quantidade"
         ],
         "additionalProperties": false
       }
@@ -925,7 +924,7 @@
           },
           "calorias": {
             "type": "number",
-            "description": "Calorias gastas na atividade (valor > 0)."
+            "description": "Calorias gastas na atividade (valor > 0). Se omitida, o sistema usa LLM para inferir automaticamente."
           },
           "data": {
             "type": "string",
@@ -945,8 +944,7 @@
           }
         },
         "required": [
-          "atividade",
-          "calorias"
+          "atividade"
         ],
         "additionalProperties": false
       }
