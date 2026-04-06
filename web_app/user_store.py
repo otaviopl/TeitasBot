@@ -435,6 +435,31 @@ class WebUserStore:
                 conn.commit()
         return deleted
 
+    def search_notes(self, user_id: str, query: str, limit: int = 20) -> list[dict]:
+        """Search notes by title or content using LIKE matching."""
+        pattern = f"%{query}%"
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, user_id, title,
+                       substr(content, 1, 300) AS snippet,
+                       created_at, updated_at
+                FROM web_notes
+                WHERE user_id = ? AND (title LIKE ? OR content LIKE ?)
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (user_id, pattern, pattern, max(1, min(limit, 100))),
+            ).fetchall()
+            result = []
+            for r in rows:
+                tags = self._get_note_tags(conn, r["id"])
+                result.append({
+                    "id": r["id"], "title": r["title"],
+                    "snippet": r["snippet"], "tags": tags,
+                    "created_at": r["created_at"], "updated_at": r["updated_at"],
+                })
+        return result
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

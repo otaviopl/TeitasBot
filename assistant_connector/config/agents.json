@@ -1433,6 +1433,149 @@
       },
       "prompt_guidance": "Gere o gráfico somente quando o usuário pedir explicitamente uma visualização, gráfico ou chart. Para consultas simples de texto (ex.: 'o que eu comi hoje?', 'quantas calorias?'), responda em texto sem chamar esta tool. Por padrão, para gráficos de nutrição, inclua apenas calories_consumed, calories_goal, protein_g e protein_goal_g (mais calories_burned se disponível). Somente inclua carbs_g, carbs_goal_g, fat_g ou fat_goal_g se o usuário pedir explicitamente essas métricas.",
       "guidance_priority": 90
+    },
+    {
+      "name": "list_notes",
+      "description": "Lista as anotações do usuário, opcionalmente filtrando por tag.",
+      "handler": "assistant_connector.tools.notes_tools:list_notes",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de anotações a retornar (1-100, padrão 20)."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filtrar por tag específica (ex: 'trabalho', 'pessoal')."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_note",
+      "description": "Lê o conteúdo completo de uma anotação específica pelo ID.",
+      "handler": "assistant_connector.tools.notes_tools:read_note",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser lida."
+          }
+        },
+        "required": ["note_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_note",
+      "description": "Cria uma nova anotação com título, conteúdo markdown e tags opcionais.",
+      "handler": "assistant_connector.tools.notes_tools:create_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Título da anotação."
+          },
+          "content": {
+            "type": "string",
+            "description": "Conteúdo da anotação em markdown."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags para categorizar a anotação (ex: ['trabalho', 'projeto-x'])."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a criação."
+          }
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_note",
+      "description": "Edita uma anotação existente — pode alterar título, conteúdo e/ou tags.",
+      "handler": "assistant_connector.tools.notes_tools:edit_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser editada."
+          },
+          "title": {
+            "type": "string",
+            "description": "Novo título (omitir para manter o atual)."
+          },
+          "content": {
+            "type": "string",
+            "description": "Novo conteúdo markdown (omitir para manter o atual)."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Novas tags (omitir para manter as atuais)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a edição."
+          }
+        },
+        "required": ["note_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_note",
+      "description": "Exclui uma anotação pelo ID.",
+      "handler": "assistant_connector.tools.notes_tools:delete_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser excluída."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a exclusão."
+          }
+        },
+        "required": ["note_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_notes",
+      "description": "Busca anotações por texto no título ou conteúdo. Retorna snippets com até 300 caracteres do conteúdo.",
+      "handler": "assistant_connector.tools.notes_tools:search_notes",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Texto a buscar no título ou conteúdo das anotações."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (1-50, padrão 20)."
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
     }
   ],
   "agents": [
@@ -1486,7 +1629,13 @@
         "list_user_files",
         "read_file_content",
         "delete_user_file",
-        "generate_nutrition_chart"
+        "generate_nutrition_chart",
+        "list_notes",
+        "read_note",
+        "create_note",
+        "edit_note",
+        "delete_note",
+        "search_notes"
       ]
     }
   ]
