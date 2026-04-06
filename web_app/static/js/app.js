@@ -750,7 +750,7 @@
 
     memoriesBtn.addEventListener('click', async function () {
         memoriesOverlay.classList.add('visible');
-        memoriesContent.innerHTML = '<div class="notion-spinner"></div>';
+        memoriesContent.innerHTML = '<div class="loading-spinner"></div>';
         try {
             var resp = await fetch('/api/memories', { headers: authHeaders() });
             if (!resp.ok) throw new Error();
@@ -1361,7 +1361,7 @@
             var dateStr = healthDateISO();
             var dashData = await apiGet('/api/health/dashboard?date=' + dateStr);
 
-            if (!dashData || !dashData.notion_configured) {
+            if (!dashData) {
                 healthLoadingEl.classList.add('hidden');
                 healthNotConfiguredEl.classList.remove('hidden');
                 return;
@@ -1371,7 +1371,7 @@
 
             // Load weekly in parallel
             apiGet('/api/health/weekly?end_date=' + dateStr).then(function (weeklyData) {
-                if (weeklyData && weeklyData.notion_configured) {
+                if (weeklyData && weeklyData.days) {
                     renderHealthWeekly(weeklyData.days, dateStr);
                 }
             }).catch(function () {});

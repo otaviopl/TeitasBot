@@ -5,12 +5,7 @@ from assistant_connector.user_credential_store import ALL_VALID_KEYS
 
 _KEY_DESCRIPTIONS = {
     "notion_api_key": "Chave de integração do Notion (começa com secret_...)",
-    "notion_database_id": "ID do banco principal de tarefas no Notion",
     "notion_notes_db_id": "ID do banco de notas no Notion",
-    "notion_expenses_db_id": "ID do banco de despesas no Notion",
-    "notion_monthly_bills_db_id": "ID do banco de contas mensais no Notion",
-    "notion_meals_db_id": "ID do banco de refeições no Notion",
-    "notion_exercises_db_id": "ID do banco de exercícios no Notion",
     "email_from": "Endereço de email do remetente (Gmail)",
     "email_to": "Endereço de email para notificações",
     "display_name": "Seu nome para exibição nos emails",

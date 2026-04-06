@@ -1356,7 +1356,7 @@
           },
           "key": {
             "type": "string",
-            "description": "Nome da credencial. Valores válidos: notion_api_key, notion_database_id, notion_notes_db_id, email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix. Obrigatório para ações 'set' e 'delete'."
+            "description": "Nome da credencial. Valores válidos: notion_api_key, notion_notes_db_id, email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix. Obrigatório para ações 'set' e 'delete'."
           },
           "value": {
             "type": "string",

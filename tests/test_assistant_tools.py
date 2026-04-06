@@ -49,7 +49,7 @@ def _build_context(memories_dir=None, user_credential_store=None):
         guild_id="guild",
         project_logger=_FakeLogger(),
         agent=agent,
-        available_tools=[{"name": "list_notion_tasks"}],
+        available_tools=[{"name": "list_tasks"}],
         available_agents=[{"id": "personal_assistant"}],
         memories_dir=memories_dir,
         user_credential_store=user_credential_store,
@@ -155,52 +155,6 @@ class TestAssistantTools(unittest.TestCase):
         self.assertEqual(result["returned"], 1)
         self.assertEqual(result["query"], "economia")
 
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_tasks_from_control_panel")
-    def test_list_notion_tasks_clamps_inputs(self, mock_collect_tasks):
-        mock_collect_tasks.return_value = [{"name": f"Task {i}"} for i in range(60)]
-
-        result = notion_tools.list_notion_tasks(
-            {"n_days": -4, "limit": 100},
-            _build_context(),
-        )
-
-        mock_collect_tasks.assert_called_once_with(n_days=0, project_logger=unittest.mock.ANY, user_id=unittest.mock.ANY, credential_store=None)
-        self.assertEqual(result["returned"], 50)
-        self.assertEqual(len(result["tasks"]), 50)
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_task_in_control_panel")
-    def test_create_notion_task_uses_defaults_and_cleans_tags(self, mock_create_task):
-        mock_create_task.return_value = {"id": "task-1"}
-
-        result = notion_tools.create_notion_task(
-            {
-                "task_name": "  Revisar proposta  ",
-                "project": "  ",
-                "tags": [" FAST ", "", "FUP"],
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "task-1")
-        payload = mock_create_task.call_args.args[0]
-        self.assertEqual(payload["task_name"], "Revisar proposta")
-        self.assertEqual(payload["project"], "Pessoal")
-        self.assertEqual(payload["tags"], ["FAST", "FUP"])
-
-    def test_create_notion_task_rejects_invalid_tags(self):
-        with self.assertRaises(ValueError):
-            notion_tools.create_notion_task(
-                {"task_name": "Task", "tags": "FAST"},
-                _build_context(),
-            )
-
-    def test_create_notion_task_rejects_invalid_due_date(self):
-        with self.assertRaisesRegex(ValueError, "due_date must be a valid ISO date"):
-            notion_tools.create_notion_task(
-                {"task_name": "Task", "due_date": "31/12/2026"},
-                _build_context(),
-            )
-
     @patch("assistant_connector.tools.notion_tools.notion_connector.collect_notes_around_today")
     def test_list_notion_notes_clamps_inputs(self, mock_collect_notes):
         mock_collect_notes.return_value = [{"name": f"Note {i}"} for i in range(120)]
@@ -248,261 +202,6 @@ class TestAssistantTools(unittest.TestCase):
                 {"note_name": "   ", "observations": "conteúdo"},
                 _build_context(),
             )
-
-    def test_register_financial_expense_rejects_non_numeric_amount(self):
-        with self.assertRaisesRegex(ValueError, "amount must be a valid number"):
-            notion_tools.register_financial_expense(
-                {"description": "Almoço", "amount": "abc"},
-                _build_context(),
-            )
-
-    def test_register_financial_expense_rejects_invalid_date(self):
-        with self.assertRaisesRegex(ValueError, "expense_date must be a valid ISO date"):
-            notion_tools.register_financial_expense(
-                {"description": "Almoço", "amount": "50", "expense_date": "31/12/2026"},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_expense_in_expenses_db")
-    def test_register_financial_expense_creates_expense_page(self, mock_create_expense):
-        mock_create_expense.return_value = {"id": "expense-1"}
-
-        result = notion_tools.register_financial_expense(
-            {"description": "Uber casa", "amount": 45.5, "expense_date": "2026-03-10"},
-            _build_context(),
-        )
-
-        self.assertEqual(result["status"], "created")
-        payload = mock_create_expense.call_args.args[0]
-        self.assertEqual(payload["name"], "Despesa 2026-03-10")
-        self.assertEqual(payload["date"], "2026-03-10")
-        self.assertEqual(payload["category"], "Transporte")
-        self.assertEqual(payload["amount"], 45.5)
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_expense_in_expenses_db")
-    def test_register_financial_expense_normalizes_category_aliases(self, mock_create_expense):
-        mock_create_expense.return_value = {"id": "expense-2"}
-
-        notion_tools.register_financial_expense(
-            {"description": "Consulta médica", "amount": 120, "category": "saude", "expense_date": "2026-03-11"},
-            _build_context(),
-        )
-
-        payload = mock_create_expense.call_args.args[0]
-        self.assertEqual(payload["category"], "Saúde")
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_meal_in_meals_db")
-    def test_register_notion_meal_creates_entry_with_required_fields(self, mock_create_meal):
-        mock_create_meal.return_value = {
-            "id": "meal-1",
-            "food": "Arroz branco",
-            "meal_type": "ALMOÇO",
-            "quantity": "150 g",
-            "date": "2026-03-10",
-            "calories": 195.0,
-            "calorie_estimation_method": "llm_estimate",
-        }
-
-        result = notion_tools.register_notion_meal(
-            {
-                "alimento": "Arroz branco",
-                "refeicao": "almoço",
-                "quantidade": "150 g",
-                "data": "2026-03-10",
-                "calorias_estimadas": 190,
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["status"], "created")
-        self.assertEqual(result["meal"]["id"], "meal-1")
-        payload = mock_create_meal.call_args.args[0]
-        self.assertEqual(payload["food"], "Arroz branco")
-        self.assertEqual(payload["meal_type"], "ALMOÇO")
-        self.assertEqual(payload["quantity"], "150 g")
-        self.assertEqual(payload["date"], "2026-03-10")
-        self.assertEqual(payload["estimated_calories"], 190)
-
-    def test_register_notion_meal_rejects_invalid_date(self):
-        with self.assertRaisesRegex(ValueError, "date must be a valid ISO date"):
-            notion_tools.register_notion_meal(
-                {"alimento": "Frango", "refeicao": "almoço", "quantidade": "100 g", "data": "10/03/2026", "calorias_estimadas": 200},
-                _build_context(),
-            )
-
-    def test_register_notion_meal_requires_fields(self):
-        with self.assertRaises(ValueError):
-            notion_tools.register_notion_meal({"refeicao": "ALMOÇO", "quantidade": "100 g"}, _build_context())
-        with self.assertRaises(ValueError):
-            notion_tools.register_notion_meal({"alimento": "Frango", "quantidade": "100 g"}, _build_context())
-        with self.assertRaises(ValueError):
-            notion_tools.register_notion_meal({"alimento": "Frango", "refeicao": "ALMOÇO"}, _build_context())
-        with self.assertRaises(ValueError):
-            notion_tools.register_notion_meal(
-                {"alimento": "Frango", "refeicao": "ALMOÇO", "quantidade": "100 g"},
-                _build_context(),
-            )
-        with self.assertRaises(ValueError):
-            notion_tools.register_notion_meal(
-                {"alimento": "Frango", "refeicao": "CEIA", "quantidade": "100 g"},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
-    def test_analyze_notion_meals_returns_totals_and_insights(self, mock_collect_meals):
-        mock_collect_meals.return_value = [
-            {
-                "id": "meal-1",
-                "food": "Arroz branco",
-                "meal_type": "ALMOÇO",
-                "quantity": "200 g",
-                "date": "2026-03-04",
-                "calories": 260.0,
-                "created_time": "2026-03-04T12:00:00Z",
-            },
-            {
-                "id": "meal-2",
-                "food": "Bolo de chocolate",
-                "meal_type": "JANTAR",
-                "quantity": "1 fatia",
-                "date": "2026-03-04",
-                "calories": 800.0,
-                "created_time": "2026-03-04T20:00:00Z",
-            },
-        ]
-
-        result = notion_tools.analyze_notion_meals({"days_back": 7, "limit": 50}, _build_context())
-
-        self.assertEqual(result["total_entries"], 2)
-        self.assertEqual(result["returned_entries"], 2)
-        self.assertEqual(result["total_calories"], 1060.0)
-        self.assertGreaterEqual(len(result["insights"]), 1)
-        self.assertEqual(result["meal_breakdown"][0]["meal_type"], "JANTAR")
-        self.assertTrue(any("regra mínima" in insight for insight in result["insights"]))
-        self.assertTrue(any("itens açucarados" in insight for insight in result["insights"]))
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_exercise_in_exercises_db")
-    def test_register_notion_exercise_creates_entry_with_required_fields(self, mock_create_exercise, mock_collect):
-        mock_collect.return_value = []
-        mock_create_exercise.return_value = {
-            "id": "exercise-1",
-            "activity": "Corrida",
-            "date": "2999-03-10",
-            "calories": 300.0,
-            "observations": "Leve",
-            "done": False,
-        }
-
-        result = notion_tools.register_notion_exercise(
-            {
-                "atividade": "Corrida",
-                "calorias": 300,
-                "data": "2999-03-10",
-                "observacoes": "Leve",
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["status"], "created")
-        self.assertEqual(result["exercise"]["id"], "exercise-1")
-        payload = mock_create_exercise.call_args.args[0]
-        self.assertEqual(payload["activity"], "Corrida")
-        self.assertEqual(payload["calories"], 300.0)
-        self.assertEqual(payload["date"], "2999-03-10")
-        self.assertFalse(payload["done"])
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
-    def test_register_notion_exercise_detects_duplicate(self, mock_collect):
-        mock_collect.return_value = [
-            {
-                "id": "existing-exercise-1",
-                "activity": "Corrida",
-                "date": "2026-03-10",
-                "calories": 200.0,
-                "done": False,
-                "page_url": "https://notion.so/existing-exercise-1",
-            },
-        ]
-
-        result = notion_tools.register_notion_exercise(
-            {
-                "atividade": "Corrida",
-                "calorias": 350,
-                "data": "2026-03-10",
-                "done": True,
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["error"], "duplicate_exercise_found")
-        self.assertEqual(result["existing_exercise"]["id"], "existing-exercise-1")
-
-    def test_register_notion_exercise_rejects_invalid_date(self):
-        with self.assertRaisesRegex(ValueError, "date must be a valid ISO date"):
-            notion_tools.register_notion_exercise(
-                {"atividade": "Corrida", "calorias": 300, "data": "10/03/2026"},
-                _build_context(),
-            )
-
-    def test_register_notion_exercise_rejects_non_numeric_calories(self):
-        with self.assertRaisesRegex(ValueError, "calorias must be a valid number"):
-            notion_tools.register_notion_exercise(
-                {"atividade": "Corrida", "calorias": "muitas", "data": "2026-03-10"},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_exercise_in_exercises_db")
-    def test_edit_notion_exercise_updates_payload(self, mock_update_exercise):
-        mock_update_exercise.return_value = {"id": "exercise-1", "updated_fields": ["calories"]}
-
-        result = notion_tools.edit_notion_exercise(
-            {"page_id": "exercise-id", "calorias": 420, "done": True},
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "exercise-1")
-        self.assertEqual(mock_update_exercise.call_args.args[0], "exercise-id")
-        self.assertEqual(mock_update_exercise.call_args.kwargs["calories"], 420.0)
-        self.assertTrue(mock_update_exercise.call_args.kwargs["done"])
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
-    def test_analyze_notion_exercises_correlates_meals(self, mock_collect_exercises, mock_collect_meals):
-        mock_collect_exercises.return_value = [
-            {
-                "id": "exercise-1",
-                "activity": "Corrida",
-                "date": "2026-03-04",
-                "calories": 320.0,
-                "done": True,
-                "created_time": "2026-03-04T07:30:00Z",
-            },
-            {
-                "id": "exercise-2",
-                "activity": "Musculação",
-                "date": "2026-03-05",
-                "calories": 280.0,
-                "done": False,
-                "created_time": "2026-03-05T18:00:00Z",
-            },
-        ]
-        mock_collect_meals.return_value = [
-            {"id": "meal-1", "calories": 700.0},
-            {"id": "meal-2", "calories": 500.0},
-        ]
-
-        result = notion_tools.analyze_notion_exercises({"days_back": 7, "limit": 50}, _build_context())
-
-        self.assertEqual(result["total_entries"], 2)
-        self.assertEqual(result["returned_entries"], 2)
-        self.assertEqual(result["totals"]["total_exercise_calories"], 320.0)
-        self.assertEqual(result["totals"]["total_planned_calories"], 280.0)
-        self.assertEqual(result["totals"]["completed_entries"], 1)
-        self.assertEqual(result["totals"]["pending_entries"], 1)
-        self.assertEqual(result["totals"]["total_meal_calories"], 1200.0)
-        self.assertEqual(result["totals"]["net_calorie_balance"], 880.0)
-        self.assertEqual(result["breakdown_by_activity"][0]["activity"], "Corrida")
 
     def test_calculate_metabolism_profile_uses_mifflin_st_jeor(self):
         result = metabolism_tools.calculate_metabolism_profile(
@@ -586,197 +285,6 @@ class TestAssistantTools(unittest.TestCase):
         self.assertEqual(created["status"], "created")
         self.assertTrue(created["entry"]["measured_at"].endswith("Z"))
 
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_expenses_from_expenses_db")
-    def test_analyze_monthly_expenses_returns_totals_breakdown_and_top_expense(self, mock_collect_expenses):
-        mock_collect_expenses.return_value = [
-            {
-                "id": "expense-1",
-                "date": "2026-03-02",
-                "amount": 50.00,
-                "category": "Transporte",
-                "description": "Uber ida",
-            },
-            {
-                "id": "expense-2",
-                "date": "2026-03-03",
-                "amount": 120.00,
-                "category": "Alimentação",
-                "description": "Mercado",
-            }
-        ]
-
-        result = notion_tools.analyze_monthly_expenses({"month": "2026-03"}, _build_context())
-
-        self.assertEqual(result["month"], "2026-03")
-        self.assertEqual(result["total_spent"], 170.0)
-        self.assertEqual(result["expenses_count"], 2)
-        self.assertEqual(result["breakdown_by_category"][0]["category"], "Alimentação")
-        self.assertEqual(result["top_expense"]["amount"], 120.0)
-        self.assertEqual(result["selected_expenses_count"], 2)
-        self.assertEqual(result["returned_count"], 2)
-        self.assertEqual(result["expenses"][0]["date"], "2026-03-02")
-
-    def test_analyze_monthly_expenses_validates_month_format(self):
-        with self.assertRaises(ValueError):
-            notion_tools.analyze_monthly_expenses({"month": "03-2026"}, _build_context())
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_expenses_from_expenses_db")
-    def test_analyze_monthly_expenses_supports_day_filter(self, mock_collect_expenses):
-        mock_collect_expenses.return_value = [
-            {
-                "id": "expense-1",
-                "date": "2026-03-06",
-                "amount": 50.00,
-                "category": "Transporte",
-                "description": "Uber ida",
-            },
-            {
-                "id": "expense-2",
-                "date": "2026-03-06",
-                "amount": 180.00,
-                "category": "Alimentação",
-                "description": "Mercado",
-            },
-            {
-                "id": "expense-3",
-                "date": "2026-03-02",
-                "amount": 30.00,
-                "category": "Lazer",
-                "description": "Café",
-            },
-        ]
-
-        result = notion_tools.analyze_monthly_expenses(
-            {"month": "2026-03", "date": "2026-03-06", "limit": 10},
-            _build_context(),
-        )
-
-        self.assertEqual(result["month"], "2026-03")
-        self.assertEqual(result["total_spent"], 260.0)
-        self.assertEqual(result["applied_date_filter"], "2026-03-06")
-        self.assertEqual(result["selected_total_spent"], 230.0)
-        self.assertEqual(result["selected_expenses_count"], 2)
-        self.assertEqual(result["selected_top_expense"]["amount"], 180.0)
-        self.assertEqual(result["returned_count"], 2)
-        self.assertTrue(all(expense["date"] == "2026-03-06" for expense in result["expenses"]))
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_expenses_from_expenses_db")
-    def test_analyze_monthly_expenses_validates_day_filter_format(self, mock_collect_expenses):
-        mock_collect_expenses.return_value = []
-        with self.assertRaises(ValueError):
-            notion_tools.analyze_monthly_expenses(
-                {"month": "2026-03", "date": "06-03-2026"},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_monthly_bills_from_database")
-    def test_list_unpaid_monthly_bills_returns_filtered_data(self, mock_collect_bills):
-        mock_collect_bills.return_value = [
-            {
-                "id": "bill-1",
-                "name": "Internet",
-                "date": "2026-03-05",
-                "paid": False,
-                "category": "Casa",
-                "budget": 120.0,
-                "paid_amount": 0.0,
-                "description": "",
-            }
-        ]
-
-        result = notion_tools.list_unpaid_monthly_bills({"month": "2026-03", "limit": 10}, _build_context())
-
-        self.assertEqual(result["month"], "2026-03")
-        self.assertEqual(result["total"], 1)
-        self.assertEqual(result["bills"][0]["name"], "Internet")
-
-    def test_list_unpaid_monthly_bills_validates_month_format(self):
-        with self.assertRaises(ValueError):
-            notion_tools.list_unpaid_monthly_bills({"month": "03-2026"}, _build_context())
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_monthly_bill_payment")
-    def test_mark_monthly_bill_as_paid_updates_page(self, mock_update_bill):
-        mock_update_bill.return_value = {"id": "bill-1", "paid": True, "paid_amount": 120.0, "payment_date": "2026-03-05"}
-
-        result = notion_tools.mark_monthly_bill_as_paid(
-            {"page_id": "bill-1", "paid_amount": 120, "payment_date": "2026-03-05"},
-            _build_context(),
-        )
-
-        self.assertEqual(result["status"], "updated")
-        self.assertEqual(result["bill_id"], "bill-1")
-        self.assertEqual(result["paid_amount"], 120.0)
-
-    def test_mark_monthly_bill_as_paid_rejects_negative_amount(self):
-        with self.assertRaises(ValueError):
-            notion_tools.mark_monthly_bill_as_paid(
-                {"page_id": "bill-1", "paid_amount": -1},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_monthly_bills_from_database")
-    def test_analyze_monthly_bills_returns_totals(self, mock_collect_bills):
-        mock_collect_bills.return_value = [
-            {
-                "id": "bill-1",
-                "name": "Internet",
-                "date": "2026-03-05",
-                "paid": True,
-                "category": "Casa",
-                "budget": 120.0,
-                "paid_amount": 120.0,
-                "description": "",
-            },
-            {
-                "id": "bill-2",
-                "name": "Luz",
-                "date": "2026-03-10",
-                "paid": False,
-                "category": "Casa",
-                "budget": 200.0,
-                "paid_amount": 0.0,
-                "description": "",
-            },
-        ]
-
-        result = notion_tools.analyze_monthly_bills({"month": "2026-03"}, _build_context())
-
-        self.assertEqual(result["month"], "2026-03")
-        self.assertEqual(result["total_bills"], 2)
-        self.assertEqual(result["paid_count"], 1)
-        self.assertEqual(result["unpaid_count"], 1)
-        self.assertEqual(result["total_budget"], 320.0)
-        self.assertEqual(result["pending_budget"], 200.0)
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_monthly_bills_from_database")
-    def test_analyze_monthly_bills_empty_month(self, mock_collect_bills):
-        mock_collect_bills.return_value = []
-
-        result = notion_tools.analyze_monthly_bills({"month": "2026-03"}, _build_context())
-
-        self.assertEqual(result["total_bills"], 0)
-        self.assertEqual(result["pending_budget"], 0.0)
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
-    def test_edit_notion_item_updates_task_payload(self, mock_update_page):
-        mock_update_page.return_value = {"id": "task-1", "updated_fields": ["task_name", "done"]}
-
-        result = notion_tools.edit_notion_item(
-            {
-                "item_type": "task",
-                "page_id": "https://www.notion.so/workspace/123456781234123412341234567890ab",
-                "task_name": "  Fechar sprint ",
-                "done": True,
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "task-1")
-        payload = mock_update_page.call_args.args[0]
-        self.assertEqual(payload["item_type"], "task")
-        self.assertEqual(payload["task_name"], "Fechar sprint")
-        self.assertTrue(payload["done"])
-
     @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
     def test_edit_notion_item_updates_card_payload(self, mock_update_page):
         mock_update_page.return_value = {"id": "card-1", "updated_fields": ["note_name", "date"]}
@@ -797,13 +305,6 @@ class TestAssistantTools(unittest.TestCase):
         self.assertEqual(payload["note_name"], "Retro semanal")
         self.assertEqual(payload["date"], "2026-03-10")
 
-    def test_edit_notion_item_rejects_invalid_due_date(self):
-        with self.assertRaisesRegex(ValueError, "due_date must be a valid ISO date"):
-            notion_tools.edit_notion_item(
-                {"item_type": "task", "page_id": "task-id", "due_date": "31/12/2026"},
-                _build_context(),
-            )
-
     def test_edit_notion_item_rejects_invalid_card_date(self):
         with self.assertRaisesRegex(ValueError, "date must be a valid ISO date"):
             notion_tools.edit_notion_item(
@@ -814,44 +315,32 @@ class TestAssistantTools(unittest.TestCase):
     def test_edit_notion_item_requires_editable_fields(self):
         with self.assertRaises(ValueError):
             notion_tools.edit_notion_item(
-                {"item_type": "task", "page_id": "task-id"},
+                {"item_type": "card", "page_id": "card-id"},
+                _build_context(),
+            )
+
+    def test_edit_notion_item_rejects_task_type(self):
+        with self.assertRaisesRegex(ValueError, "item_type must be 'card'"):
+            notion_tools.edit_notion_item(
+                {"item_type": "task", "page_id": "task-id", "note_name": "Test"},
                 _build_context(),
             )
 
     @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
-    def test_edit_notion_item_ignores_empty_task_fields(self, mock_update_page):
-        mock_update_page.return_value = {"id": "task-1", "updated_fields": ["done"]}
-
-        result = notion_tools.edit_notion_item(
-            {
-                "item_type": "task",
-                "page_id": "task-id",
-                "task_name": "   ",
-                "due_date": "",
-                "done": True,
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "task-1")
-        payload = mock_update_page.call_args.args[0]
-        self.assertEqual(payload, {"item_type": "task", "page_id": "task-id", "done": True})
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
     def test_edit_notion_item_accepts_page_content_update(self, mock_update_page):
-        mock_update_page.return_value = {"id": "task-1", "updated_fields": ["content"]}
+        mock_update_page.return_value = {"id": "card-1", "updated_fields": ["content"]}
 
         result = notion_tools.edit_notion_item(
             {
-                "item_type": "task",
-                "page_id": "task-id",
+                "item_type": "card",
+                "page_id": "card-id",
                 "content": "# Novo conteúdo\n\n- item",
                 "content_mode": "replace",
             },
             _build_context(),
         )
 
-        self.assertEqual(result["id"], "task-1")
+        self.assertEqual(result["id"], "card-1")
         payload = mock_update_page.call_args.args[0]
         self.assertEqual(payload["content_mode"], "replace")
         self.assertIn("Novo conteúdo", payload["content"])
@@ -1345,43 +834,6 @@ class TestAssistantTools(unittest.TestCase):
                     {"name": "Maria Silva"},
                     _build_context(memories_dir=temp_dir),
                 )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
-    def test_check_daily_logging_status_returns_counts_when_logged(self, mock_meals, mock_exercises):
-        mock_meals.return_value = [
-            {"id": "m1", "food": "Arroz", "meal_type": "ALMOÇO", "calories": 300.0, "date": "2026-03-25"},
-            {"id": "m2", "food": "Frango", "meal_type": "ALMOÇO", "calories": 200.0, "date": "2026-03-25"},
-            {"id": "m3", "food": "Café", "meal_type": "CAFÉ DA MANHÃ", "calories": 50.0, "date": "2026-03-25"},
-        ]
-        mock_exercises.return_value = [
-            {"id": "e1", "activity": "Corrida", "calories": 400.0, "date": "2026-03-25"},
-        ]
-
-        result = notion_tools.check_daily_logging_status({}, _build_context())
-
-        self.assertTrue(result["meals_logged"])
-        self.assertEqual(result["meal_count"], 3)
-        self.assertIn("ALMOÇO", result["meal_types_logged"])
-        self.assertIn("CAFÉ DA MANHÃ", result["meal_types_logged"])
-        self.assertTrue(result["exercises_logged"])
-        self.assertEqual(result["exercise_count"], 1)
-        self.assertEqual(result["exercise_names"], ["Corrida"])
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_exercises_from_database")
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_meals_from_database")
-    def test_check_daily_logging_status_returns_false_when_empty(self, mock_meals, mock_exercises):
-        mock_meals.return_value = []
-        mock_exercises.return_value = []
-
-        result = notion_tools.check_daily_logging_status({}, _build_context())
-
-        self.assertFalse(result["meals_logged"])
-        self.assertEqual(result["meal_count"], 0)
-        self.assertEqual(result["meal_types_logged"], [])
-        self.assertFalse(result["exercises_logged"])
-        self.assertEqual(result["exercise_count"], 0)
-        self.assertEqual(result["exercise_names"], [])
 
 
 class TestBuildScheduledExecutionMessage(unittest.TestCase):

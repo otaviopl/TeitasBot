@@ -27,12 +27,7 @@ def _env_setup(monkeypatch, tmp_path):
     # Set Notion env vars to empty so load_dotenv() won't reload from .env
     for var in (
         "NOTION_API_KEY",
-        "NOTION_DATABASE_ID",
         "NOTION_NOTES_DB_ID",
-        "NOTION_EXERCISES_DB_ID",
-        "NOTION_MEALS_DB_ID",
-        "NOTION_EXPENSES_DB_ID",
-        "NOTION_MONTHLY_BILLS_DB_ID",
     ):
         monkeypatch.setenv(var, "")
 
@@ -82,7 +77,7 @@ class TestNotionCheckNoApiKey:
         data = res.json()
         assert data["api_key_configured"] is False
         assert isinstance(data["databases"], dict)
-        assert len(data["databases"]) == 6
+        assert len(data["databases"]) == 1
         for status in data["databases"].values():
             assert status == "not_configured"
 
@@ -90,11 +85,11 @@ class TestNotionCheckNoApiKey:
 class TestNotionCheckResponseStructure:
     def test_response_has_correct_structure(self, client, auth_token, monkeypatch):
         monkeypatch.setenv("NOTION_API_KEY", "fake-api-key")
+        monkeypatch.setenv("NOTION_NOTES_DB_ID", "db-notes-id")
         import web_app.dependencies as deps
         deps._credential_store = None
 
         with patch("web_app.app._check_notion_database", return_value="ok"):
-            monkeypatch.setenv("NOTION_DATABASE_ID", "db-tarefas-id")
             res = client.get("/api/notion/check", headers=_auth(auth_token))
 
         assert res.status_code == 200
@@ -103,20 +98,19 @@ class TestNotionCheckResponseStructure:
         assert "databases" in data
         assert data["api_key_configured"] is True
 
-        expected_names = {"Tarefas", "Anotações", "Exercícios", "Refeições", "Despesas", "Controle Financeiro"}
+        expected_names = {"Anotações"}
         assert set(data["databases"].keys()) == expected_names
 
 
 class TestNotionCheckDatabaseStatuses:
     def test_mixed_statuses(self, client, auth_token, monkeypatch):
         monkeypatch.setenv("NOTION_API_KEY", "fake-api-key")
-        monkeypatch.setenv("NOTION_DATABASE_ID", "db-tarefas-id")
         monkeypatch.setenv("NOTION_NOTES_DB_ID", "db-notes-id")
         import web_app.dependencies as deps
         deps._credential_store = None
 
         def mock_check(db_id, api_key):
-            if db_id == "db-tarefas-id":
+            if db_id == "db-notes-id":
                 return "ok"
             return "error"
 
@@ -126,20 +120,11 @@ class TestNotionCheckDatabaseStatuses:
         assert res.status_code == 200
         data = res.json()
         assert data["api_key_configured"] is True
-        assert data["databases"]["Tarefas"] == "ok"
-        assert data["databases"]["Anotações"] == "error"
-        # Databases without env vars should be not_configured
-        assert data["databases"]["Exercícios"] == "not_configured"
-        assert data["databases"]["Refeições"] == "not_configured"
+        assert data["databases"]["Anotações"] == "ok"
 
     def test_all_databases_ok(self, client, auth_token, monkeypatch):
         monkeypatch.setenv("NOTION_API_KEY", "fake-api-key")
-        monkeypatch.setenv("NOTION_DATABASE_ID", "db1")
-        monkeypatch.setenv("NOTION_NOTES_DB_ID", "db2")
-        monkeypatch.setenv("NOTION_EXERCISES_DB_ID", "db3")
-        monkeypatch.setenv("NOTION_MEALS_DB_ID", "db4")
-        monkeypatch.setenv("NOTION_EXPENSES_DB_ID", "db5")
-        monkeypatch.setenv("NOTION_MONTHLY_BILLS_DB_ID", "db6")
+        monkeypatch.setenv("NOTION_NOTES_DB_ID", "db-notes")
         import web_app.dependencies as deps
         deps._credential_store = None
 

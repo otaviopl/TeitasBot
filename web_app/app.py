@@ -488,15 +488,10 @@ async def delete_note(
     return {"status": "ok"}
 
 
-# ---- Notion connectivity check ----
+# ---- Notion connectivity check (Notes only — other data is in SQLite) ----
 
 _NOTION_DATABASES = {
-    "Tarefas": ("notion_database_id", "NOTION_DATABASE_ID"),
     "Anotações": ("notion_notes_db_id", "NOTION_NOTES_DB_ID"),
-    "Exercícios": ("notion_exercises_db_id", "NOTION_EXERCISES_DB_ID"),
-    "Refeições": ("notion_meals_db_id", "NOTION_MEALS_DB_ID"),
-    "Despesas": ("notion_expenses_db_id", "NOTION_EXPENSES_DB_ID"),
-    "Controle Financeiro": ("notion_monthly_bills_db_id", "NOTION_MONTHLY_BILLS_DB_ID"),
 }
 
 
