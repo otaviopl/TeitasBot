@@ -615,79 +615,52 @@ html, body {
 }
 
 .sidebar-footer {
-    padding: 12px 16px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 16px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--color-border);
     flex-shrink: 0;
 }
 
-.sidebar-footer .btn-google-connect {
-    width: 100%;
+.sidebar-footer-icons {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    margin-bottom: 8px;
-    font-size: 0.85rem;
+    gap: 8px;
+}
+
+.sidebar-footer-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     color: var(--color-text-muted);
     background: transparent;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    position: relative;
 }
 
-.sidebar-footer .btn-google-connect:hover {
+.sidebar-footer-icon:hover {
     background: rgba(0, 0, 0, 0.04);
     color: var(--color-text);
 }
 
-.sidebar-footer .btn-google-connect.connected {
+.sidebar-footer-icon.connected {
     color: #16a34a;
     border-color: #16a34a44;
 }
 
-.sidebar-footer .btn-google-connect.disconnected {
+.sidebar-footer-icon.disconnected {
     color: #dc2626;
     border-color: #dc262644;
 }
 
-.sidebar-footer .btn-notion-status {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    margin-bottom: 8px;
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-
-.sidebar-footer .btn-notion-status:hover {
-    background: rgba(0, 0, 0, 0.04);
-    color: var(--color-text);
-}
-
-.sidebar-footer .btn-notion-status.connected {
-    color: #16a34a;
-    border-color: #16a34a44;
-}
-
-.sidebar-footer .btn-notion-status.disconnected {
-    color: #dc2626;
-    border-color: #dc262644;
-}
-
-.sidebar-footer .btn-notion-status.partial {
-    color: #d97706;
-    border-color: #d9770644;
+.sidebar-footer-icon-label {
+    display: none;
 }
 
 /* Notion status modal */
@@ -764,26 +737,6 @@ html, body {
 }
 
 /* ---- Memories modal ---- */
-.sidebar-footer .btn-memories {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    margin-bottom: 8px;
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-.sidebar-footer .btn-memories:hover {
-    background: rgba(0, 0, 0, 0.04);
-    color: var(--color-text);
-}
 .memories-modal-overlay {
     display: none;
     position: fixed;
@@ -859,27 +812,6 @@ html, body {
 }
 .memories-file.expanded .memories-file-content {
     display: block;
-}
-
-.sidebar-footer .btn-logout {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-
-.sidebar-footer .btn-logout:hover {
-    background: rgba(0, 0, 0, 0.04);
-    color: var(--color-text);
 }
 
 /* ---- Chat main area ---- */
