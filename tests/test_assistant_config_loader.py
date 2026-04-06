@@ -15,14 +15,14 @@ class TestAssistantConfigLoader(unittest.TestCase):
         self.assertIn("list_notion_notes", agent.tools)
         self.assertIn("create_notion_note", agent.tools)
         self.assertIn("edit_notion_item", agent.tools)
-        self.assertIn("list_unpaid_monthly_bills", agent.tools)
-        self.assertIn("mark_monthly_bill_as_paid", agent.tools)
-        self.assertIn("analyze_monthly_bills", agent.tools)
-        self.assertIn("register_notion_meal", agent.tools)
-        self.assertIn("analyze_notion_meals", agent.tools)
-        self.assertIn("register_notion_exercise", agent.tools)
-        self.assertIn("edit_notion_exercise", agent.tools)
-        self.assertIn("analyze_notion_exercises", agent.tools)
+        self.assertIn("list_bills", agent.tools)
+        self.assertIn("pay_bill", agent.tools)
+        self.assertIn("analyze_bills", agent.tools)
+        self.assertIn("register_meal", agent.tools)
+        self.assertIn("analyze_meals", agent.tools)
+        self.assertIn("register_exercise", agent.tools)
+        self.assertIn("edit_exercise", agent.tools)
+        self.assertIn("analyze_exercises", agent.tools)
         self.assertIn("calculate_metabolism_profile", agent.tools)
         self.assertIn("register_metabolism_profile", agent.tools)
         self.assertIn("get_metabolism_history", agent.tools)
@@ -41,19 +41,19 @@ class TestAssistantConfigLoader(unittest.TestCase):
         self.assertNotIn("orientações incisivas e diretas", agent.system_prompt)
         self.assertIn(
             "orientações incisivas e diretas",
-            configuration.tools["analyze_notion_meals"].prompt_guidance,
+            configuration.tools["analyze_meals"].prompt_guidance,
         )
         self.assertIn(
             "unidade original do usuário",
-            configuration.tools["register_notion_meal"].prompt_guidance,
+            configuration.tools["register_meal"].prompt_guidance,
         )
         self.assertIn(
             "duplicate_exercise_found",
-            configuration.tools["register_notion_exercise"].prompt_guidance,
+            configuration.tools["register_exercise"].prompt_guidance,
         )
         self.assertIn(
             "parâmetro date",
-            configuration.tools["analyze_monthly_expenses"].prompt_guidance,
+            configuration.tools["analyze_expenses"].prompt_guidance,
         )
 
     def test_load_configuration_reads_prompt_guidance_and_priority(self):
@@ -84,13 +84,13 @@ class TestAssistantConfigLoader(unittest.TestCase):
 
     def test_write_tools_flagged_as_write_operations(self):
         configuration = load_assistant_configuration()
-        self.assertTrue(configuration.tools["create_notion_task"].write_operation)
+        self.assertTrue(configuration.tools["create_task"].write_operation)
         self.assertTrue(configuration.tools["create_notion_note"].write_operation)
         self.assertTrue(configuration.tools["edit_notion_item"].write_operation)
-        self.assertTrue(configuration.tools["mark_monthly_bill_as_paid"].write_operation)
-        self.assertTrue(configuration.tools["register_notion_meal"].write_operation)
-        self.assertTrue(configuration.tools["register_notion_exercise"].write_operation)
-        self.assertTrue(configuration.tools["edit_notion_exercise"].write_operation)
+        self.assertTrue(configuration.tools["pay_bill"].write_operation)
+        self.assertTrue(configuration.tools["register_meal"].write_operation)
+        self.assertTrue(configuration.tools["register_exercise"].write_operation)
+        self.assertTrue(configuration.tools["edit_exercise"].write_operation)
         self.assertTrue(configuration.tools["register_metabolism_profile"].write_operation)
         self.assertTrue(configuration.tools["create_scheduled_task"].write_operation)
         self.assertTrue(configuration.tools["edit_scheduled_task"].write_operation)

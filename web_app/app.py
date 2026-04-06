@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from web_app.auth import create_access_token
-from web_app.dependencies import get_assistant_service, get_credential_store, get_current_user, get_google_oauth, get_user_store
+from web_app.dependencies import get_assistant_service, get_credential_store, get_current_user, get_google_oauth, get_health_store, get_user_store
 from web_app.user_store import WebUserStore
 
 load_dotenv()
@@ -671,26 +671,6 @@ _MAX_CALORIES = 50000
 _MAX_FUTURE_DAYS = 30
 
 
-def _resolve_notion_for_health(user: dict):
-    """Resolve Notion API key and meals/exercises DB IDs for the current user."""
-    from utils.load_credentials import _resolve
-
-    user_id = f"web:{user['username']}"
-    store = get_credential_store()
-
-    api_key = _resolve("notion_api_key", "NOTION_API_KEY", user_id, store)
-    meals_db = _resolve("notion_meals_db_id", "NOTION_MEALS_DB_ID", user_id, store)
-    exercises_db = _resolve("notion_exercises_db_id", "NOTION_EXERCISES_DB_ID", user_id, store)
-
-    return {
-        "user_id": user_id,
-        "store": store,
-        "api_key": api_key,
-        "meals_db_id": meals_db,
-        "exercises_db_id": exercises_db,
-    }
-
-
 def _parse_date_param(date_str: str | None, default_date=None) -> str:
     """Validate and return a YYYY-MM-DD date string."""
     import datetime as _dt
@@ -715,55 +695,32 @@ async def health_dashboard(
     user: dict = Depends(get_current_user),
 ):
     """Daily health dashboard: meals + exercises + totals for a given date."""
-    from notion_connector import notion_connector as nc
-    from utils import create_logger
+    from assistant_connector.health_store import HealthStore
 
-    logger = create_logger.create_logger()
     target_date = _parse_date_param(date)
-    notion = _resolve_notion_for_health(user)
-
-    if not notion["api_key"] or (not notion["meals_db_id"] and not notion["exercises_db_id"]):
-        return {
-            "notion_configured": False,
-            "date": target_date,
-            "meals": [],
-            "exercises": [],
-            "totals": {"calories_consumed": 0, "calories_burned": 0, "balance": 0},
-        }
-
-    start_dt = f"{target_date}T00:00:00Z"
-    end_dt = f"{target_date}T23:59:59Z"
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
 
     async def fetch_meals():
-        if not notion["meals_db_id"]:
-            return []
         try:
             return await asyncio.to_thread(
-                nc.collect_meals_from_database,
-                start_datetime=start_dt,
-                end_datetime=end_dt,
-                project_logger=logger,
-                user_id=notion["user_id"],
-                credential_store=notion["store"],
+                store.list_meals_by_date_range,
+                user_id=user_id,
+                start_date=target_date,
+                end_date=target_date,
             )
         except Exception:
-            logger.warning("Failed to fetch meals for %s", target_date, exc_info=True)
             return []
 
     async def fetch_exercises():
-        if not notion["exercises_db_id"]:
-            return []
         try:
             return await asyncio.to_thread(
-                nc.collect_exercises_from_database,
-                start_datetime=start_dt,
-                end_datetime=end_dt,
-                project_logger=logger,
-                user_id=notion["user_id"],
-                credential_store=notion["store"],
+                store.list_exercises_by_date_range,
+                user_id=user_id,
+                start_date=target_date,
+                end_date=target_date,
             )
         except Exception:
-            logger.warning("Failed to fetch exercises for %s", target_date, exc_info=True)
             return []
 
     meals, exercises = await asyncio.gather(fetch_meals(), fetch_exercises())
@@ -772,7 +729,6 @@ async def health_dashboard(
     calories_burned = sum(float(e.get("calories") or 0) for e in exercises)
 
     return {
-        "notion_configured": True,
         "date": target_date,
         "meals": meals,
         "exercises": exercises,
@@ -792,55 +748,38 @@ async def health_weekly(
     """Weekly summary: per-day calorie totals for the last 7 days."""
     import datetime as _dt
 
-    from notion_connector import notion_connector as nc
-    from utils import create_logger
+    from assistant_connector.health_store import HealthStore
 
-    logger = create_logger.create_logger()
     target_end = _parse_date_param(end_date)
     end = _dt.date.fromisoformat(target_end)
     start = end - _dt.timedelta(days=6)
-
-    notion = _resolve_notion_for_health(user)
-
-    if not notion["api_key"] or (not notion["meals_db_id"] and not notion["exercises_db_id"]):
-        return {"notion_configured": False, "days": []}
-
-    start_dt = f"{start.isoformat()}T00:00:00Z"
-    end_dt = f"{target_end}T23:59:59Z"
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
 
     async def fetch_meals():
-        if not notion["meals_db_id"]:
-            return []
         try:
             return await asyncio.to_thread(
-                nc.collect_meals_from_database,
-                start_datetime=start_dt,
-                end_datetime=end_dt,
-                project_logger=logger,
-                user_id=notion["user_id"],
-                credential_store=notion["store"],
+                store.list_meals_by_date_range,
+                user_id=user_id,
+                start_date=start.isoformat(),
+                end_date=target_end,
             )
         except Exception:
             return []
 
     async def fetch_exercises():
-        if not notion["exercises_db_id"]:
-            return []
         try:
             return await asyncio.to_thread(
-                nc.collect_exercises_from_database,
-                start_datetime=start_dt,
-                end_datetime=end_dt,
-                project_logger=logger,
-                user_id=notion["user_id"],
-                credential_store=notion["store"],
+                store.list_exercises_by_date_range,
+                user_id=user_id,
+                start_date=start.isoformat(),
+                end_date=target_end,
             )
         except Exception:
             return []
 
     meals, exercises = await asyncio.gather(fetch_meals(), fetch_exercises())
 
-    # Group by date
     days_map: dict[str, dict] = {}
     for i in range(7):
         d = (start + _dt.timedelta(days=i)).isoformat()
@@ -865,7 +804,7 @@ async def health_weekly(
         entry["calories_burned"] = round(entry["calories_burned"], 1)
         days.append(entry)
 
-    return {"notion_configured": True, "days": days}
+    return {"days": days}
 
 
 class CreateMealRequest(BaseModel):
@@ -880,13 +819,10 @@ async def create_health_meal(
     body: CreateMealRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Register a meal in the Notion meals database."""
-    from notion_connector import notion_connector as nc
-    from utils import create_logger
+    """Register a meal in the local SQLite health database."""
+    from assistant_connector.health_store import HealthStore
+    from assistant_connector.health_store import parse_quantity_details, normalize_quantity
 
-    logger = create_logger.create_logger()
-
-    # Validate
     food = body.food.strip()
     if not food or len(food) > _MAX_FOOD_LEN:
         raise HTTPException(status_code=400, detail=f"food must be 1-{_MAX_FOOD_LEN} characters")
@@ -899,24 +835,30 @@ async def create_health_meal(
     if body.estimated_calories <= 0 or body.estimated_calories > _MAX_CALORIES:
         raise HTTPException(status_code=400, detail=f"estimated_calories must be between 0 and {_MAX_CALORIES}")
 
-    notion = _resolve_notion_for_health(user)
-    if not notion["api_key"] or not notion["meals_db_id"]:
-        raise HTTPException(status_code=400, detail="Notion meals database not configured")
-
     from utils.timezone_utils import today_iso_in_configured_timezone
 
+    normalized_amount = None
+    normalized_unit = None
+    try:
+        qty_details = parse_quantity_details(quantity)
+        qty_normalized = normalize_quantity(qty_details)
+        normalized_amount = qty_normalized["amount"]
+        normalized_unit = qty_normalized["unit"]
+    except (ValueError, Exception):
+        pass
+
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
     result = await asyncio.to_thread(
-        nc.create_meal_in_meals_db,
-        {
-            "food": food,
-            "meal_type": meal_type,
-            "quantity": quantity,
-            "date": today_iso_in_configured_timezone(),
-            "estimated_calories": body.estimated_calories,
-        },
-        project_logger=logger,
-        user_id=notion["user_id"],
-        credential_store=notion["store"],
+        store.create_meal,
+        user_id=user_id,
+        food=food,
+        meal_type=meal_type,
+        quantity=quantity,
+        calories=body.estimated_calories,
+        date=today_iso_in_configured_timezone(),
+        normalized_amount=normalized_amount,
+        normalized_unit=normalized_unit,
     )
     return {"status": "created", "meal": result}
 
@@ -933,11 +875,8 @@ async def create_health_exercise(
     body: CreateExerciseRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Register an exercise in the Notion exercises database."""
-    from notion_connector import notion_connector as nc
-    from utils import create_logger
-
-    logger = create_logger.create_logger()
+    """Register an exercise in the local SQLite health database."""
+    from assistant_connector.health_store import HealthStore
 
     activity = body.activity.strip()
     if not activity or len(activity) > _MAX_ACTIVITY_LEN:
@@ -948,24 +887,18 @@ async def create_health_exercise(
     if len(observations) > _MAX_OBSERVATIONS_LEN:
         raise HTTPException(status_code=400, detail=f"observations must be at most {_MAX_OBSERVATIONS_LEN} characters")
 
-    notion = _resolve_notion_for_health(user)
-    if not notion["api_key"] or not notion["exercises_db_id"]:
-        raise HTTPException(status_code=400, detail="Notion exercises database not configured")
-
     from utils.timezone_utils import today_iso_in_configured_timezone
 
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
     result = await asyncio.to_thread(
-        nc.create_exercise_in_exercises_db,
-        {
-            "activity": activity,
-            "calories": body.calories,
-            "date": today_iso_in_configured_timezone(),
-            "observations": observations,
-            "done": body.done,
-        },
-        project_logger=logger,
-        user_id=notion["user_id"],
-        credential_store=notion["store"],
+        store.create_exercise,
+        user_id=user_id,
+        activity=activity,
+        calories=body.calories,
+        date=today_iso_in_configured_timezone(),
+        observations=observations,
+        done=body.done,
     )
     return {"status": "created", "exercise": result}
 
@@ -977,20 +910,17 @@ class UpdateExerciseRequest(BaseModel):
     done: bool | None = None
 
 
-@app.patch("/api/health/exercises/{page_id}")
+@app.patch("/api/health/exercises/{exercise_id}")
 async def update_health_exercise(
-    page_id: str,
+    exercise_id: str,
     body: UpdateExerciseRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Update an exercise in the Notion exercises database."""
-    from notion_connector import notion_connector as nc
-    from utils import create_logger
+    """Update an exercise in the local SQLite health database."""
+    from assistant_connector.health_store import HealthStore
 
-    logger = create_logger.create_logger()
-
-    if not page_id.strip():
-        raise HTTPException(status_code=400, detail="page_id is required")
+    if not exercise_id.strip():
+        raise HTTPException(status_code=400, detail="exercise_id is required")
 
     kwargs: dict = {}
     if body.activity is not None:
@@ -1012,18 +942,17 @@ async def update_health_exercise(
     if not kwargs:
         raise HTTPException(status_code=400, detail="At least one field must be provided to update")
 
-    notion = _resolve_notion_for_health(user)
-    if not notion["api_key"] or not notion["exercises_db_id"]:
-        raise HTTPException(status_code=400, detail="Notion exercises database not configured")
-
-    result = await asyncio.to_thread(
-        nc.update_exercise_in_exercises_db,
-        page_id.strip(),
-        project_logger=logger,
-        user_id=notion["user_id"],
-        credential_store=notion["store"],
-        **kwargs,
-    )
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    try:
+        result = await asyncio.to_thread(
+            store.update_exercise,
+            user_id=user_id,
+            exercise_id=exercise_id.strip(),
+            **kwargs,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return result
 
 

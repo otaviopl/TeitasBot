@@ -23,9 +23,9 @@
       }
     },
     {
-      "name": "list_notion_tasks",
-      "description": "Busca tarefas pendentes no Notion com prazo próximo e atrasadas.",
-      "handler": "assistant_connector.tools.notion_tools:list_notion_tasks",
+      "name": "list_tasks",
+      "description": "Busca tarefas pendentes no banco local com prazo próximo e atrasadas.",
+      "handler": "assistant_connector.tools.health_tools:list_tasks",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -47,9 +47,9 @@
       }
     },
     {
-      "name": "create_notion_task",
-      "description": "Cria uma tarefa no Notion.",
-      "handler": "assistant_connector.tools.notion_tools:create_notion_task",
+      "name": "create_task",
+      "description": "Cria uma tarefa no banco local de tarefas.",
+      "handler": "assistant_connector.tools.health_tools:create_task",
       "write_operation": true,
       "input_schema": {
         "type": "object",
@@ -80,6 +80,52 @@
         },
         "required": [
           "task_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_task",
+      "description": "Edita uma tarefa existente no banco local. Use o id retornado por list_tasks.",
+      "handler": "assistant_connector.tools.health_tools:edit_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa (UUID retornado por list_tasks ou create_task)."
+          },
+          "task_name": {
+            "type": "string",
+            "description": "Novo nome da tarefa."
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Nova data no formato YYYY-MM-DD."
+          },
+          "project": {
+            "type": "string",
+            "description": "Novo projeto da tarefa."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Nova lista de tags."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Marca tarefa como concluída (true) ou pendente (false)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "task_id"
         ],
         "additionalProperties": false
       }
@@ -353,11 +399,11 @@
       }
     },
     {
-      "name": "register_financial_expense",
-      "description": "Registra um gasto como nova página no database de despesas do Notion (NOTION_EXPENSES_DB_ID), preenchendo Valor e usando categoria consistente para análises futuras.",
+      "name": "register_expense",
+      "description": "Registra um gasto no banco local de despesas com categoria consistente para análises futuras.",
       "prompt_guidance": "Quando registrar gastos, priorize categorias consistentes e úteis para análises futuras. Se houver ambiguidade de categoria, escolha a mais estável para relatórios mensais.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:register_financial_expense",
+      "handler": "assistant_connector.tools.finance_tools:register_expense",
       "write_operation": true,
       "input_schema": {
         "type": "object",
@@ -391,11 +437,11 @@
       }
     },
     {
-      "name": "analyze_monthly_expenses",
-      "description": "Consulta e analisa gastos do mês no database de despesas, com totais, breakdowns e lista detalhada (inclusive filtro por dia).",
+      "name": "analyze_expenses",
+      "description": "Consulta e analisa gastos do mês no banco local de despesas, com totais, breakdowns e lista detalhada (inclusive filtro por dia).",
       "prompt_guidance": "Quando o usuário pedir gastos de hoje ou de um dia específico, use o parâmetro date (YYYY-MM-DD) para retornar lista detalhada do dia, além de totais.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:analyze_monthly_expenses",
+      "handler": "assistant_connector.tools.finance_tools:analyze_expenses",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -420,7 +466,7 @@
     },
     {
       "name": "edit_notion_item",
-      "description": "Edita uma tarefa (task) ou card no Notion usando o ID da página retornado pelas tools de listagem.",
+      "description": "Edita um card de nota no Notion usando o ID da página retornado pelas tools de listagem.",
       "handler": "assistant_connector.tools.notion_tools:edit_notion_item",
       "write_operation": true,
       "input_schema": {
@@ -428,38 +474,14 @@
         "properties": {
           "item_type": {
             "type": "string",
-            "description": "Tipo do item a editar: task ou card.",
+            "description": "Tipo do item a editar: apenas card.",
             "enum": [
-              "task",
               "card"
             ]
           },
           "page_id": {
             "type": "string",
             "description": "ID da página do Notion (aceita ID ou URL da página)."
-          },
-          "task_name": {
-            "type": "string",
-            "description": "Novo nome da tarefa (item_type=task)."
-          },
-          "due_date": {
-            "type": "string",
-            "description": "Nova data da tarefa no formato YYYY-MM-DD (item_type=task)."
-          },
-          "project": {
-            "type": "string",
-            "description": "Novo projeto da tarefa (item_type=task)."
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Nova lista de tags da tarefa (item_type=task)."
-          },
-          "done": {
-            "type": "boolean",
-            "description": "Marca tarefa como concluída/pendente (item_type=task)."
           },
           "note_name": {
             "type": "string",
@@ -860,11 +882,11 @@
       }
     },
     {
-      "name": "list_unpaid_monthly_bills",
-      "description": "Lista contas fixas mensais ainda não pagas no Notion (NOTION_MONTHLY_BILLS_DB_ID).",
+      "name": "list_bills",
+      "description": "Lista contas fixas mensais ainda não pagas no banco local.",
       "prompt_guidance": "Para contas fixas mensais, use esta tool para consultar pendências antes de recomendar pagamento ou ajustes.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:list_unpaid_monthly_bills",
+      "handler": "assistant_connector.tools.finance_tools:list_bills",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -884,18 +906,18 @@
       }
     },
     {
-      "name": "mark_monthly_bill_as_paid",
-      "description": "Marca uma conta fixa mensal como paga no Notion, com valor pago opcional.",
+      "name": "pay_bill",
+      "description": "Marca uma conta fixa mensal como paga no banco local, com valor pago opcional.",
       "prompt_guidance": "Use esta tool para registrar pagamento de conta fixa mensal somente após confirmação explícita do usuário.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:mark_monthly_bill_as_paid",
+      "handler": "assistant_connector.tools.finance_tools:pay_bill",
       "write_operation": true,
       "input_schema": {
         "type": "object",
         "properties": {
-          "page_id": {
+          "bill_id": {
             "type": "string",
-            "description": "ID da página da conta no Notion (aceita ID ou URL)."
+            "description": "ID da conta no banco local (UUID retornado por list_bills ou analyze_bills)."
           },
           "paid_amount": {
             "type": "number",
@@ -911,17 +933,17 @@
           }
         },
         "required": [
-          "page_id"
+          "bill_id"
         ],
         "additionalProperties": false
       }
     },
     {
-      "name": "analyze_monthly_bills",
-      "description": "Analisa contas fixas mensais do Notion, com totais, pendências e breakdown por categoria.",
+      "name": "analyze_bills",
+      "description": "Analisa contas fixas mensais no banco local, com totais, pendências e breakdown por categoria.",
       "prompt_guidance": "Use esta tool para análises de contas fixas mensais (totais, pendências e categorias) e para orientar priorização de pagamentos.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:analyze_monthly_bills",
+      "handler": "assistant_connector.tools.finance_tools:analyze_bills",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -935,11 +957,11 @@
       }
     },
     {
-      "name": "register_notion_meal",
-      "description": "Registra alimento consumido no Notion Meals usando calorias estimadas pela LLM e quantidade na unidade informada pelo usuário.",
+      "name": "register_meal",
+      "description": "Registra alimento consumido no banco local de refeições usando calorias estimadas pela LLM e quantidade na unidade informada pelo usuário.",
       "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte as memórias de saúde (health.md) para obter a quantidade rotineira daquele suplemento específico e use-a sem perguntar; (2) para calorias_estimadas, consulte health.md — cada suplemento tem seu valor de kcal registrado; use exatamente esse valor. Se o suplemento não tiver kcal definido em health.md, pergunte ao usuário antes de registrar. Para refeições normais, estime as calorias com base no alimento e na quantidade. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:register_notion_meal",
+      "handler": "assistant_connector.tools.health_tools:register_meal",
       "write_operation": true,
       "auto_confirm": true,
       "input_schema": {
@@ -983,11 +1005,11 @@
       }
     },
     {
-      "name": "analyze_notion_meals",
-      "description": "Analisa refeições registradas no Notion Meals e retorna métricas + insights nutricionais.",
+      "name": "analyze_meals",
+      "description": "Analisa refeições registradas no banco local e retorna métricas + insights nutricionais.",
       "prompt_guidance": "Ao analisar refeições, entregue orientações incisivas e diretas sobre qualidade alimentar e cobre plano de correção com ações concretas quando identificar desvios.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:analyze_notion_meals",
+      "handler": "assistant_connector.tools.health_tools:analyze_meals",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -1015,11 +1037,11 @@
       }
     },
     {
-      "name": "register_notion_exercise",
-      "description": "Registra atividade física no Notion Exercises com calorias e status de conclusão (Done), incluindo planejamento futuro. Detecta duplicatas automaticamente.",
-      "prompt_guidance": "Antes de registrar um exercício, verifique se já existe um registro planejado (done=false) para a mesma atividade e data. Se register_notion_exercise retornar 'duplicate_exercise_found', use edit_notion_exercise com o page_id retornado para atualizar o registro existente (preencher detalhes e marcar done=true). Use done=false ao planejar atividades futuras e done=true quando a atividade estiver concluída. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
+      "name": "register_exercise",
+      "description": "Registra atividade física no banco local de exercícios com calorias e status de conclusão (Done), incluindo planejamento futuro. Detecta duplicatas automaticamente.",
+      "prompt_guidance": "Antes de registrar um exercício, verifique se já existe um registro planejado (done=false) para a mesma atividade e data. Se register_exercise retornar 'duplicate_exercise_found', use edit_exercise com o exercise_id retornado para atualizar o registro existente (preencher detalhes e marcar done=true). Use done=false ao planejar atividades futuras e done=true quando a atividade estiver concluída. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:register_notion_exercise",
+      "handler": "assistant_connector.tools.health_tools:register_exercise",
       "write_operation": true,
       "auto_confirm": true,
       "input_schema": {
@@ -1058,19 +1080,19 @@
       }
     },
     {
-      "name": "edit_notion_exercise",
-      "description": "Edita um registro de atividade física no Notion Exercises, incluindo o campo de conclusão (Done).",
-      "prompt_guidance": "Use edit_notion_exercise para atualizar exercícios já existentes no Notion. O page_id pode ser obtido via analyze_notion_exercises ou pela resposta de duplicate_exercise_found de register_notion_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true. Não peça confirmação ao usuário — execute diretamente e informe o que foi atualizado.",
+      "name": "edit_exercise",
+      "description": "Edita um registro de atividade física no banco local, incluindo o campo de conclusão (Done).",
+      "prompt_guidance": "Use edit_exercise para atualizar exercícios já existentes. O exercise_id pode ser obtido via analyze_exercises ou pela resposta de duplicate_exercise_found de register_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true. Não peça confirmação ao usuário — execute diretamente e informe o que foi atualizado.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:edit_notion_exercise",
+      "handler": "assistant_connector.tools.health_tools:edit_exercise",
       "write_operation": true,
       "auto_confirm": true,
       "input_schema": {
         "type": "object",
         "properties": {
-          "page_id": {
+          "exercise_id": {
             "type": "string",
-            "description": "ID da página no Notion (aceita ID ou URL)."
+            "description": "ID do exercício no banco local (UUID retornado por analyze_exercises ou register_exercise)."
           },
           "atividade": {
             "type": "string",
@@ -1098,17 +1120,17 @@
           }
         },
         "required": [
-          "page_id"
+          "exercise_id"
         ],
         "additionalProperties": false
       }
     },
     {
-      "name": "analyze_notion_exercises",
-      "description": "Analisa atividades físicas no Notion Exercises considerando o campo Done e correlaciona com refeições.",
+      "name": "analyze_exercises",
+      "description": "Analisa atividades físicas no banco local considerando o campo Done e correlaciona com refeições.",
       "prompt_guidance": "Ao analisar exercícios, acompanhe pendências vs concluídas com base no campo Done e, quando relevante, correlacione calorias de refeições com exercícios.",
       "guidance_priority": 30,
-      "handler": "assistant_connector.tools.notion_tools:analyze_notion_exercises",
+      "handler": "assistant_connector.tools.health_tools:analyze_exercises",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -1141,10 +1163,10 @@
     },
     {
       "name": "check_daily_logging_status",
-      "description": "Verifica se refeições e exercícios já foram registrados hoje no Notion. Retorna contagens e tipos registrados.",
+      "description": "Verifica se refeições e exercícios já foram registrados hoje no banco local. Retorna contagens e tipos registrados.",
       "prompt_guidance": "Use esta ferramenta em lembretes agendados de refeição/exercício. Se o usuário já registrou, parabenize pelo comprometimento como reforço positivo. Se não registrou, cobre o preenchimento de forma direta e motivadora.",
       "guidance_priority": 35,
-      "handler": "assistant_connector.tools.notion_tools:check_daily_logging_status",
+      "handler": "assistant_connector.tools.health_tools:check_daily_logging_status",
       "write_operation": false,
       "input_schema": {
         "type": "object",
@@ -1334,7 +1356,7 @@
           },
           "key": {
             "type": "string",
-            "description": "Nome da credencial. Valores válidos: notion_api_key, notion_database_id, notion_notes_db_id, notion_expenses_db_id, notion_monthly_bills_db_id, notion_meals_db_id, notion_exercises_db_id, email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix. Obrigatório para ações 'set' e 'delete'."
+            "description": "Nome da credencial. Valores válidos: notion_api_key, notion_database_id, notion_notes_db_id, email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix. Obrigatório para ações 'set' e 'delete'."
           },
           "value": {
             "type": "string",
@@ -1479,7 +1501,7 @@
     },
     {
       "name": "generate_nutrition_chart",
-      "description": "Gera um gráfico visual (PNG) com o resumo de nutrição e/ou exercícios do usuário e envia automaticamente para o Telegram junto com a resposta de texto. Use após coletar os dados de refeições (analyze_notion_meals) e/ou exercícios (analyze_notion_exercises). Informe as metas salvas nas memórias do usuário quando disponíveis.",
+      "description": "Gera um gráfico visual (PNG) com o resumo de nutrição e/ou exercícios do usuário e envia automaticamente para o Telegram junto com a resposta de texto. Use após coletar os dados de refeições (analyze_meals) e/ou exercícios (analyze_exercises). Informe as metas salvas nas memórias do usuário quando disponíveis.",
       "handler": "assistant_connector.tools.chart_tools:generate_nutrition_chart",
       "write_operation": false,
       "input_schema": {
@@ -1548,12 +1570,13 @@
       "model": "gpt-4.1-mini",
       "max_tool_rounds": 6,
       "memory_window": 10,
-      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Notion (tarefas, notas, despesas, refeições, exercícios): requer notion_api_key e notion_database_id; bancos adicionais são opcionais (notion_notes_db_id, notion_expenses_db_id, notion_meals_db_id, notion_exercises_db_id, notion_monthly_bills_db_id).\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando, o que ela permite fazer e quais credenciais são necessárias. Sugira que o usuário envie /setup para ver o painel de configuração ou diga algo como 'configure notion_api_key: valor' para salvar uma credencial diretamente.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve usar /google_auth, clicar no link gerado e autenticar no navegador. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas ou dados financeiros sensíveis em memórias.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
+      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, refeições, exercícios, despesas e contas fixas: armazenados localmente, sempre disponíveis sem configuração.\n- Notas (cards): requer notion_api_key e notion_database_id; banco adicional notion_notes_db_id é opcional.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando, o que ela permite fazer e quais credenciais são necessárias. Sugira que o usuário envie /setup para ver o painel de configuração ou diga algo como 'configure notion_api_key: valor' para salvar uma credencial diretamente.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve usar /google_auth, clicar no link gerado e autenticar no navegador. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas ou dados financeiros sensíveis em memórias.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
       "tools": [
         "list_available_tools",
         "list_available_agents",
-        "list_notion_tasks",
-        "create_notion_task",
+        "list_tasks",
+        "create_task",
+        "edit_task",
         "list_scheduled_tasks",
         "create_scheduled_task",
         "edit_scheduled_task",
@@ -1561,13 +1584,13 @@
         "get_application_hardware_status",
         "list_notion_notes",
         "create_notion_note",
-        "register_financial_expense",
-        "analyze_monthly_expenses",
-        "analyze_monthly_bills",
-        "mark_monthly_bill_as_paid",
-        "list_unpaid_monthly_bills",
+        "register_expense",
+        "analyze_expenses",
+        "analyze_bills",
+        "pay_bill",
+        "list_bills",
         "edit_notion_item",
-        "edit_notion_exercise",
+        "edit_exercise",
         "list_calendar_events",
         "create_calendar_event",
         "list_tech_news",
@@ -1579,10 +1602,10 @@
         "search_email_attachments",
         "analyze_email_attachment",
         "send_email",
-        "register_notion_meal",
-        "register_notion_exercise",
-        "analyze_notion_meals",
-        "analyze_notion_exercises",
+        "register_meal",
+        "register_exercise",
+        "analyze_meals",
+        "analyze_exercises",
         "check_daily_logging_status",
         "calculate_metabolism_profile",
         "register_metabolism_profile",
