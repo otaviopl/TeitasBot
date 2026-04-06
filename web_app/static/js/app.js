@@ -298,6 +298,9 @@
     }
 
     async function switchConversation(conversationId) {
+        // Auto-switch to chat tab if not already there
+        if (activeTab !== 'chat') switchTab('chat');
+
         if (conversationId === activeConversationId) return;
         activeConversationId = conversationId;
         localStorage.setItem('pa_active_conversation', conversationId);
@@ -810,6 +813,9 @@
     }
 
     async function selectNote(noteId) {
+        // Auto-switch to notes tab if not already there
+        if (activeTab !== 'notes') switchTab('notes');
+
         // Save pending changes for current note first
         if (activeNoteId && easyMDE) {
             clearTimeout(noteSaveTimer);
