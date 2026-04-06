@@ -92,7 +92,7 @@ NOTE_METADATA_PROMPT = (
     "\nGere dois campos: title e tags."
     "\nRegras:"
     "\n- title: um título curto e descritivo (máx. 60 caracteres) que resuma o conteúdo."
-    "\n- tags: lista de 1 a 5 tags relevantes em minúsculas. Tags são palavras-chave curtas (1-2 palavras)."
+    "\n- tags: lista de 1 a 3 tags relevantes em minúsculas. Tags são palavras-chave curtas (1-2 palavras)."
     "\n- Use o mesmo idioma do conteúdo para título e tags."
     "\n- Se o conteúdo estiver vazio ou for muito curto, use title \"Nova anotação\" e tags []."
     "\n- Não inclua texto fora do JSON."
@@ -302,7 +302,7 @@ def generate_note_metadata(content: str, project_logger) -> dict:
     raw_tags = data.get("tags", [])
     if not isinstance(raw_tags, list):
         raw_tags = []
-    tags = [str(t).strip().lower() for t in raw_tags[:5] if str(t).strip()]
+    tags = [str(t).strip().lower() for t in raw_tags[:3] if str(t).strip()]
 
     return {"title": title, "tags": tags}
 

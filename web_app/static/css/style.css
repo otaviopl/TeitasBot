@@ -541,9 +541,11 @@ html, body {
 .note-item-content {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
 }
 
 .note-item-title {
+    display: block;
     font-size: 0.88rem;
     color: var(--color-text);
     overflow: hidden;
@@ -1213,9 +1215,10 @@ html, body {
 /* Tags in sidebar note items */
 .note-item-tags {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 3px;
     margin-top: 2px;
+    overflow: hidden;
 }
 
 .note-item-tag {
