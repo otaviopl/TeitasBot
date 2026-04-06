@@ -728,6 +728,104 @@ html, body {
     to { transform: rotate(360deg); }
 }
 
+/* ---- Memories modal ---- */
+.sidebar-footer .btn-memories {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.sidebar-footer .btn-memories:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--color-text);
+}
+.memories-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+}
+.memories-modal-overlay.visible {
+    display: flex;
+}
+.memories-modal {
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    min-width: 340px;
+    max-width: 520px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.memories-modal h3 {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.memories-modal-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+.memories-file {
+    margin-bottom: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.memories-file-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(22, 99, 222, 0.06);
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    user-select: none;
+}
+.memories-file-header:hover {
+    background: rgba(22, 99, 222, 0.1);
+}
+.memories-file-header .chevron {
+    transition: transform 0.2s;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+.memories-file.expanded .chevron {
+    transform: rotate(90deg);
+}
+.memories-file-content {
+    display: none;
+    padding: 12px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    border-top: 1px solid var(--color-border);
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--color-text-muted);
+    max-height: 300px;
+    overflow-y: auto;
+}
+.memories-file.expanded .memories-file-content {
+    display: block;
+}
+
 .sidebar-footer .btn-logout {
     width: 100%;
     display: flex;

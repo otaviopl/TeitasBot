@@ -604,6 +604,60 @@ async def google_disconnect(user: dict = Depends(get_current_user)):
     return {"status": "ok"}
 
 
+# ---- Memories endpoints ----
+
+
+@app.get("/api/memories")
+async def list_memories(user: dict = Depends(get_current_user)):
+    """List and return contents of user memory files."""
+    import re
+
+    user_id = f"web:{user['username']}"
+    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", user_id)
+
+    base_dir = os.getenv(
+        "ASSISTANT_MEMORIES_DIR",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "memories")),
+    )
+    user_dir = os.path.join(base_dir, safe_id)
+
+    if not os.path.isdir(user_dir):
+        return {"files": [], "count": 0}
+
+    reserved = {"readme.md"}
+    files = sorted(
+        f
+        for f in os.listdir(user_dir)
+        if f.lower().endswith(".md") and f.lower() not in reserved
+    )
+
+    result = []
+    for fname in files:
+        fpath = os.path.join(user_dir, fname)
+        real = os.path.realpath(fpath)
+        if not real.startswith(os.path.realpath(user_dir)):
+            continue  # path traversal guard
+        try:
+            with open(real, "r", encoding="utf-8") as fh:
+                content = fh.read()
+        except OSError:
+            content = "(erro ao ler arquivo)"
+
+        # Derive a display name from filename
+        display_name = fname.replace("-", " ").replace("_", " ")
+        if display_name.lower().endswith(".md"):
+            display_name = display_name[:-3]
+        display_name = display_name.title()
+
+        result.append({
+            "filename": fname,
+            "display_name": display_name,
+            "content": content,
+        })
+
+    return {"files": result, "count": len(result)}
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}

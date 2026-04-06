@@ -90,6 +90,12 @@
         return '<p>' + text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
     }
 
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // ---- API helpers ----
     function authHeaders(extra) {
         return { 'Authorization': 'Bearer ' + token, ...extra };
@@ -767,6 +773,46 @@
     });
     notionClose.addEventListener('click', function () {
         notionOverlay.classList.remove('visible');
+    });
+
+    // ---- Memories modal ----
+    var memoriesBtn = document.getElementById('btn-memories');
+    var memoriesOverlay = document.getElementById('memories-modal-overlay');
+    var memoriesContent = document.getElementById('memories-modal-content');
+    var memoriesClose = document.getElementById('memories-modal-close');
+
+    memoriesBtn.addEventListener('click', async function () {
+        memoriesOverlay.classList.add('visible');
+        memoriesContent.innerHTML = '<div class="notion-spinner"></div>';
+        try {
+            var resp = await fetch('/api/memories', { headers: authHeaders() });
+            if (!resp.ok) throw new Error();
+            var data = await resp.json();
+            if (data.count === 0) {
+                memoriesContent.innerHTML = '<p style="color:var(--color-text-muted);text-align:center;padding:12px 0">Nenhuma memória encontrada</p>';
+            } else {
+                var html = '';
+                data.files.forEach(function (file) {
+                    html += '<div class="memories-file">' +
+                        '<div class="memories-file-header" onclick="this.parentElement.classList.toggle(\'expanded\')">' +
+                        '<span>\u{1F4C4} ' + escapeHtml(file.display_name) + '</span>' +
+                        '<span class="chevron">\u25B6</span>' +
+                        '</div>' +
+                        '<div class="memories-file-content">' + escapeHtml(file.content) + '</div>' +
+                        '</div>';
+                });
+                memoriesContent.innerHTML = html;
+            }
+        } catch (_) {
+            memoriesContent.innerHTML = '<p style="color:#dc2626;text-align:center;padding:12px 0">Erro ao carregar memórias</p>';
+        }
+    });
+
+    memoriesOverlay.addEventListener('click', function (e) {
+        if (e.target === memoriesOverlay) memoriesOverlay.classList.remove('visible');
+    });
+    memoriesClose.addEventListener('click', function () {
+        memoriesOverlay.classList.remove('visible');
     });
 
     // ================================================

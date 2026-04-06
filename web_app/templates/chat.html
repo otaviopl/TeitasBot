@@ -80,6 +80,13 @@
                     </svg>
                     <span id="google-connect-label">Google: verificando…</span>
                 </button>
+                <button class="btn-memories" id="btn-memories" title="Memórias">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                    <span id="memories-label">Memórias</span>
+                </button>
                 <button class="btn-logout" id="btn-logout-sidebar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -260,6 +267,17 @@
                 <div class="notion-spinner"></div>
             </div>
             <button class="notion-modal-close" id="notion-modal-close">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Memories modal -->
+    <div class="memories-modal-overlay" id="memories-modal-overlay">
+        <div class="memories-modal">
+            <h3>🧠 Memórias</h3>
+            <div class="memories-modal-body" id="memories-modal-content">
+                <div class="notion-spinner"></div>
+            </div>
+            <button class="notion-modal-close" id="memories-modal-close">Fechar</button>
         </div>
     </div>
 
