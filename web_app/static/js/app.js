@@ -40,7 +40,6 @@
     let activeConversationId = localStorage.getItem('pa_active_conversation') || null;
 
     // Notes refs
-    const headerTabs = document.getElementById('header-tabs');
     const conversationListSection = document.getElementById('conversation-list');
     const notesListSection = document.getElementById('notes-list-section');
     const notesListEl = document.getElementById('notes-list');
@@ -104,6 +103,7 @@
 
     // Sidebar nav refs
     const sidebarNavChat = document.getElementById('sidebar-nav-chat');
+    const sidebarNavNotes = document.getElementById('sidebar-nav-notes');
     const sidebarNavHealth = document.getElementById('sidebar-nav-health');
     const sidebarNavFinance = document.getElementById('sidebar-nav-finance');
     const sidebarHeaderEl = document.querySelector('.sidebar-header');
@@ -812,28 +812,16 @@
 
         activeTab = tab;
 
-        // Update header tab buttons (chat / notes only)
-        var headerTab = (tab === 'chat' || tab === 'notes') ? tab : null;
-        headerTabs.querySelectorAll('.header-tab').forEach(function (btn) {
-            btn.classList.toggle('active', btn.dataset.tab === headerTab);
-        });
-        headerTabs.classList.remove('tab-notes-active', 'tab-none-active');
-        if (tab === 'notes') headerTabs.classList.add('tab-notes-active');
-        if (tab === 'health' || tab === 'finance') headerTabs.classList.add('tab-none-active');
-
         // Update sidebar nav buttons
-        sidebarNavChat.classList.toggle('active', tab === 'chat' || tab === 'notes');
+        sidebarNavChat.classList.toggle('active', tab === 'chat');
+        sidebarNavNotes.classList.toggle('active', tab === 'notes');
         sidebarNavHealth.classList.toggle('active', tab === 'health');
         sidebarNavFinance.classList.toggle('active', tab === 'finance');
 
         // Show/hide sidebar list sections
-        var showLists = (tab === 'chat' || tab === 'notes');
-        sidebarHeaderEl.style.display = showLists ? '' : 'none';
-        conversationListSection.style.display = showLists ? '' : 'none';
-        notesListSection.style.display = showLists ? '' : 'none';
-
-        // Hide header tabs (Conversas/Anotações) when in health/finance view
-        headerTabs.style.display = (tab === 'health' || tab === 'finance') ? 'none' : '';
+        sidebarHeaderEl.style.display = (tab === 'chat') ? '' : 'none';
+        conversationListSection.style.display = (tab === 'chat') ? '' : 'none';
+        notesListSection.style.display = (tab === 'notes') ? '' : 'none';
 
         // Hide everything first
         chatSection.classList.add('hidden');
@@ -867,23 +855,12 @@
         }
     }
 
-    headerTabs.addEventListener('click', function (e) {
-        var tab = e.target.dataset && e.target.dataset.tab;
-        if (tab) switchTab(tab);
-    });
-
     // Sidebar nav click handler
     document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
         var btn = e.target.closest('.sidebar-nav-item');
         if (!btn) return;
         var nav = btn.dataset.nav;
-        if (nav === 'chat') {
-            switchTab('chat');
-        } else if (nav === 'health') {
-            switchTab('health');
-        } else if (nav === 'finance') {
-            switchTab('finance');
-        }
+        if (nav) switchTab(nav);
         // On mobile close sidebar after nav selection
         if (window.matchMedia('(max-width: 767px)').matches) {
             sidebar.classList.remove('open');

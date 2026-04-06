@@ -829,64 +829,6 @@ html, body {
 }
 
 /* ---- Header tabs ---- */
-.header-tabs {
-    display: flex;
-    position: relative;
-    background: rgba(22, 99, 222, 0.08);
-    border-radius: 20px;
-    padding: 3px;
-    width: 240px;
-}
-
-/* Sliding pill indicator — 2 tabs */
-.header-tabs::before {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    height: calc(100% - 6px);
-    background: var(--color-bg);
-    border-radius: 18px;
-    box-shadow: var(--shadow-sm);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 0;
-}
-
-.header-tabs.tab-notes-active::before {
-    transform: translateX(100%);
-}
-
-.header-tabs.tab-none-active::before {
-    opacity: 0;
-}
-
-.header-tab {
-    flex: 1 1 0;
-    position: relative;
-    z-index: 1;
-    padding: 5px 10px;
-    text-align: center;
-    font-size: 0.78rem;
-    font-weight: 600;
-    border: none;
-    border-radius: 18px;
-    background: transparent;
-    color: rgba(22, 99, 222, 0.55);
-    cursor: pointer;
-    transition: color 0.25s ease;
-    -webkit-tap-highlight-color: transparent;
-    white-space: nowrap;
-}
-
-.header-tab.active {
-    color: var(--color-blue-start);
-}
-
-.header-tab:hover:not(.active) {
-    color: var(--color-blue-start);
-}
-
 .chat-header-right {
     display: flex;
     gap: 4px;
@@ -2430,15 +2372,6 @@ html, body {
     }
 
     /* ---- Header tabs ---- */
-    .header-tabs {
-        width: 240px;
-    }
-
-    .header-tab {
-        padding: 4px 8px;
-        font-size: 0.72rem;
-    }
-
     /* ---- Chat messages: safe-area-aware top padding ---- */
     .chat-messages {
         padding: 12px;
