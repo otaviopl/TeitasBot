@@ -251,10 +251,10 @@ html, body {
     font-weight: 500;
     color: var(--color-text-muted);
     background: transparent;
-    border: 1px solid var(--color-border);
+    border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background 0.15s, color 0.15s;
 }
 
 .sidebar-nav-item:hover {
@@ -265,7 +265,6 @@ html, body {
 .sidebar-nav-item.active {
     background: linear-gradient(135deg, var(--color-blue-start), var(--color-blue-end));
     color: #fff;
-    border-color: transparent;
 }
 
 .sidebar-header {
