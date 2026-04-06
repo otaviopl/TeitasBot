@@ -86,6 +86,12 @@
     const healthWeeklyBars = document.getElementById('health-weekly-bars');
     let healthDate = new Date();
     let healthLoading = false;
+
+    // Sidebar nav refs
+    const sidebarNavChat = document.getElementById('sidebar-nav-chat');
+    const sidebarNavHealth = document.getElementById('sidebar-nav-health');
+    const sidebarHeaderEl = document.querySelector('.sidebar-header');
+
     let allUserTags = [];
     let activeTagFilter = null;
     let conversationMessageCount = 0;
@@ -849,13 +855,24 @@
 
         activeTab = tab;
 
-        // Update tab buttons
+        // Update header tab buttons (chat / notes only)
+        var headerTab = (tab === 'chat' || tab === 'notes') ? tab : null;
         headerTabs.querySelectorAll('.header-tab').forEach(function (btn) {
-            btn.classList.toggle('active', btn.dataset.tab === tab);
+            btn.classList.toggle('active', btn.dataset.tab === headerTab);
         });
-        headerTabs.classList.remove('tab-notes-active', 'tab-health-active');
+        headerTabs.classList.remove('tab-notes-active', 'tab-none-active');
         if (tab === 'notes') headerTabs.classList.add('tab-notes-active');
-        if (tab === 'health') headerTabs.classList.add('tab-health-active');
+        if (tab === 'health') headerTabs.classList.add('tab-none-active');
+
+        // Update sidebar nav buttons
+        sidebarNavChat.classList.toggle('active', tab === 'chat' || tab === 'notes');
+        sidebarNavHealth.classList.toggle('active', tab === 'health');
+
+        // Show/hide sidebar list sections
+        var showLists = (tab !== 'health');
+        sidebarHeaderEl.style.display = showLists ? '' : 'none';
+        conversationListSection.style.display = showLists ? '' : 'none';
+        notesListSection.style.display = showLists ? '' : 'none';
 
         // Hide everything first
         chatSection.classList.add('hidden');
@@ -888,6 +905,23 @@
     headerTabs.addEventListener('click', function (e) {
         var tab = e.target.dataset && e.target.dataset.tab;
         if (tab) switchTab(tab);
+    });
+
+    // Sidebar nav click handler
+    document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
+        var btn = e.target.closest('.sidebar-nav-item');
+        if (!btn) return;
+        var nav = btn.dataset.nav;
+        if (nav === 'chat') {
+            switchTab('chat');
+        } else if (nav === 'health') {
+            switchTab('health');
+        }
+        // On mobile close sidebar after nav selection
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('visible');
+        }
     });
 
     // ================================================
