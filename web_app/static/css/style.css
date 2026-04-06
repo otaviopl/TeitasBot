@@ -250,9 +250,10 @@ html, body {
 }
 
 .sidebar-conversations {
-    flex: 1;
     overflow-y: auto;
-    padding: 0 8px 16px;
+    padding: 0 8px 8px;
+    max-height: 300px;
+    flex-shrink: 0;
 }
 
 .sidebar-conversations::-webkit-scrollbar {
@@ -320,6 +321,7 @@ html, body {
 
 /* ---- Sidebar notes section ---- */
 .sidebar-notes {
+    flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
