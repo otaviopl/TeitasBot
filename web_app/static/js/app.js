@@ -965,6 +965,11 @@
         if (!activeNoteId) {
             notesEditorEl.classList.add('hidden');
             if (activeTab === 'notes') notesEmptyEl.classList.remove('hidden');
+        } else if (activeTab === 'notes') {
+            notesEmptyEl.classList.add('hidden');
+            notesEditorEl.classList.remove('hidden');
+            // Refresh CodeMirror layout after being hidden
+            if (easyMDE) setTimeout(function () { easyMDE.codemirror.refresh(); }, 0);
         }
     }
 
