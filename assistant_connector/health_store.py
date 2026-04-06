@@ -691,3 +691,23 @@ class HealthStore:
             "due_date": r.get("due_date"),
             "reference_month": r["reference_month"],
         }
+
+    # ---- Expense helpers ----
+
+    def delete_expense(self, user_id: str, expense_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM financial_expenses WHERE id = ? AND user_id = ?",
+                (expense_id, user_id),
+            )
+        return cursor.rowcount > 0
+
+    def list_expenses_by_month(
+        self,
+        user_id: str,
+        month: str,
+    ) -> list[dict]:
+        """List expenses for a YYYY-MM month."""
+        start = month[:7] + "-01"
+        end = month[:7] + "-31"
+        return self.list_expenses_by_date_range(user_id, start, end)

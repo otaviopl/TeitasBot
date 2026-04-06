@@ -901,6 +901,239 @@ async def update_health_exercise(
     return result
 
 
+# ---- Finance endpoints ----
+
+_MAX_EXPENSE_NAME_LEN = 200
+_MAX_EXPENSE_DESC_LEN = 500
+_MAX_BILL_NAME_LEN = 200
+_MAX_AMOUNT = 99_999_999.99
+_VALID_FINANCE_CATEGORIES = {"Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Outros"}
+
+
+class CreateExpenseRequest(BaseModel):
+    name: str
+    amount: float
+    category: str = "Outros"
+    description: str = ""
+    date: str | None = None
+
+
+@app.post("/api/finance/expenses")
+async def create_finance_expense(
+    body: CreateExpenseRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Register a financial expense."""
+    name = body.name.strip()
+    if not name or len(name) > _MAX_EXPENSE_NAME_LEN:
+        raise HTTPException(status_code=400, detail=f"name must be 1-{_MAX_EXPENSE_NAME_LEN} characters")
+    if body.amount <= 0 or body.amount > _MAX_AMOUNT:
+        raise HTTPException(status_code=400, detail="amount must be between 0 and 99999999.99")
+    category = body.category.strip() or "Outros"
+    description = body.description.strip()
+    if len(description) > _MAX_EXPENSE_DESC_LEN:
+        raise HTTPException(status_code=400, detail=f"description must be at most {_MAX_EXPENSE_DESC_LEN} characters")
+
+    import re
+    expense_date = None
+    if body.date:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", body.date):
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+        expense_date = body.date
+    else:
+        from utils.timezone_utils import today_iso_in_configured_timezone
+        expense_date = today_iso_in_configured_timezone()
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    result = await asyncio.to_thread(
+        store.create_expense,
+        user_id=user_id,
+        name=name,
+        amount=body.amount,
+        category=category,
+        description=description,
+        date=expense_date,
+    )
+    return {"status": "created", "expense": result}
+
+
+@app.delete("/api/finance/expenses/{expense_id}")
+async def delete_finance_expense(
+    expense_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a financial expense."""
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    deleted = await asyncio.to_thread(store.delete_expense, user_id, expense_id.strip())
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return {"status": "deleted"}
+
+
+class CreateBillRequest(BaseModel):
+    bill_name: str
+    budget: float
+    category: str = "Outros"
+    due_date: str | None = None
+    reference_month: str | None = None
+
+
+@app.post("/api/finance/bills")
+async def create_finance_bill(
+    body: CreateBillRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Register a fixed monthly bill."""
+    bill_name = body.bill_name.strip()
+    if not bill_name or len(bill_name) > _MAX_BILL_NAME_LEN:
+        raise HTTPException(status_code=400, detail=f"bill_name must be 1-{_MAX_BILL_NAME_LEN} characters")
+    if body.budget <= 0 or body.budget > _MAX_AMOUNT:
+        raise HTTPException(status_code=400, detail="budget must be between 0 and 99999999.99")
+    category = body.category.strip() or "Outros"
+
+    import re
+    due_date = None
+    if body.due_date:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", body.due_date):
+            raise HTTPException(status_code=400, detail="due_date must be YYYY-MM-DD")
+        due_date = body.due_date
+
+    ref_month = body.reference_month
+    if ref_month:
+        if not re.match(r"^\d{4}-\d{2}$", ref_month):
+            raise HTTPException(status_code=400, detail="reference_month must be YYYY-MM")
+    else:
+        from utils.timezone_utils import today_iso_in_configured_timezone
+        ref_month = today_iso_in_configured_timezone()[:7]
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    result = await asyncio.to_thread(
+        store.create_bill,
+        user_id=user_id,
+        bill_name=bill_name,
+        budget=body.budget,
+        category=category,
+        due_date=due_date,
+        reference_month=ref_month,
+    )
+    return {"status": "created", "bill": result}
+
+
+class UpdateBillRequest(BaseModel):
+    paid: bool | None = None
+    paid_amount: float | None = None
+    bill_name: str | None = None
+    budget: float | None = None
+    category: str | None = None
+    due_date: str | None = None
+
+
+@app.patch("/api/finance/bills/{bill_id}")
+async def update_finance_bill(
+    bill_id: str,
+    body: UpdateBillRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update a bill (mark paid, change amount, etc)."""
+    if body.paid is None and body.paid_amount is None and body.bill_name is None and body.budget is None:
+        raise HTTPException(status_code=400, detail="At least one field must be provided")
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+
+    if body.paid is not None or body.paid_amount is not None:
+        try:
+            result = await asyncio.to_thread(
+                store.update_bill_payment,
+                user_id=user_id,
+                bill_id=bill_id.strip(),
+                paid=body.paid if body.paid is not None else False,
+                paid_amount=body.paid_amount,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return result
+
+    raise HTTPException(status_code=400, detail="Only payment updates are supported via this endpoint")
+
+
+@app.delete("/api/finance/bills/{bill_id}")
+async def delete_finance_bill(
+    bill_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a bill."""
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    deleted = await asyncio.to_thread(store.delete_bill, user_id, bill_id.strip())
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/finance/dashboard")
+async def finance_dashboard(
+    month: str | None = Query(None, description="YYYY-MM, defaults to current month"),
+    user: dict = Depends(get_current_user),
+):
+    """Monthly finance dashboard: expenses + bills + totals."""
+    import re
+    from utils.timezone_utils import today_iso_in_configured_timezone
+
+    if month:
+        if not re.match(r"^\d{4}-\d{2}$", month):
+            raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+        target_month = month
+    else:
+        target_month = today_iso_in_configured_timezone()[:7]
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+
+    async def fetch_expenses():
+        try:
+            return await asyncio.to_thread(store.list_expenses_by_month, user_id, target_month)
+        except Exception:
+            return []
+
+    async def fetch_bills():
+        try:
+            return await asyncio.to_thread(store.list_bills_by_month, user_id, target_month)
+        except Exception:
+            return []
+
+    expenses, bills = await asyncio.gather(fetch_expenses(), fetch_bills())
+
+    total_expenses = sum(float(e.get("amount") or 0) for e in expenses)
+    total_budget = sum(float(b.get("budget") or 0) for b in bills)
+    total_paid = sum(float(b.get("paid_amount") or 0) for b in bills if b.get("paid"))
+    unpaid_count = sum(1 for b in bills if not b.get("paid"))
+
+    # Category breakdown for expenses
+    cat_map: dict[str, float] = {}
+    for e in expenses:
+        cat = e.get("category", "Outros")
+        cat_map[cat] = cat_map.get(cat, 0) + float(e.get("amount") or 0)
+    category_breakdown = [{"category": k, "total": round(v, 2)} for k, v in sorted(cat_map.items(), key=lambda x: -x[1])]
+
+    return {
+        "month": target_month,
+        "expenses": expenses,
+        "bills": bills,
+        "totals": {
+            "total_expenses": round(total_expenses, 2),
+            "total_budget": round(total_budget, 2),
+            "total_paid": round(total_paid, 2),
+            "pending_budget": round(total_budget - total_paid, 2),
+            "unpaid_count": unpaid_count,
+        },
+        "category_breakdown": category_breakdown,
+    }
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}

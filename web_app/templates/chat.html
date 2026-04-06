@@ -42,6 +42,13 @@
                     </svg>
                     <span>Saúde</span>
                 </button>
+                <button class="sidebar-nav-item" id="sidebar-nav-finance" data-nav="finance">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="1" x2="12" y2="23"/>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    <span>Finanças</span>
+                </button>
             </nav>
             <div class="sidebar-header">
                 <h2>Conversas</h2>
@@ -337,10 +344,67 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Finance view -->
+            <div class="finance-view hidden" id="finance-view">
+                <!-- Month navigator -->
+                <div class="finance-month-nav">
+                    <button class="finance-month-btn" id="finance-prev-month" title="Mês anterior">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>
+                    <span class="finance-month-label" id="finance-month-label">Abril 2026</span>
+                    <button class="finance-month-btn" id="finance-next-month" title="Próximo mês">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+                    <div class="finance-actions">
+                        <button class="btn btn-primary btn-finance-add" id="btn-add-expense" title="Registrar despesa">+ Despesa</button>
+                        <button class="btn btn-outline btn-finance-add" id="btn-add-bill" title="Registrar conta">+ Conta</button>
+                    </div>
+                </div>
+
+                <!-- Loading state -->
+                <div class="finance-loading hidden" id="finance-loading">
+                    <div class="loading-spinner"></div>
+                </div>
+
+                <!-- Monthly content -->
+                <div class="finance-content hidden" id="finance-content">
+                    <!-- Summary card -->
+                    <div class="finance-summary" id="finance-summary">
+                        <div class="finance-summary-row">
+                            <span class="finance-summary-icon">💸</span>
+                            <span class="finance-summary-text" id="finance-total-expenses">R$ 0,00 em despesas</span>
+                        </div>
+                        <div class="finance-summary-row">
+                            <span class="finance-summary-icon">📋</span>
+                            <span class="finance-summary-text" id="finance-total-bills">R$ 0,00 em contas fixas</span>
+                        </div>
+                        <div class="finance-progress-bar">
+                            <div class="finance-progress-fill" id="finance-progress-fill"></div>
+                        </div>
+                        <div class="finance-summary-row finance-pending-row">
+                            <span class="finance-summary-icon">⏳</span>
+                            <span class="finance-summary-text" id="finance-pending">R$ 0,00 pendente</span>
+                        </div>
+                    </div>
+
+                    <!-- Bills section -->
+                    <div class="finance-bills" id="finance-bills">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Expenses section -->
+                    <div class="finance-expenses" id="finance-expenses">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <!-- Toast notification -->
     <div class="toast" id="toast"></div>
 
     <!-- Memories modal -->
@@ -410,6 +474,66 @@
                 <button type="submit" class="btn btn-primary health-form-submit" id="exercise-submit-btn">Registrar Exercício</button>
             </form>
             <button class="modal-close-btn" id="health-exercise-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Add expense modal -->
+    <div class="health-modal-overlay" id="finance-expense-overlay">
+        <div class="health-modal" id="finance-expense-modal">
+            <h3>Registrar Despesa</h3>
+            <form id="finance-expense-form" autocomplete="off">
+                <label class="health-form-label" for="expense-name">Descrição</label>
+                <input type="text" id="expense-name" class="health-form-input" placeholder="Ex: Supermercado" maxlength="200" required>
+
+                <label class="health-form-label" for="expense-amount">Valor (R$)</label>
+                <input type="number" id="expense-amount" class="health-form-input" placeholder="150.00" min="0.01" max="99999999.99" step="0.01" required>
+
+                <label class="health-form-label">Categoria</label>
+                <div class="health-chip-group" id="expense-category-chips">
+                    <button type="button" class="health-chip" data-value="Alimentação">Alimentação</button>
+                    <button type="button" class="health-chip" data-value="Transporte">Transporte</button>
+                    <button type="button" class="health-chip" data-value="Moradia">Moradia</button>
+                    <button type="button" class="health-chip" data-value="Saúde">Saúde</button>
+                    <button type="button" class="health-chip" data-value="Lazer">Lazer</button>
+                    <button type="button" class="health-chip active" data-value="Outros">Outros</button>
+                </div>
+
+                <label class="health-form-label" for="expense-date">Data</label>
+                <input type="date" id="expense-date" class="health-form-input">
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="expense-submit-btn">Registrar Despesa</button>
+            </form>
+            <button class="modal-close-btn" id="finance-expense-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Add bill modal -->
+    <div class="health-modal-overlay" id="finance-bill-overlay">
+        <div class="health-modal" id="finance-bill-modal">
+            <h3>Registrar Conta Fixa</h3>
+            <form id="finance-bill-form" autocomplete="off">
+                <label class="health-form-label" for="bill-name">Nome da conta</label>
+                <input type="text" id="bill-name" class="health-form-input" placeholder="Ex: Aluguel" maxlength="200" required>
+
+                <label class="health-form-label" for="bill-budget">Valor esperado (R$)</label>
+                <input type="number" id="bill-budget" class="health-form-input" placeholder="1500.00" min="0.01" max="99999999.99" step="0.01" required>
+
+                <label class="health-form-label">Categoria</label>
+                <div class="health-chip-group" id="bill-category-chips">
+                    <button type="button" class="health-chip" data-value="Moradia">Moradia</button>
+                    <button type="button" class="health-chip" data-value="Transporte">Transporte</button>
+                    <button type="button" class="health-chip" data-value="Saúde">Saúde</button>
+                    <button type="button" class="health-chip" data-value="Alimentação">Alimentação</button>
+                    <button type="button" class="health-chip" data-value="Lazer">Lazer</button>
+                    <button type="button" class="health-chip active" data-value="Outros">Outros</button>
+                </div>
+
+                <label class="health-form-label" for="bill-due-date">Vencimento</label>
+                <input type="date" id="bill-due-date" class="health-form-input">
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="bill-submit-btn">Registrar Conta</button>
+            </form>
+            <button class="modal-close-btn" id="finance-bill-close">Cancelar</button>
         </div>
     </div>
 

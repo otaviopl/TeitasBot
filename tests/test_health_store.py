@@ -212,6 +212,22 @@ class TestExpenses:
         with pytest.raises(ValueError):
             store.create_expense(user_id=USER, name="Bad", amount=-50.0, date="2025-06-01")
 
+    def test_delete_expense(self, store):
+        exp = store.create_expense(user_id=USER, name="ToDelete", amount=30.0, date="2025-06-01")
+        assert store.delete_expense(user_id=USER, expense_id=exp["id"]) is True
+        assert store.list_expenses_by_date_range(user_id=USER, start_date="2025-06-01", end_date="2025-06-30") == []
+
+    def test_delete_expense_wrong_user(self, store):
+        exp = store.create_expense(user_id=USER, name="Mine", amount=30.0, date="2025-06-01")
+        assert store.delete_expense(user_id=OTHER_USER, expense_id=exp["id"]) is False
+
+    def test_list_expenses_by_month(self, store):
+        store.create_expense(user_id=USER, name="June", amount=50.0, date="2025-06-15")
+        store.create_expense(user_id=USER, name="July", amount=60.0, date="2025-07-01")
+        exps = store.list_expenses_by_month(user_id=USER, month="2025-06")
+        assert len(exps) == 1
+        assert exps[0]["name"] == "June"
+
 
 # ---- Bills ----
 

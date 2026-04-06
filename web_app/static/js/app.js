@@ -86,9 +86,26 @@
     let healthDate = new Date();
     let healthLoading = false;
 
+    // Finance refs
+    const financeViewEl = document.getElementById('finance-view');
+    const financeMonthLabel = document.getElementById('finance-month-label');
+    const financePrevBtn = document.getElementById('finance-prev-month');
+    const financeNextBtn = document.getElementById('finance-next-month');
+    const financeLoadingEl = document.getElementById('finance-loading');
+    const financeContentEl = document.getElementById('finance-content');
+    const financeTotalExpenses = document.getElementById('finance-total-expenses');
+    const financeTotalBills = document.getElementById('finance-total-bills');
+    const financePending = document.getElementById('finance-pending');
+    const financeProgressFill = document.getElementById('finance-progress-fill');
+    const financeBillsEl = document.getElementById('finance-bills');
+    const financeExpensesEl = document.getElementById('finance-expenses');
+    let financeMonth = new Date();
+    let financeLoading = false;
+
     // Sidebar nav refs
     const sidebarNavChat = document.getElementById('sidebar-nav-chat');
     const sidebarNavHealth = document.getElementById('sidebar-nav-health');
+    const sidebarNavFinance = document.getElementById('sidebar-nav-finance');
     const sidebarHeaderEl = document.querySelector('.sidebar-header');
 
     let allUserTags = [];
@@ -802,20 +819,21 @@
         });
         headerTabs.classList.remove('tab-notes-active', 'tab-none-active');
         if (tab === 'notes') headerTabs.classList.add('tab-notes-active');
-        if (tab === 'health') headerTabs.classList.add('tab-none-active');
+        if (tab === 'health' || tab === 'finance') headerTabs.classList.add('tab-none-active');
 
         // Update sidebar nav buttons
         sidebarNavChat.classList.toggle('active', tab === 'chat' || tab === 'notes');
         sidebarNavHealth.classList.toggle('active', tab === 'health');
+        sidebarNavFinance.classList.toggle('active', tab === 'finance');
 
         // Show/hide sidebar list sections
-        var showLists = (tab !== 'health');
+        var showLists = (tab === 'chat' || tab === 'notes');
         sidebarHeaderEl.style.display = showLists ? '' : 'none';
         conversationListSection.style.display = showLists ? '' : 'none';
         notesListSection.style.display = showLists ? '' : 'none';
 
-        // Hide header tabs (Conversas/Anotações) when in health view
-        headerTabs.style.display = (tab === 'health') ? 'none' : '';
+        // Hide header tabs (Conversas/Anotações) when in health/finance view
+        headerTabs.style.display = (tab === 'health' || tab === 'finance') ? 'none' : '';
 
         // Hide everything first
         chatSection.classList.add('hidden');
@@ -824,6 +842,7 @@
         notesEditorEl.classList.add('hidden');
         notesEmptyEl.classList.add('hidden');
         healthViewEl.classList.add('hidden');
+        financeViewEl.classList.add('hidden');
         resetBtn.style.visibility = 'hidden';
         var limitNotice = document.getElementById('conv-limit-notice');
         if (limitNotice) limitNotice.style.display = 'none';
@@ -842,6 +861,9 @@
         } else if (tab === 'health') {
             healthViewEl.classList.remove('hidden');
             loadHealthDashboard();
+        } else if (tab === 'finance') {
+            financeViewEl.classList.remove('hidden');
+            loadFinanceDashboard();
         }
     }
 
@@ -859,6 +881,8 @@
             switchTab('chat');
         } else if (nav === 'health') {
             switchTab('health');
+        } else if (nav === 'finance') {
+            switchTab('finance');
         }
         // On mobile close sidebar after nav selection
         if (window.matchMedia('(max-width: 767px)').matches) {
@@ -1635,6 +1659,334 @@
             exerciseSubmitBtn.textContent = 'Registrar Exercício';
         }
     });
+
+    // ================================================
+    // Finance — Dashboard, Expenses, Bills
+    // ================================================
+
+    function financeMonthISO() {
+        return financeMonth.getFullYear() + '-' + String(financeMonth.getMonth() + 1).padStart(2, '0');
+    }
+
+    function updateFinanceMonthLabel() {
+        financeMonthLabel.textContent = MONTH_NAMES[financeMonth.getMonth()] + ' ' + financeMonth.getFullYear();
+    }
+
+    financePrevBtn.addEventListener('click', function () {
+        financeMonth.setMonth(financeMonth.getMonth() - 1);
+        loadFinanceDashboard();
+    });
+
+    financeNextBtn.addEventListener('click', function () {
+        financeMonth.setMonth(financeMonth.getMonth() + 1);
+        loadFinanceDashboard();
+    });
+
+    async function loadFinanceDashboard() {
+        if (financeLoading) return;
+        financeLoading = true;
+        updateFinanceMonthLabel();
+
+        financeLoadingEl.classList.remove('hidden');
+        financeContentEl.classList.add('hidden');
+
+        try {
+            var monthStr = financeMonthISO();
+            var data = await apiGet('/api/finance/dashboard?month=' + monthStr);
+            if (!data) {
+                financeLoadingEl.classList.add('hidden');
+                return;
+            }
+            renderFinanceDashboard(data);
+        } catch (err) {
+            showToast('Erro ao carregar finanças: ' + err.message);
+            financeLoadingEl.classList.add('hidden');
+        } finally {
+            financeLoading = false;
+        }
+    }
+
+    function formatBRL(value) {
+        return 'R$ ' + Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderFinanceDashboard(data) {
+        financeLoadingEl.classList.add('hidden');
+        financeContentEl.classList.remove('hidden');
+
+        var totals = data.totals;
+        financeTotalExpenses.textContent = formatBRL(totals.total_expenses) + ' em despesas';
+        financeTotalBills.textContent = formatBRL(totals.total_budget) + ' em contas fixas';
+        financePending.textContent = formatBRL(totals.pending_budget) + ' pendente';
+
+        var pct = totals.total_budget > 0 ? Math.min((totals.total_paid / totals.total_budget) * 100, 100) : 0;
+        financeProgressFill.style.width = pct + '%';
+
+        renderBills(data.bills);
+        renderExpensesByCategory(data.expenses, data.category_breakdown);
+    }
+
+    function renderBills(bills) {
+        if (!bills || bills.length === 0) {
+            financeBillsEl.innerHTML = '<h3 class="finance-section-title">Contas fixas</h3>' +
+                '<div class="finance-empty-state">Nenhuma conta registrada neste mês</div>';
+            return;
+        }
+
+        var today = new Date().toISOString().slice(0, 10);
+        var unpaid = bills.filter(function (b) { return !b.paid; });
+        var paid = bills.filter(function (b) { return b.paid; });
+        var sorted = unpaid.concat(paid);
+
+        var html = '<h3 class="finance-section-title">Contas fixas (' + bills.length + ')</h3>';
+        sorted.forEach(function (bill) {
+            var badgeClass = 'badge-pending';
+            var badgeText = 'Pendente';
+            if (bill.paid) {
+                badgeClass = 'badge-paid';
+                badgeText = 'Pago';
+            } else if (bill.due_date && bill.due_date < today) {
+                badgeClass = 'badge-overdue';
+                badgeText = 'Vencido';
+            }
+
+            var dueMeta = bill.due_date ? 'Venc. ' + formatDateShort(bill.due_date) : '';
+            if (bill.category && bill.category !== 'Outros') {
+                dueMeta = (dueMeta ? dueMeta + ' · ' : '') + bill.category;
+            }
+
+            html += '<div class="finance-bill-card' + (bill.paid ? ' paid' : '') + '" data-bill-id="' + bill.id + '">' +
+                '<div class="finance-bill-check' + (bill.paid ? ' done' : '') + '" data-bill-id="' + bill.id + '">' +
+                (bill.paid ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
+                '</div>' +
+                '<div class="finance-bill-info">' +
+                '<div class="finance-bill-name">' + escapeHtml(bill.bill_name) + '</div>' +
+                (dueMeta ? '<div class="finance-bill-meta">' + dueMeta + '</div>' : '') +
+                '</div>' +
+                '<div class="finance-bill-amount">' + formatBRL(bill.budget) + '</div>' +
+                '<span class="finance-badge ' + badgeClass + '">' + badgeText + '</span>' +
+                '<button class="finance-bill-delete" data-bill-id="' + bill.id + '" title="Excluir">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+                '</button>' +
+                '</div>';
+        });
+        financeBillsEl.innerHTML = html;
+
+        // Toggle paid
+        financeBillsEl.querySelectorAll('.finance-bill-check').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleBillPaid(el.dataset.billId);
+            });
+        });
+
+        // Delete bill
+        financeBillsEl.querySelectorAll('.finance-bill-delete').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.stopPropagation();
+                deleteBill(el.dataset.billId);
+            });
+        });
+    }
+
+    function formatDateShort(dateStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.split('-');
+        return parts[2] + '/' + parts[1];
+    }
+
+    async function toggleBillPaid(billId) {
+        var card = financeBillsEl.querySelector('[data-bill-id="' + billId + '"].finance-bill-card');
+        var isPaid = card && card.classList.contains('paid');
+        try {
+            await apiRequest('PATCH', '/api/finance/bills/' + billId, {
+                paid: !isPaid,
+                paid_amount: !isPaid ? undefined : 0
+            });
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    }
+
+    async function deleteBill(billId) {
+        if (!confirm('Excluir esta conta?')) return;
+        try {
+            await apiDelete('/api/finance/bills/' + billId);
+            showToast('Conta excluída ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    }
+
+    function renderExpensesByCategory(expenses, breakdown) {
+        if (!expenses || expenses.length === 0) {
+            financeExpensesEl.innerHTML = '<h3 class="finance-section-title">Despesas</h3>' +
+                '<div class="finance-empty-state">Nenhuma despesa registrada neste mês</div>';
+            return;
+        }
+
+        var grouped = {};
+        expenses.forEach(function (exp) {
+            var cat = exp.category || 'Outros';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(exp);
+        });
+
+        var catTotals = {};
+        (breakdown || []).forEach(function (b) { catTotals[b.category] = b.total; });
+
+        var html = '<h3 class="finance-section-title">Despesas (' + expenses.length + ')</h3>';
+        Object.keys(grouped).sort().forEach(function (cat) {
+            var items = grouped[cat];
+            var total = catTotals[cat] || items.reduce(function (s, e) { return s + e.amount; }, 0);
+
+            html += '<div class="finance-category-group">' +
+                '<div class="finance-category-header">' +
+                '<span class="finance-category-name">' + escapeHtml(cat) + '</span>' +
+                '<span class="finance-category-total">' + formatBRL(total) + '</span>' +
+                '</div>';
+
+            items.forEach(function (exp) {
+                html += '<div class="finance-expense-item" data-expense-id="' + exp.id + '">' +
+                    '<span class="finance-expense-name">' + escapeHtml(exp.name) + '</span>' +
+                    '<span class="finance-expense-date">' + formatDateShort(exp.date) + '</span>' +
+                    '<span class="finance-expense-amount">' + formatBRL(exp.amount) + '</span>' +
+                    '<button class="finance-expense-delete" data-expense-id="' + exp.id + '" title="Excluir">' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+                    '</button>' +
+                    '</div>';
+            });
+            html += '</div>';
+        });
+        financeExpensesEl.innerHTML = html;
+
+        // Delete expense
+        financeExpensesEl.querySelectorAll('.finance-expense-delete').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.stopPropagation();
+                deleteExpense(el.dataset.expenseId);
+            });
+        });
+    }
+
+    async function deleteExpense(expenseId) {
+        if (!confirm('Excluir esta despesa?')) return;
+        try {
+            await apiDelete('/api/finance/expenses/' + expenseId);
+            showToast('Despesa excluída ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    }
+
+    // ---- Finance modals ----
+    var expenseOverlay = document.getElementById('finance-expense-overlay');
+    var expenseForm = document.getElementById('finance-expense-form');
+    var expenseSubmitBtn = document.getElementById('expense-submit-btn');
+    var expenseCloseBtn = document.getElementById('finance-expense-close');
+    var expenseDateInput = document.getElementById('expense-date');
+
+    var billOverlay = document.getElementById('finance-bill-overlay');
+    var billForm = document.getElementById('finance-bill-form');
+    var billSubmitBtn = document.getElementById('bill-submit-btn');
+    var billCloseBtn = document.getElementById('finance-bill-close');
+
+    document.getElementById('btn-add-expense').addEventListener('click', function () {
+        expenseDateInput.value = new Date().toISOString().slice(0, 10);
+        expenseOverlay.classList.add('visible');
+    });
+
+    expenseCloseBtn.addEventListener('click', function () {
+        expenseOverlay.classList.remove('visible');
+    });
+
+    expenseOverlay.addEventListener('click', function (e) {
+        if (e.target === expenseOverlay) expenseOverlay.classList.remove('visible');
+    });
+
+    // Category chips for expenses
+    setupChipGroup('expense-category-chips');
+
+    expenseForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        expenseSubmitBtn.disabled = true;
+        expenseSubmitBtn.textContent = 'Registrando…';
+
+        var activeChip = document.querySelector('#expense-category-chips .health-chip.active');
+        try {
+            await apiPost('/api/finance/expenses', {
+                name: document.getElementById('expense-name').value.trim(),
+                amount: parseFloat(document.getElementById('expense-amount').value),
+                category: activeChip ? activeChip.dataset.value : 'Outros',
+                date: expenseDateInput.value || undefined
+            });
+            expenseOverlay.classList.remove('visible');
+            expenseForm.reset();
+            showToast('Despesa registrada ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            expenseSubmitBtn.disabled = false;
+            expenseSubmitBtn.textContent = 'Registrar Despesa';
+        }
+    });
+
+    document.getElementById('btn-add-bill').addEventListener('click', function () {
+        billOverlay.classList.add('visible');
+    });
+
+    billCloseBtn.addEventListener('click', function () {
+        billOverlay.classList.remove('visible');
+    });
+
+    billOverlay.addEventListener('click', function (e) {
+        if (e.target === billOverlay) billOverlay.classList.remove('visible');
+    });
+
+    // Category chips for bills
+    setupChipGroup('bill-category-chips');
+
+    billForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        billSubmitBtn.disabled = true;
+        billSubmitBtn.textContent = 'Registrando…';
+
+        var activeChip = document.querySelector('#bill-category-chips .health-chip.active');
+        try {
+            await apiPost('/api/finance/bills', {
+                bill_name: document.getElementById('bill-name').value.trim(),
+                budget: parseFloat(document.getElementById('bill-budget').value),
+                category: activeChip ? activeChip.dataset.value : 'Outros',
+                due_date: document.getElementById('bill-due-date').value || undefined,
+                reference_month: financeMonthISO()
+            });
+            billOverlay.classList.remove('visible');
+            billForm.reset();
+            showToast('Conta registrada ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            billSubmitBtn.disabled = false;
+            billSubmitBtn.textContent = 'Registrar Conta';
+        }
+    });
+
+    // Generic chip group setup
+    function setupChipGroup(groupId) {
+        var group = document.getElementById(groupId);
+        if (!group) return;
+        group.addEventListener('click', function (e) {
+            var chip = e.target.closest('.health-chip');
+            if (!chip) return;
+            group.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
+            chip.classList.add('active');
+        });
+    }
 
     // ---- Init ----
     inputEl.focus();
