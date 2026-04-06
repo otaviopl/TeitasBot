@@ -716,7 +716,7 @@
                 'bold', 'italic', 'heading', '|',
                 'quote', 'unordered-list', 'ordered-list', '|',
                 'link', 'image', 'code', 'table', '|',
-                'preview', 'side-by-side', 'fullscreen', '|',
+                'preview', '|',
                 'guide',
             ],
         });
