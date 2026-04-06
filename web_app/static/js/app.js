@@ -785,13 +785,13 @@
             chatInputWrapper.classList.remove('hidden');
             notesEditorEl.classList.add('hidden');
             notesEmptyEl.classList.add('hidden');
-            resetBtn.style.display = '';
+            resetBtn.style.visibility = '';
             inputEl.focus();
         } else {
             // Show notes editor, hide chat main area
             chatSection.classList.add('hidden');
             chatInputWrapper.classList.add('hidden');
-            resetBtn.style.display = 'none';
+            resetBtn.style.visibility = 'hidden';
             loadNotes();
         }
     }
