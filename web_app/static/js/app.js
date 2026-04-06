@@ -184,7 +184,7 @@
     function updateChatEmptyState() {
         var hasMessages = messagesEl.querySelectorAll('.message').length > 0;
         chatEmptyEl.classList.toggle('hidden', hasMessages);
-        chatSection.style.display = hasMessages ? '' : 'none';
+        chatSection.classList.toggle('hidden', !hasMessages);
     }
 
     function formatTimestamp(isoStr) {
@@ -799,7 +799,7 @@
             inputEl.focus();
         } else {
             // Show notes editor, hide chat main area
-            chatSection.style.display = 'none';
+            chatSection.classList.add('hidden');
             chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.add('hidden');
             resetBtn.style.visibility = 'hidden';
@@ -964,7 +964,7 @@
 
         if (!activeNoteId) {
             notesEditorEl.classList.add('hidden');
-            notesEmptyEl.classList.remove('hidden');
+            if (activeTab === 'notes') notesEmptyEl.classList.remove('hidden');
         }
     }
 
