@@ -121,6 +121,7 @@
                     <div class="header-tabs" id="header-tabs">
                         <button class="header-tab active" data-tab="chat">Conversas</button>
                         <button class="header-tab" data-tab="notes">Anotações</button>
+                        <button class="header-tab" data-tab="health">Saúde</button>
                     </div>
                 </div>
                 <div class="chat-header-right">
@@ -253,6 +254,86 @@
                     <button class="btn btn-primary" id="btn-new-note-empty">+ Nova nota</button>
                 </div>
             </div>
+
+            <!-- Health view (hidden by default) -->
+            <div class="health-view hidden" id="health-view">
+                <!-- Date navigator -->
+                <div class="health-date-nav">
+                    <button class="health-date-btn" id="health-prev-day" title="Dia anterior">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>
+                    <span class="health-date-label" id="health-date-label">Hoje</span>
+                    <button class="health-date-btn" id="health-next-day" title="Próximo dia">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+                    <div class="health-actions">
+                        <button class="btn btn-primary btn-health-add" id="btn-add-meal" title="Registrar refeição">+ Refeição</button>
+                        <button class="btn btn-outline btn-health-add" id="btn-add-exercise" title="Registrar exercício">+ Exercício</button>
+                    </div>
+                </div>
+
+                <!-- Loading state -->
+                <div class="health-loading hidden" id="health-loading">
+                    <div class="notion-spinner"></div>
+                </div>
+
+                <!-- Not configured state -->
+                <div class="health-not-configured hidden" id="health-not-configured">
+                    <div class="empty-state-content">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <h3>Notion não configurado</h3>
+                        <p>Configure as bases de Refeições e/ou Exercícios no Notion para usar esta tela.</p>
+                    </div>
+                </div>
+
+                <!-- Daily content (scrollable) -->
+                <div class="health-content hidden" id="health-content">
+                    <!-- Summary card -->
+                    <div class="health-summary" id="health-summary">
+                        <div class="health-summary-row">
+                            <span class="health-summary-icon">🔥</span>
+                            <span class="health-summary-text" id="health-calories-consumed">0 kcal consumidas</span>
+                        </div>
+                        <div class="health-progress-bar">
+                            <div class="health-progress-fill" id="health-progress-fill"></div>
+                        </div>
+                        <div class="health-summary-row">
+                            <span class="health-summary-icon">💪</span>
+                            <span class="health-summary-text" id="health-calories-burned">0 kcal queimadas</span>
+                        </div>
+                        <div class="health-summary-row health-balance-row">
+                            <span class="health-summary-icon">📊</span>
+                            <span class="health-summary-text" id="health-balance">Saldo: 0 kcal</span>
+                        </div>
+                    </div>
+
+                    <!-- Meal groups -->
+                    <div class="health-meals" id="health-meals">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Exercises -->
+                    <div class="health-exercises" id="health-exercises">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Weekly summary -->
+                    <div class="health-weekly" id="health-weekly">
+                        <h3 class="health-section-title">Últimos 7 dias</h3>
+                        <div class="health-weekly-bars" id="health-weekly-bars">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -278,6 +359,65 @@
                 <div class="notion-spinner"></div>
             </div>
             <button class="notion-modal-close" id="memories-modal-close">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Health: Add meal modal (bottom-sheet on mobile) -->
+    <div class="health-modal-overlay" id="health-meal-overlay">
+        <div class="health-modal" id="health-meal-modal">
+            <h3>Registrar Refeição</h3>
+            <form id="health-meal-form" autocomplete="off">
+                <label class="health-form-label" for="meal-food">Alimento</label>
+                <input type="text" id="meal-food" class="health-form-input" placeholder="Ex: Arroz integral" maxlength="200" required>
+
+                <label class="health-form-label">Tipo de refeição</label>
+                <div class="health-chip-group" id="meal-type-chips">
+                    <button type="button" class="health-chip" data-value="CAFÉ DA MANHÃ">Café</button>
+                    <button type="button" class="health-chip active" data-value="ALMOÇO">Almoço</button>
+                    <button type="button" class="health-chip" data-value="LANCHE">Lanche</button>
+                    <button type="button" class="health-chip" data-value="JANTAR">Jantar</button>
+                    <button type="button" class="health-chip" data-value="SUPLEMENTO">Suplemento</button>
+                </div>
+
+                <div class="health-form-row">
+                    <div class="health-form-col">
+                        <label class="health-form-label" for="meal-quantity">Quantidade</label>
+                        <input type="text" id="meal-quantity" class="health-form-input" placeholder="150 g" maxlength="100" required>
+                    </div>
+                    <div class="health-form-col">
+                        <label class="health-form-label" for="meal-calories">Calorias (est.)</label>
+                        <input type="number" id="meal-calories" class="health-form-input" placeholder="250" min="1" max="50000" step="any" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="meal-submit-btn">Registrar Refeição</button>
+            </form>
+            <button class="notion-modal-close" id="health-meal-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Health: Add exercise modal (bottom-sheet on mobile) -->
+    <div class="health-modal-overlay" id="health-exercise-overlay">
+        <div class="health-modal" id="health-exercise-modal">
+            <h3>Registrar Exercício</h3>
+            <form id="health-exercise-form" autocomplete="off">
+                <label class="health-form-label" for="exercise-activity">Atividade</label>
+                <input type="text" id="exercise-activity" class="health-form-input" placeholder="Ex: Corrida 5km" maxlength="200" required>
+
+                <label class="health-form-label" for="exercise-calories">Calorias queimadas</label>
+                <input type="number" id="exercise-calories" class="health-form-input" placeholder="350" min="1" max="50000" step="any" required>
+
+                <label class="health-form-label" for="exercise-observations">Observações (opcional)</label>
+                <input type="text" id="exercise-observations" class="health-form-input" placeholder="Ritmo, séries, etc." maxlength="500">
+
+                <label class="health-form-checkbox">
+                    <input type="checkbox" id="exercise-done" checked>
+                    <span>Já realizado</span>
+                </label>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="exercise-submit-btn">Registrar Exercício</button>
+            </form>
+            <button class="notion-modal-close" id="health-exercise-close">Cancelar</button>
         </div>
     </div>
 

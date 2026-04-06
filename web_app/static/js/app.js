@@ -68,6 +68,24 @@
     let easyMDE = null;
     let noteSaveTimer = null;
     let noteMetadataTimer = null;
+
+    // Health refs
+    const healthViewEl = document.getElementById('health-view');
+    const healthDateLabel = document.getElementById('health-date-label');
+    const healthPrevBtn = document.getElementById('health-prev-day');
+    const healthNextBtn = document.getElementById('health-next-day');
+    const healthLoadingEl = document.getElementById('health-loading');
+    const healthNotConfiguredEl = document.getElementById('health-not-configured');
+    const healthContentEl = document.getElementById('health-content');
+    const healthCaloriesConsumed = document.getElementById('health-calories-consumed');
+    const healthCaloriesBurned = document.getElementById('health-calories-burned');
+    const healthBalance = document.getElementById('health-balance');
+    const healthProgressFill = document.getElementById('health-progress-fill');
+    const healthMealsEl = document.getElementById('health-meals');
+    const healthExercisesEl = document.getElementById('health-exercises');
+    const healthWeeklyBars = document.getElementById('health-weekly-bars');
+    let healthDate = new Date();
+    let healthLoading = false;
     let allUserTags = [];
     let activeTagFilter = null;
     let conversationMessageCount = 0;
@@ -835,33 +853,35 @@
         headerTabs.querySelectorAll('.header-tab').forEach(function (btn) {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
-        headerTabs.classList.toggle('tab-notes-active', tab === 'notes');
+        headerTabs.classList.remove('tab-notes-active', 'tab-health-active');
+        if (tab === 'notes') headerTabs.classList.add('tab-notes-active');
+        if (tab === 'health') headerTabs.classList.add('tab-health-active');
+
+        // Hide everything first
+        chatSection.classList.add('hidden');
+        chatEmptyEl.classList.add('hidden');
+        chatInputWrapper.classList.add('hidden');
+        notesEditorEl.classList.add('hidden');
+        notesEmptyEl.classList.add('hidden');
+        healthViewEl.classList.add('hidden');
+        resetBtn.style.visibility = 'hidden';
+        var limitNotice = document.getElementById('conv-limit-notice');
+        if (limitNotice) limitNotice.style.display = 'none';
 
         if (tab === 'chat') {
-            // Show chat main area, hide notes editor
             chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.remove('hidden');
-            notesEditorEl.classList.add('hidden');
-            notesEmptyEl.classList.add('hidden');
             resetBtn.style.visibility = '';
-            // Restore conv-limit-notice visibility if it exists
-            var limitNotice = document.getElementById('conv-limit-notice');
             if (limitNotice) limitNotice.style.display = '';
             updateChatEmptyState();
-            // Only auto-focus on desktop; on mobile this would open the keyboard immediately
             if (window.matchMedia('(min-width: 768px)').matches) {
                 inputEl.focus();
             }
-        } else {
-            // Show notes editor, hide chat main area
-            chatSection.classList.add('hidden');
-            chatEmptyEl.classList.add('hidden');
-            chatInputWrapper.classList.add('hidden');
-            resetBtn.style.visibility = 'hidden';
-            // Hide the conversation-limit notice when on notes tab
-            var limitNotice = document.getElementById('conv-limit-notice');
-            if (limitNotice) limitNotice.style.display = 'none';
+        } else if (tab === 'notes') {
             loadNotes();
+        } else if (tab === 'health') {
+            healthViewEl.classList.remove('hidden');
+            loadHealthDashboard();
         }
     }
 
@@ -1248,6 +1268,341 @@
     });
     document.getElementById('btn-new-chat-empty').addEventListener('click', function () {
         createConversation();
+    });
+
+    // ================================================
+    // Health — Dashboard, Meals, Exercises
+    // ================================================
+
+    var DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    var MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    var CALORIE_GOAL = 2400;
+
+    function formatHealthDate(d) {
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var target = new Date(d);
+        target.setHours(0, 0, 0, 0);
+        var diff = Math.round((target - today) / 86400000);
+        if (diff === 0) return 'Hoje';
+        if (diff === -1) return 'Ontem';
+        if (diff === 1) return 'Amanhã';
+        return target.getDate() + ' ' + MONTH_NAMES[target.getMonth()] + ' ' + target.getFullYear();
+    }
+
+    function healthDateISO() {
+        var d = healthDate;
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + dd;
+    }
+
+    function updateHealthDateLabel() {
+        healthDateLabel.textContent = formatHealthDate(healthDate);
+    }
+
+    healthPrevBtn.addEventListener('click', function () {
+        healthDate.setDate(healthDate.getDate() - 1);
+        updateHealthDateLabel();
+        loadHealthDashboard();
+    });
+
+    healthNextBtn.addEventListener('click', function () {
+        healthDate.setDate(healthDate.getDate() + 1);
+        updateHealthDateLabel();
+        loadHealthDashboard();
+    });
+
+    async function loadHealthDashboard() {
+        if (healthLoading) return;
+        healthLoading = true;
+        updateHealthDateLabel();
+
+        healthLoadingEl.classList.remove('hidden');
+        healthContentEl.classList.add('hidden');
+        healthNotConfiguredEl.classList.add('hidden');
+
+        try {
+            var dateStr = healthDateISO();
+            var dashData = await apiGet('/api/health/dashboard?date=' + dateStr);
+
+            if (!dashData || !dashData.notion_configured) {
+                healthLoadingEl.classList.add('hidden');
+                healthNotConfiguredEl.classList.remove('hidden');
+                return;
+            }
+
+            renderHealthDashboard(dashData);
+
+            // Load weekly in parallel
+            apiGet('/api/health/weekly?end_date=' + dateStr).then(function (weeklyData) {
+                if (weeklyData && weeklyData.notion_configured) {
+                    renderHealthWeekly(weeklyData.days, dateStr);
+                }
+            }).catch(function () {});
+        } catch (err) {
+            showToast('Erro ao carregar saúde: ' + err.message);
+            healthLoadingEl.classList.add('hidden');
+        } finally {
+            healthLoading = false;
+        }
+    }
+
+    function renderHealthDashboard(data) {
+        healthLoadingEl.classList.add('hidden');
+        healthContentEl.classList.remove('hidden');
+
+        var consumed = data.totals.calories_consumed;
+        var burned = data.totals.calories_burned;
+        var balance = data.totals.balance;
+
+        healthCaloriesConsumed.textContent = Math.round(consumed) + ' / ' + CALORIE_GOAL + ' kcal consumidas';
+        healthCaloriesBurned.textContent = Math.round(burned) + ' kcal queimadas';
+        healthBalance.textContent = 'Saldo: ' + (balance >= 0 ? '+' : '') + Math.round(balance) + ' kcal';
+
+        var pct = Math.min((consumed / CALORIE_GOAL) * 100, 100);
+        healthProgressFill.style.width = pct + '%';
+
+        // Render meals grouped by type
+        renderMealGroups(data.meals);
+
+        // Render exercises
+        renderExercises(data.exercises);
+    }
+
+    var MEAL_TYPE_ORDER = ['CAFÉ DA MANHÃ', 'ALMOÇO', 'LANCHE', 'JANTAR', 'SUPLEMENTO'];
+    var MEAL_TYPE_LABELS = {
+        'CAFÉ DA MANHÃ': 'Café da manhã',
+        'ALMOÇO': 'Almoço',
+        'LANCHE': 'Lanche',
+        'JANTAR': 'Jantar',
+        'SUPLEMENTO': 'Suplemento'
+    };
+
+    function renderMealGroups(meals) {
+        if (!meals || meals.length === 0) {
+            healthMealsEl.innerHTML = '<div class="health-empty-day">Nenhuma refeição registrada</div>';
+            return;
+        }
+
+        // Group by meal_type
+        var groups = {};
+        meals.forEach(function (m) {
+            var mt = (m.meal_type || 'OUTRO').toUpperCase();
+            if (!groups[mt]) groups[mt] = [];
+            groups[mt].push(m);
+        });
+
+        var html = '';
+        MEAL_TYPE_ORDER.forEach(function (type) {
+            if (!groups[type]) return;
+            var items = groups[type];
+            var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
+            html += '<div class="health-meal-group">';
+            html += '<div class="health-meal-group-title">' + escapeHtml(MEAL_TYPE_LABELS[type] || type) + '</div>';
+            items.forEach(function (m) {
+                html += '<div class="health-meal-item">';
+                html += '<span class="health-meal-food">' + escapeHtml(m.food || '') + '</span>';
+                html += '<span class="health-meal-qty">' + escapeHtml(m.quantity || '') + '</span>';
+                html += '<span class="health-meal-kcal">' + Math.round(parseFloat(m.calories) || 0) + ' kcal</span>';
+                html += '</div>';
+            });
+            html += '<div class="health-meal-subtotal">' + Math.round(subtotal) + ' kcal</div>';
+            html += '</div>';
+        });
+
+        // Remaining types not in order
+        Object.keys(groups).forEach(function (type) {
+            if (MEAL_TYPE_ORDER.indexOf(type) >= 0) return;
+            var items = groups[type];
+            var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
+            html += '<div class="health-meal-group">';
+            html += '<div class="health-meal-group-title">' + escapeHtml(type) + '</div>';
+            items.forEach(function (m) {
+                html += '<div class="health-meal-item">';
+                html += '<span class="health-meal-food">' + escapeHtml(m.food || '') + '</span>';
+                html += '<span class="health-meal-qty">' + escapeHtml(m.quantity || '') + '</span>';
+                html += '<span class="health-meal-kcal">' + Math.round(parseFloat(m.calories) || 0) + ' kcal</span>';
+                html += '</div>';
+            });
+            html += '<div class="health-meal-subtotal">' + Math.round(subtotal) + ' kcal</div>';
+            html += '</div>';
+        });
+
+        healthMealsEl.innerHTML = html;
+    }
+
+    function renderExercises(exercises) {
+        if (!exercises || exercises.length === 0) {
+            healthExercisesEl.innerHTML = '<h3 class="health-section-title">Exercícios</h3><div class="health-empty-day">Nenhum exercício registrado</div>';
+            return;
+        }
+
+        var html = '<h3 class="health-section-title">Exercícios</h3>';
+        exercises.forEach(function (e) {
+            var isDone = e.done === true || e.done === 'true';
+            var pageId = e.id || e.page_id || '';
+            html += '<div class="health-exercise-item">';
+            html += '<div class="health-exercise-check ' + (isDone ? 'done' : '') + '" data-page-id="' + escapeHtml(pageId) + '" data-done="' + isDone + '">' + (isDone ? '✓' : '') + '</div>';
+            html += '<span class="health-exercise-name">' + escapeHtml(e.activity || '') + '</span>';
+            if (e.observations) {
+                html += '<span class="health-exercise-obs">' + escapeHtml(e.observations) + '</span>';
+            }
+            html += '<span class="health-exercise-kcal">' + Math.round(parseFloat(e.calories) || 0) + ' kcal</span>';
+            html += '</div>';
+        });
+        healthExercisesEl.innerHTML = html;
+    }
+
+    // Toggle exercise done status
+    healthExercisesEl.addEventListener('click', async function (e) {
+        var check = e.target.closest('.health-exercise-check');
+        if (!check) return;
+        var pageId = check.dataset.pageId;
+        if (!pageId) return;
+        var newDone = check.dataset.done !== 'true';
+
+        check.classList.toggle('done', newDone);
+        check.textContent = newDone ? '✓' : '';
+        check.dataset.done = String(newDone);
+
+        try {
+            await apiPatch('/api/health/exercises/' + encodeURIComponent(pageId), { done: newDone });
+        } catch (err) {
+            showToast('Erro ao atualizar: ' + err.message);
+            check.classList.toggle('done', !newDone);
+            check.textContent = !newDone ? '✓' : '';
+            check.dataset.done = String(!newDone);
+        }
+    });
+
+    function renderHealthWeekly(days, currentDate) {
+        if (!days || days.length === 0) {
+            healthWeeklyBars.innerHTML = '';
+            return;
+        }
+
+        var maxCal = Math.max(CALORIE_GOAL, Math.max.apply(null, days.map(function (d) { return d.calories_consumed; })));
+
+        var html = '';
+        days.forEach(function (d) {
+            var dt = new Date(d.date + 'T12:00:00');
+            var dayName = DAY_NAMES[dt.getDay()];
+            var pct = maxCal > 0 ? Math.min((d.calories_consumed / maxCal) * 100, 100) : 0;
+            var isToday = d.date === currentDate;
+
+            html += '<div class="health-weekly-row' + (isToday ? ' today' : '') + '">';
+            html += '<span class="health-weekly-day">' + dayName + '</span>';
+            html += '<div class="health-weekly-bar-wrap"><div class="health-weekly-bar" style="width:' + pct + '%"></div></div>';
+            html += '<span class="health-weekly-kcal">' + Math.round(d.calories_consumed) + '</span>';
+            html += '</div>';
+        });
+        healthWeeklyBars.innerHTML = html;
+    }
+
+    // ---- Meal modal ----
+    var mealOverlay = document.getElementById('health-meal-overlay');
+    var mealForm = document.getElementById('health-meal-form');
+    var mealCloseBtn = document.getElementById('health-meal-close');
+    var mealSubmitBtn = document.getElementById('meal-submit-btn');
+    var mealChipGroup = document.getElementById('meal-type-chips');
+    var selectedMealType = 'ALMOÇO';
+
+    document.getElementById('btn-add-meal').addEventListener('click', function () {
+        mealOverlay.classList.add('visible');
+        document.getElementById('meal-food').focus();
+    });
+
+    mealCloseBtn.addEventListener('click', function () {
+        mealOverlay.classList.remove('visible');
+    });
+
+    mealOverlay.addEventListener('click', function (e) {
+        if (e.target === mealOverlay) mealOverlay.classList.remove('visible');
+    });
+
+    mealChipGroup.addEventListener('click', function (e) {
+        var chip = e.target.closest('.health-chip');
+        if (!chip) return;
+        mealChipGroup.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        selectedMealType = chip.dataset.value;
+    });
+
+    mealForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (mealSubmitBtn.disabled) return;
+        mealSubmitBtn.disabled = true;
+        mealSubmitBtn.textContent = 'Registrando…';
+
+        try {
+            await apiPost('/api/health/meals', {
+                food: document.getElementById('meal-food').value.trim(),
+                meal_type: selectedMealType,
+                quantity: document.getElementById('meal-quantity').value.trim(),
+                estimated_calories: parseFloat(document.getElementById('meal-calories').value)
+            });
+            mealOverlay.classList.remove('visible');
+            mealForm.reset();
+            // Re-select default chip
+            mealChipGroup.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
+            mealChipGroup.querySelector('[data-value="ALMOÇO"]').classList.add('active');
+            selectedMealType = 'ALMOÇO';
+            showToast('Refeição registrada ✓');
+            loadHealthDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            mealSubmitBtn.disabled = false;
+            mealSubmitBtn.textContent = 'Registrar Refeição';
+        }
+    });
+
+    // ---- Exercise modal ----
+    var exerciseOverlay = document.getElementById('health-exercise-overlay');
+    var exerciseForm = document.getElementById('health-exercise-form');
+    var exerciseCloseBtn = document.getElementById('health-exercise-close');
+    var exerciseSubmitBtn = document.getElementById('exercise-submit-btn');
+
+    document.getElementById('btn-add-exercise').addEventListener('click', function () {
+        exerciseOverlay.classList.add('visible');
+        document.getElementById('exercise-activity').focus();
+    });
+
+    exerciseCloseBtn.addEventListener('click', function () {
+        exerciseOverlay.classList.remove('visible');
+    });
+
+    exerciseOverlay.addEventListener('click', function (e) {
+        if (e.target === exerciseOverlay) exerciseOverlay.classList.remove('visible');
+    });
+
+    exerciseForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (exerciseSubmitBtn.disabled) return;
+        exerciseSubmitBtn.disabled = true;
+        exerciseSubmitBtn.textContent = 'Registrando…';
+
+        try {
+            await apiPost('/api/health/exercises', {
+                activity: document.getElementById('exercise-activity').value.trim(),
+                calories: parseFloat(document.getElementById('exercise-calories').value),
+                observations: document.getElementById('exercise-observations').value.trim(),
+                done: document.getElementById('exercise-done').checked
+            });
+            exerciseOverlay.classList.remove('visible');
+            exerciseForm.reset();
+            document.getElementById('exercise-done').checked = true;
+            showToast('Exercício registrado ✓');
+            loadHealthDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            exerciseSubmitBtn.disabled = false;
+            exerciseSubmitBtn.textContent = 'Registrar Exercício';
+        }
     });
 
     // ---- Init ----
