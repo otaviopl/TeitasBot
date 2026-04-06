@@ -1,7 +1,15 @@
 import sys
 import socket
 
+import bcrypt
 import pytest
+
+_original_gensalt = bcrypt.gensalt
+
+
+def _fast_gensalt(rounds=4, prefix=b"2b"):
+    """Use minimal bcrypt rounds in tests (~0.002s vs ~0.6s per hash)."""
+    return _original_gensalt(rounds=4, prefix=prefix)
 
 
 BLOCK_MESSAGE = (
@@ -16,6 +24,7 @@ def _blocked_external_call(*_args, **_kwargs):
 
 @pytest.fixture(autouse=True)
 def block_external_calls(monkeypatch):
+    monkeypatch.setattr(bcrypt, "gensalt", _fast_gensalt)
     monkeypatch.setattr(socket, "create_connection", _blocked_external_call, raising=True)
     monkeypatch.setattr(socket.socket, "connect", _blocked_external_call, raising=True)
     monkeypatch.setattr(socket.socket, "connect_ex", _blocked_external_call, raising=True)
