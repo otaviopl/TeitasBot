@@ -815,6 +815,9 @@
         conversationListSection.style.display = showLists ? '' : 'none';
         notesListSection.style.display = showLists ? '' : 'none';
 
+        // Hide header tabs (Conversas/Anotações) when in health view
+        headerTabs.style.display = (tab === 'health') ? 'none' : '';
+
         // Hide everything first
         chatSection.classList.add('hidden');
         chatEmptyEl.classList.add('hidden');

@@ -619,6 +619,7 @@ html, body {
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--color-border);
     flex-shrink: 0;
+    margin-top: auto;
 }
 
 .sidebar-footer-icons {
