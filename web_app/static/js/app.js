@@ -54,6 +54,8 @@
     let activeNoteId = null;
     let easyMDE = null;
     let noteSaveTimer = null;
+    let conversationMessageCount = 0;
+    let conversationMessageLimit = 40;
 
     // ---- Markdown setup ----
     if (typeof marked !== 'undefined') {
@@ -159,9 +161,24 @@
     function clearMessages() {
         var messages = messagesEl.querySelectorAll('.message');
         messages.forEach(function (m) { m.remove(); });
+        conversationMessageCount = 0;
+        hideConversationLimitNotice();
     }
 
-    function addMessage(role, content, imageUrls) {
+    function formatTimestamp(isoStr) {
+        if (!isoStr) return '';
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '';
+        var now = new Date();
+        var timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (d.toDateString() === now.toDateString()) return timeStr;
+        var yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (d.toDateString() === yesterday.toDateString()) return 'Ontem ' + timeStr;
+        return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + timeStr;
+    }
+
+    function addMessage(role, content, imageUrls, timestamp) {
         var div = document.createElement('div');
         div.className = 'message message-' + role;
 
@@ -169,6 +186,14 @@
             div.innerHTML = renderMarkdown(content);
         } else {
             div.textContent = content;
+        }
+
+        var ts = formatTimestamp(timestamp);
+        if (ts) {
+            var timeEl = document.createElement('span');
+            timeEl.className = 'message-timestamp';
+            timeEl.textContent = ts;
+            div.appendChild(timeEl);
         }
 
         messagesEl.insertBefore(div, typingEl);
@@ -314,12 +339,43 @@
         try {
             var data = await apiGet('/api/conversations/' + conversationId + '/messages');
             if (!data) return;
+            conversationMessageCount = data.message_count || data.messages.length;
+            conversationMessageLimit = data.message_limit || 40;
             data.messages.forEach(function (msg) {
-                addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+                addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content, null, msg.created_at);
             });
+            checkMessageLimit();
         } catch (_) {
             // Conversation may be empty
         }
+    }
+
+    function checkMessageLimit() {
+        if (conversationMessageCount >= conversationMessageLimit && activeConversationId) {
+            showConversationLimitNotice();
+        } else {
+            hideConversationLimitNotice();
+        }
+    }
+
+    function showConversationLimitNotice() {
+        var existing = document.getElementById('conv-limit-notice');
+        if (!existing) {
+            var notice = document.createElement('div');
+            notice.id = 'conv-limit-notice';
+            notice.className = 'conv-limit-notice';
+            notice.textContent = 'Esta conversa atingiu o limite de mensagens. Crie uma nova conversa para continuar.';
+            chatInputWrapper.parentNode.insertBefore(notice, chatInputWrapper);
+        }
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+    }
+
+    function hideConversationLimitNotice() {
+        var existing = document.getElementById('conv-limit-notice');
+        if (existing) existing.remove();
+        inputEl.disabled = false;
+        updateSendButton();
     }
 
     async function deleteConversation(conversationId) {
@@ -382,10 +438,10 @@
         updateSendButton();
 
         if (file) {
-            addMessage('user', text || '📎 ' + file.name);
+            addMessage('user', text || '📎 ' + file.name, null, new Date().toISOString());
             clearFilePreview();
         } else {
-            addMessage('user', text);
+            addMessage('user', text, null, new Date().toISOString());
         }
 
         inputEl.value = '';
@@ -411,7 +467,9 @@
             }
 
             if (data) {
-                addMessage('assistant', data.text, data.image_urls);
+                addMessage('assistant', data.text, data.image_urls, new Date().toISOString());
+                conversationMessageCount += 2;
+                checkMessageLimit();
             }
 
             if (isFirstMessage && activeConversationId && text) {
@@ -482,7 +540,7 @@
         isSending = true;
         updateSendButton();
 
-        addMessage('user', '🎙️ Mensagem de voz');
+        addMessage('user', '🎙️ Mensagem de voz', null, new Date().toISOString());
         showTyping();
 
         var isFirstMessage = messagesEl.querySelectorAll('.message').length === 1;
@@ -505,7 +563,9 @@
                         autoTitleConversation(activeConversationId, data.transcribed_text);
                     }
                 }
-                addMessage('assistant', data.text, data.image_urls);
+                addMessage('assistant', data.text, data.image_urls, new Date().toISOString());
+                conversationMessageCount += 2;
+                checkMessageLimit();
             }
         } catch (err) {
             showToast('Erro: ' + err.message);

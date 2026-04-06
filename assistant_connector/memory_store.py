@@ -74,7 +74,7 @@ class ConversationMemoryStore:
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
                 """
-                SELECT role, content
+                SELECT role, content, created_at
                 FROM conversation_messages
                 WHERE session_id = ?
                 ORDER BY id DESC
@@ -84,7 +84,16 @@ class ConversationMemoryStore:
             )
             rows = cursor.fetchall()
         rows.reverse()
-        return [{"role": row["role"], "content": row["content"]} for row in rows]
+        return [{"role": row["role"], "content": row["content"], "created_at": row["created_at"]} for row in rows]
+
+    def count_messages(self, session_id: str) -> int:
+        """Return the total number of messages for a session."""
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS cnt FROM conversation_messages WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return row["cnt"] if row else 0
 
     def log_tool_call(
         self,

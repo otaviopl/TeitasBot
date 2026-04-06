@@ -60,10 +60,38 @@ class NoteUpdate(BaseModel):
 
 # ---- Helpers ----
 
+_MAX_CONVERSATIONS_PER_USER = 100
+_MAX_MESSAGES_PER_CONVERSATION = 40  # 20 exchanges (user + assistant)
+
 def _build_channel_id(username: str, conversation_id: str | None) -> str:
     if conversation_id:
         return f"web:{username}:{conversation_id}"
     return f"web:{username}"
+
+
+def _build_session_id(username: str, conversation_id: str | None) -> str:
+    from assistant_connector.service import AssistantService as AService
+    user_id = f"web:{username}"
+    channel_id = _build_channel_id(username, conversation_id)
+    return AService.build_session_id(user_id=user_id, channel_id=channel_id, guild_id=None)
+
+
+def _check_message_limit(service, username: str, conversation_id: str | None) -> None:
+    """Raise 400 if the conversation has reached the message limit."""
+    if not conversation_id:
+        return
+    try:
+        session_id = _build_session_id(username, conversation_id)
+        count = service._runtime._memory_store.count_messages(session_id)
+        if isinstance(count, int) and count >= _MAX_MESSAGES_PER_CONVERSATION:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Conversa atingiu o limite de {_MAX_MESSAGES_PER_CONVERSATION // 2} trocas de mensagens. Crie uma nova conversa.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
 
 def _extract_image_urls(image_paths: list[str]) -> list[str]:
@@ -135,6 +163,12 @@ async def create_conversation(
     user: dict = Depends(get_current_user),
     store: WebUserStore = Depends(get_user_store),
 ):
+    existing = store.list_conversations(user["id"], limit=_MAX_CONVERSATIONS_PER_USER)
+    if len(existing) >= _MAX_CONVERSATIONS_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Limite de {_MAX_CONVERSATIONS_PER_USER} conversas atingido. Exclua conversas antigas para criar novas.",
+        )
     conv = store.create_conversation(user["id"], body.title)
     return conv
 
@@ -190,14 +224,13 @@ async def get_conversation_messages(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    from assistant_connector.service import AssistantService as AService
-
-    channel_id = _build_channel_id(user["username"], conversation_id)
-    user_id = f"web:{user['username']}"
-    session_id = AService.build_session_id(user_id=user_id, channel_id=channel_id, guild_id=None)
-
+    session_id = _build_session_id(user["username"], conversation_id)
     messages = service._runtime._memory_store.get_recent_messages(session_id, limit=200)
-    return {"messages": messages}
+    return {
+        "messages": messages,
+        "message_count": len(messages),
+        "message_limit": _MAX_MESSAGES_PER_CONVERSATION,
+    }
 
 
 # ---- Chat endpoints ----
@@ -211,6 +244,8 @@ async def chat_send(
 ):
     if not req.message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
+
+    _check_message_limit(service, user["username"], req.conversation_id)
 
     user_id = f"web:{user['username']}"
     channel_id = _build_channel_id(user["username"], req.conversation_id)
@@ -262,6 +297,9 @@ async def chat_upload(
 
     user_id = f"web:{user['username']}"
     conv_id = conversation_id if conversation_id else None
+
+    _check_message_limit(service, user["username"], conv_id)
+
     channel_id = _build_channel_id(user["username"], conv_id)
 
     response = await asyncio.to_thread(
@@ -313,6 +351,9 @@ async def chat_audio(
 
     user_id = f"web:{user['username']}"
     conv_id = conversation_id if conversation_id else None
+
+    _check_message_limit(service, user["username"], conv_id)
+
     channel_id = _build_channel_id(user["username"], conv_id)
 
     response = await asyncio.to_thread(

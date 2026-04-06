@@ -789,6 +789,30 @@ html, body {
 .message-assistant em { font-style: italic; }
 .message-assistant a { color: var(--color-blue-start); text-decoration: underline; }
 
+/* Message timestamps */
+.message-timestamp {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    margin-top: 4px;
+    opacity: 0.7;
+}
+
+.message-user .message-timestamp {
+    text-align: right;
+}
+
+/* Conversation limit notice */
+.conv-limit-notice {
+    padding: 10px 16px;
+    background: rgba(220, 38, 38, 0.08);
+    color: var(--color-error);
+    text-align: center;
+    font-size: 0.85rem;
+    border-top: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
 /* Typing indicator */
 .typing-indicator {
     display: none;
