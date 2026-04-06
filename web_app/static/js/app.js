@@ -675,9 +675,7 @@
         });
 
         if (tab === 'chat') {
-            // Show chat, hide notes
-            conversationListSection.classList.remove('hidden');
-            notesListSection.classList.add('hidden');
+            // Show chat main area, hide notes editor
             chatSection.classList.remove('hidden');
             chatInputWrapper.classList.remove('hidden');
             notesEditorEl.classList.add('hidden');
@@ -685,9 +683,7 @@
             resetBtn.style.display = '';
             inputEl.focus();
         } else {
-            // Show notes, hide chat
-            conversationListSection.classList.add('hidden');
-            notesListSection.classList.remove('hidden');
+            // Show notes editor, hide chat main area
             chatSection.classList.add('hidden');
             chatInputWrapper.classList.add('hidden');
             resetBtn.style.display = 'none';
