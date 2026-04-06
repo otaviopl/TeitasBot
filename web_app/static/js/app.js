@@ -75,7 +75,6 @@
     const healthPrevBtn = document.getElementById('health-prev-day');
     const healthNextBtn = document.getElementById('health-next-day');
     const healthLoadingEl = document.getElementById('health-loading');
-    const healthNotConfiguredEl = document.getElementById('health-not-configured');
     const healthContentEl = document.getElementById('health-content');
     const healthCaloriesConsumed = document.getElementById('health-calories-consumed');
     const healthCaloriesBurned = document.getElementById('health-calories-burned');
@@ -1355,7 +1354,6 @@
 
         healthLoadingEl.classList.remove('hidden');
         healthContentEl.classList.add('hidden');
-        healthNotConfiguredEl.classList.add('hidden');
 
         try {
             var dateStr = healthDateISO();
@@ -1363,7 +1361,7 @@
 
             if (!dashData) {
                 healthLoadingEl.classList.add('hidden');
-                healthNotConfiguredEl.classList.remove('hidden');
+                showToast('Erro ao carregar dados de saúde.');
                 return;
             }
 
