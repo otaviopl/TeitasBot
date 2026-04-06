@@ -868,8 +868,8 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: var(--header-height);
-    padding: 0 16px;
+    height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 16px 0;
     background: rgba(255, 255, 255, 0.55);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
@@ -982,7 +982,7 @@ html, body {
 .chat-messages {
     flex: 1;
     padding: 16px;
-    padding-top: calc(var(--header-height) + 16px);
+    padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px) + 16px);
     padding-bottom: 16px;
     display: flex;
     flex-direction: column;
@@ -1248,7 +1248,7 @@ html, body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding-top: var(--header-height);
+    padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
     overflow: hidden;
 }
 
@@ -1445,7 +1445,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-top: var(--header-height);
+    padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
 }
 
 .notes-empty.hidden, .chat-empty.hidden {
@@ -1536,6 +1536,7 @@ html, body {
    ================================================ */
 
 @media (max-width: 767px) {
+    /* ---- Sidebar: slide-in drawer, scrollable ---- */
     .sidebar {
         position: fixed;
         left: 0;
@@ -1544,6 +1545,8 @@ html, body {
         transform: translateX(-100%);
         transition: transform 0.25s ease;
         box-shadow: none;
+        overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .sidebar.open {
@@ -1551,30 +1554,33 @@ html, body {
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
     }
 
+    /* Conversations section can shrink so footer stays visible */
+    .sidebar-conversations {
+        max-height: 200px;
+        flex-shrink: 1;
+    }
+
+    /* Sticky footer so it's always visible when scrolled */
+    .sidebar-footer {
+        position: sticky;
+        bottom: 0;
+        background: #FAFAFA;
+        z-index: 1;
+    }
+
+    /* ---- Header ---- */
     .btn-hamburger {
         display: flex;
     }
 
     .chat-header {
         padding-left: 12px;
+        padding-right: 12px;
     }
 
-    .chat-messages {
-        padding: 12px;
-        padding-top: calc(var(--header-height) + 12px);
-        padding-bottom: 12px;
-    }
-
-    .chat-input-bar {
-        padding: 8px 12px;
-    }
-
-    .message {
-        max-width: 90%;
-    }
-
+    /* ---- Header tabs ---- */
     .header-tabs {
-        width: 200px;
+        width: 176px;
     }
 
     .header-tab {
@@ -1582,12 +1588,56 @@ html, body {
         font-size: 0.78rem;
     }
 
+    /* ---- Chat messages: safe-area-aware top padding ---- */
+    .chat-messages {
+        padding: 12px;
+        padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px) + 12px);
+        padding-bottom: 12px;
+    }
+
+    /* ---- Chat input ---- */
+    .chat-input-bar {
+        padding: 8px 12px;
+    }
+
+    /* ---- Message bubbles ---- */
+    .message {
+        max-width: 90%;
+    }
+
+    /* ---- Notes editor ---- */
     .notes-editor-header {
         padding: 10px 12px;
     }
 
     .notes-editor-body {
         padding: 0 12px 12px;
+    }
+
+    /* EasyMDE toolbar: allow horizontal scroll on mobile */
+    .notes-editor-body .editor-toolbar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+    }
+
+    /* ---- Delete buttons: always visible on touch devices ---- */
+    .conversation-item-delete,
+    .note-item-delete {
+        display: block !important;
+        opacity: 0.55;
+    }
+
+    /* ---- Modals: fill screen width ---- */
+    .notion-modal {
+        min-width: unset;
+        width: calc(100% - 32px);
+    }
+
+    .memories-modal {
+        min-width: unset;
+        width: calc(100% - 32px);
+        max-height: 85vh;
     }
 }
 

@@ -158,6 +158,8 @@
             appLayout.style.height = vv.height + 'px';
             // Compensate if iOS scrolled the page behind the keyboard
             appLayout.style.top = vv.offsetTop + 'px';
+            // Remove 'bottom' so it doesn't conflict with explicit height
+            appLayout.style.bottom = 'auto';
             scrollToBottom();
         }
 
@@ -842,6 +844,9 @@
             notesEditorEl.classList.add('hidden');
             notesEmptyEl.classList.add('hidden');
             resetBtn.style.visibility = '';
+            // Restore conv-limit-notice visibility if it exists
+            var limitNotice = document.getElementById('conv-limit-notice');
+            if (limitNotice) limitNotice.style.display = '';
             updateChatEmptyState();
             inputEl.focus();
         } else {
@@ -850,6 +855,9 @@
             chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.add('hidden');
             resetBtn.style.visibility = 'hidden';
+            // Hide the conversation-limit notice when on notes tab
+            var limitNotice = document.getElementById('conv-limit-notice');
+            if (limitNotice) limitNotice.style.display = 'none';
             loadNotes();
         }
     }
