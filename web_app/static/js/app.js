@@ -67,6 +67,7 @@
     let activeNoteContentDirty = false;
     let easyMDE = null;
     let noteSaveTimer = null;
+    let noteMetadataTimer = null;
     let allUserTags = [];
     let activeTagFilter = null;
     let conversationMessageCount = 0;
@@ -846,6 +847,13 @@
         noteSaveTimer = setTimeout(function () {
             saveCurrentNote();
         }, 2000);
+        // Generate metadata after 5s of inactivity
+        clearTimeout(noteMetadataTimer);
+        noteMetadataTimer = setTimeout(function () {
+            if (activeNoteId && activeNoteContentDirty) {
+                flushNoteAndGenerateMetadata();
+            }
+        }, 5000);
     }
 
     async function saveCurrentNote() {
@@ -864,12 +872,16 @@
         if (!activeNoteId || !easyMDE) return;
         var noteId = activeNoteId;
         var content = easyMDE.value();
+        if (content.trim().length < 5) return;
 
         clearTimeout(noteSaveTimer);
+        clearTimeout(noteMetadataTimer);
 
         try {
             await apiPatch('/api/notes/' + noteId, { content: content });
         } catch (_) { /* ignore save error here */ }
+
+        if (activeNoteId === noteId) noteSaveStatus.textContent = 'Gerando título…';
 
         // Fire metadata generation (don't block UI)
         apiPost('/api/notes/' + noteId + '/generate-metadata', {}).then(function (meta) {
@@ -884,11 +896,12 @@
             if (activeNoteId === noteId) {
                 noteTitleDisplay.textContent = meta.title;
                 renderNoteTags(meta.tags || []);
+                noteSaveStatus.textContent = 'Salvo ✓';
             }
             activeNoteContentDirty = false;
             refreshUserTags();
         }).catch(function () {
-            // Non-critical
+            if (activeNoteId === noteId) noteSaveStatus.textContent = '';
         });
     }
 
@@ -1007,6 +1020,7 @@
 
         activeNoteId = noteId;
         activeNoteContentDirty = false;
+        clearTimeout(noteMetadataTimer);
 
         // Update sidebar active state
         notesListEl.querySelectorAll('.note-item').forEach(function (item) {
