@@ -455,7 +455,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 "output": [
                     {
                         "type": "function_call",
-                        "name": "create_notion_task",
+                        "name": "create_task",
                         "arguments": "{\"task_name\":\"Nova tarefa\",\"confirmed\":true}",
                         "call_id": "call-1",
                     }
@@ -469,8 +469,8 @@ class TestAssistantRuntime(unittest.TestCase):
             },
         ]
         tool_definitions = {
-            "create_notion_task": ToolDefinition(
-                name="create_notion_task",
+            "create_task": ToolDefinition(
+                name="create_task",
                 description="Cria tarefa",
                 input_schema={"type": "object", "properties": {"confirmed": {"type": "boolean"}}},
                 handler="tests.test_assistant_runtime:_write_tool",
@@ -483,7 +483,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 temp_dir=temp_dir,
                 payloads=payloads,
                 tool_definitions=tool_definitions,
-                tool_names=["create_notion_task"],
+                tool_names=["create_task"],
             )
             answer = runtime.process_user_message(
                 session_id="guild:channel:user",
@@ -506,7 +506,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 "output": [
                     {
                         "type": "function_call",
-                        "name": "create_notion_task",
+                        "name": "create_task",
                         "arguments": "{\"task_name\":\"Nova tarefa\",\"confirmed\":true}",
                         "call_id": "call-1",
                     }
@@ -520,8 +520,8 @@ class TestAssistantRuntime(unittest.TestCase):
             },
         ]
         tool_definitions = {
-            "create_notion_task": ToolDefinition(
-                name="create_notion_task",
+            "create_task": ToolDefinition(
+                name="create_task",
                 description="Cria tarefa",
                 input_schema={"type": "object", "properties": {"confirmed": {"type": "boolean"}}},
                 handler="tests.test_assistant_runtime:_write_tool",
@@ -534,7 +534,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 temp_dir=temp_dir,
                 payloads=payloads,
                 tool_definitions=tool_definitions,
-                tool_names=["create_notion_task"],
+                tool_names=["create_task"],
             )
             answer = runtime.process_user_message(
                 session_id="guild:channel:user",
@@ -557,7 +557,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 "output": [
                     {
                         "type": "function_call",
-                        "name": "create_notion_task",
+                        "name": "create_task",
                         "arguments": "{\"task_name\":\"Nova tarefa\",\"confirmed\":true}",
                         "call_id": "call-1",
                     }
@@ -571,8 +571,8 @@ class TestAssistantRuntime(unittest.TestCase):
             },
         ]
         tool_definitions = {
-            "create_notion_task": ToolDefinition(
-                name="create_notion_task",
+            "create_task": ToolDefinition(
+                name="create_task",
                 description="Cria tarefa",
                 input_schema={"type": "object", "properties": {"confirmed": {"type": "boolean"}}},
                 handler="tests.test_assistant_runtime:_write_tool",
@@ -585,7 +585,7 @@ class TestAssistantRuntime(unittest.TestCase):
                 temp_dir=temp_dir,
                 payloads=payloads,
                 tool_definitions=tool_definitions,
-                tool_names=["create_notion_task"],
+                tool_names=["create_task"],
             )
             answer = runtime.process_user_message(
                 session_id="guild:channel:user",

@@ -488,56 +488,6 @@ async def delete_note(
     return {"status": "ok"}
 
 
-# ---- Notion connectivity check (Notes only — other data is in SQLite) ----
-
-_NOTION_DATABASES = {
-    "Anotações": ("notion_notes_db_id", "NOTION_NOTES_DB_ID"),
-}
-
-
-def _check_notion_database(db_id: str, api_key: str) -> str:
-    """Ping a single Notion database and return 'ok' or 'error'."""
-    import requests as _requests
-
-    try:
-        resp = _requests.get(
-            f"https://api.notion.com/v1/databases/{db_id}",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Notion-Version": "2022-06-28",
-            },
-            timeout=10,
-        )
-        return "ok" if resp.status_code == 200 else "error"
-    except Exception:
-        return "error"
-
-
-@app.get("/api/notion/check")
-async def notion_check(user: dict = Depends(get_current_user)):
-    from utils.load_credentials import _resolve
-
-    user_id = f"web:{user['username']}"
-    store = get_credential_store()
-
-    api_key = _resolve("notion_api_key", "NOTION_API_KEY", user_id, store)
-    if not api_key:
-        return {
-            "api_key_configured": False,
-            "databases": {name: "not_configured" for name in _NOTION_DATABASES},
-        }
-
-    databases: dict[str, str] = {}
-    for name, (cred_key, env_var) in _NOTION_DATABASES.items():
-        db_id = _resolve(cred_key, env_var, user_id, store)
-        if not db_id:
-            databases[name] = "not_configured"
-        else:
-            databases[name] = await asyncio.to_thread(_check_notion_database, db_id, api_key)
-
-    return {"api_key_configured": True, "databases": databases}
-
-
 # ---- Google OAuth endpoints ----
 
 @app.get("/api/google/status")

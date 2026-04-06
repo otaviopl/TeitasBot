@@ -294,20 +294,7 @@
 
                 <!-- Loading state -->
                 <div class="health-loading hidden" id="health-loading">
-                    <div class="notion-spinner"></div>
-                </div>
-
-                <!-- Not configured state -->
-                <div class="health-not-configured hidden" id="health-not-configured">
-                    <div class="empty-state-content">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                        <h3>Notion não configurado</h3>
-                        <p>Configure as bases de Refeições e/ou Exercícios no Notion para usar esta tela.</p>
-                    </div>
+                    <div class="loading-spinner"></div>
                 </div>
 
                 <!-- Daily content (scrollable) -->
@@ -356,25 +343,14 @@
     <!-- Toast notification -->
     <div class="toast" id="toast"></div>
 
-    <!-- Notion status modal -->
-    <div class="notion-modal-overlay" id="notion-modal-overlay">
-        <div class="notion-modal">
-            <h3>Status Notion</h3>
-            <div id="notion-modal-content">
-                <div class="notion-spinner"></div>
-            </div>
-            <button class="notion-modal-close" id="notion-modal-close">Fechar</button>
-        </div>
-    </div>
-
     <!-- Memories modal -->
     <div class="memories-modal-overlay" id="memories-modal-overlay">
         <div class="memories-modal">
             <h3>🧠 Memórias</h3>
             <div class="memories-modal-body" id="memories-modal-content">
-                <div class="notion-spinner"></div>
+                <div class="loading-spinner"></div>
             </div>
-            <button class="notion-modal-close" id="memories-modal-close">Fechar</button>
+            <button class="modal-close-btn" id="memories-modal-close">Fechar</button>
         </div>
     </div>
 
@@ -408,7 +384,7 @@
 
                 <button type="submit" class="btn btn-primary health-form-submit" id="meal-submit-btn">Registrar Refeição</button>
             </form>
-            <button class="notion-modal-close" id="health-meal-close">Cancelar</button>
+            <button class="modal-close-btn" id="health-meal-close">Cancelar</button>
         </div>
     </div>
 
@@ -433,7 +409,7 @@
 
                 <button type="submit" class="btn btn-primary health-form-submit" id="exercise-submit-btn">Registrar Exercício</button>
             </form>
-            <button class="notion-modal-close" id="health-exercise-close">Cancelar</button>
+            <button class="modal-close-btn" id="health-exercise-close">Cancelar</button>
         </div>
     </div>
 

@@ -140,7 +140,7 @@ def send_email_with_tasks(all_tasks, chatgpt_answer, project_logger,
 
         message['To'] = email_config["email_to"]
         message['From'] = email_config["email_from"]
-        message['Subject'] = 'My Notion Bot - Tasks'
+        message['Subject'] = 'Personal Assistant - Tasks'
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()) \
             .decode()

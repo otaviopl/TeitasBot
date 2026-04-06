@@ -12,9 +12,6 @@ class TestAssistantConfigLoader(unittest.TestCase):
         self.assertEqual(agent.agent_id, "personal_assistant")
         self.assertIn("list_available_tools", agent.tools)
         self.assertIn("list_calendar_events", agent.tools)
-        self.assertIn("list_notion_notes", agent.tools)
-        self.assertIn("create_notion_note", agent.tools)
-        self.assertIn("edit_notion_item", agent.tools)
         self.assertIn("list_bills", agent.tools)
         self.assertIn("pay_bill", agent.tools)
         self.assertIn("analyze_bills", agent.tools)
@@ -85,8 +82,6 @@ class TestAssistantConfigLoader(unittest.TestCase):
     def test_write_tools_flagged_as_write_operations(self):
         configuration = load_assistant_configuration()
         self.assertTrue(configuration.tools["create_task"].write_operation)
-        self.assertTrue(configuration.tools["create_notion_note"].write_operation)
-        self.assertTrue(configuration.tools["edit_notion_item"].write_operation)
         self.assertTrue(configuration.tools["pay_bill"].write_operation)
         self.assertTrue(configuration.tools["register_meal"].write_operation)
         self.assertTrue(configuration.tools["register_exercise"].write_operation)

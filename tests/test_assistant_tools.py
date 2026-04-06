@@ -11,7 +11,6 @@ from assistant_connector.tools import (
     metabolism_tools,
     meta_tools,
     news_tools,
-    notion_tools,
     scheduled_task_tools,
     system_tools,
 )
@@ -155,54 +154,6 @@ class TestAssistantTools(unittest.TestCase):
         self.assertEqual(result["returned"], 1)
         self.assertEqual(result["query"], "economia")
 
-    @patch("assistant_connector.tools.notion_tools.notion_connector.collect_notes_around_today")
-    def test_list_notion_notes_clamps_inputs(self, mock_collect_notes):
-        mock_collect_notes.return_value = [{"name": f"Note {i}"} for i in range(120)]
-
-        result = notion_tools.list_notion_notes(
-            {"days_back": -3, "days_forward": -1, "limit": 999},
-            _build_context(),
-        )
-
-        mock_collect_notes.assert_called_once_with(days_back=0, days_forward=0, project_logger=unittest.mock.ANY, user_id=unittest.mock.ANY, credential_store=None)
-        self.assertEqual(result["returned"], 100)
-        self.assertEqual(len(result["notes"]), 100)
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.create_note_in_notes_db")
-    def test_create_notion_note_accepts_rich_observations(self, mock_create_note):
-        mock_create_note.return_value = {"id": "note-1"}
-
-        rich_observations = (
-            "Resumo completo:\n"
-            "- Contexto\n"
-            "- Decisões\n"
-            "- Próximos passos\n\n"
-            "Detalhes adicionais com múltiplos parágrafos."
-        )
-        result = notion_tools.create_notion_note(
-            {
-                "note_name": "Reunião produto",
-                "tag": "MEETING",
-                "observations": rich_observations,
-                "url": "https://example.com/doc",
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "note-1")
-        payload = mock_create_note.call_args.args[0]
-        self.assertEqual(payload["note_name"], "Reunião produto")
-        self.assertEqual(payload["tag"], "MEETING")
-        self.assertEqual(payload["observations"], rich_observations)
-        self.assertEqual(payload["url"], "https://example.com/doc")
-
-    def test_create_notion_note_requires_name(self):
-        with self.assertRaises(ValueError):
-            notion_tools.create_notion_note(
-                {"note_name": "   ", "observations": "conteúdo"},
-                _build_context(),
-            )
-
     def test_calculate_metabolism_profile_uses_mifflin_st_jeor(self):
         result = metabolism_tools.calculate_metabolism_profile(
             {
@@ -284,66 +235,6 @@ class TestAssistantTools(unittest.TestCase):
 
         self.assertEqual(created["status"], "created")
         self.assertTrue(created["entry"]["measured_at"].endswith("Z"))
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
-    def test_edit_notion_item_updates_card_payload(self, mock_update_page):
-        mock_update_page.return_value = {"id": "card-1", "updated_fields": ["note_name", "date"]}
-
-        result = notion_tools.edit_notion_item(
-            {
-                "item_type": "card",
-                "page_id": "card-page-id",
-                "note_name": "Retro semanal",
-                "date": "2026-03-10",
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "card-1")
-        payload = mock_update_page.call_args.args[0]
-        self.assertEqual(payload["item_type"], "card")
-        self.assertEqual(payload["note_name"], "Retro semanal")
-        self.assertEqual(payload["date"], "2026-03-10")
-
-    def test_edit_notion_item_rejects_invalid_card_date(self):
-        with self.assertRaisesRegex(ValueError, "date must be a valid ISO date"):
-            notion_tools.edit_notion_item(
-                {"item_type": "card", "page_id": "card-id", "date": "not-a-date"},
-                _build_context(),
-            )
-
-    def test_edit_notion_item_requires_editable_fields(self):
-        with self.assertRaises(ValueError):
-            notion_tools.edit_notion_item(
-                {"item_type": "card", "page_id": "card-id"},
-                _build_context(),
-            )
-
-    def test_edit_notion_item_rejects_task_type(self):
-        with self.assertRaisesRegex(ValueError, "item_type must be 'card'"):
-            notion_tools.edit_notion_item(
-                {"item_type": "task", "page_id": "task-id", "note_name": "Test"},
-                _build_context(),
-            )
-
-    @patch("assistant_connector.tools.notion_tools.notion_connector.update_notion_page")
-    def test_edit_notion_item_accepts_page_content_update(self, mock_update_page):
-        mock_update_page.return_value = {"id": "card-1", "updated_fields": ["content"]}
-
-        result = notion_tools.edit_notion_item(
-            {
-                "item_type": "card",
-                "page_id": "card-id",
-                "content": "# Novo conteúdo\n\n- item",
-                "content_mode": "replace",
-            },
-            _build_context(),
-        )
-
-        self.assertEqual(result["id"], "card-1")
-        payload = mock_update_page.call_args.args[0]
-        self.assertEqual(payload["content_mode"], "replace")
-        self.assertIn("Novo conteúdo", payload["content"])
 
     def test_list_calendar_events_rejects_non_integer_max_results(self):
         with self.assertRaisesRegex(ValueError, "max_results must be a valid integer"):

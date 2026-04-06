@@ -10,8 +10,6 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Maps credential keys to their .env fallback variable names.
 _ENV_FALLBACK: dict[str, str] = {
-    "notion_api_key": "NOTION_API_KEY",
-    "notion_notes_db_id": "NOTION_NOTES_DB_ID",
     "email_from": "EMAIL_FROM",
     "email_to": "EMAIL_TO",
     "display_name": "DISPLAY_NAME",
@@ -26,7 +24,6 @@ _STORE_ONLY_KEYS: frozenset[str] = frozenset(["google_token_json"])
 
 # Integrations and their minimum required credential keys.
 _INTEGRATION_REQUIREMENTS: dict[str, list[str]] = {
-    "Notion": ["notion_api_key", "notion_notes_db_id"],
     "Email": ["email_from", "email_to"],
     "Google": ["google_token_json"],
 }

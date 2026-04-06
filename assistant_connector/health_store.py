@@ -14,7 +14,7 @@ def _utc_now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Quantity normalization (extracted from notion_connector)
+# Quantity normalization (extracted from original connector)
 # ---------------------------------------------------------------------------
 
 _MEAL_UNIT_ALIASES = {

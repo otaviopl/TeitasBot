@@ -32,11 +32,6 @@ from assistant_connector.tools.metabolism_tools import (
     register_metabolism_profile,
 )
 from assistant_connector.tools.news_tools import list_news, list_tech_news
-from assistant_connector.tools.notion_tools import (
-    create_notion_note,
-    edit_notion_item,
-    list_notion_notes,
-)
 from assistant_connector.tools.scheduled_task_tools import (
     cancel_scheduled_task,
     create_scheduled_task,
@@ -64,12 +59,9 @@ __all__ = [
     "analyze_exercises",
     "check_daily_logging_status",
     "edit_exercise",
-    "create_notion_note",
     "create_scheduled_task",
-    "edit_notion_item",
     "edit_scheduled_task",
     "analyze_email_attachment",
-    "list_notion_notes",
     "list_scheduled_tasks",
     "read_email",
     "search_email_attachments",

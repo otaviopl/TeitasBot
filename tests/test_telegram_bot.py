@@ -184,36 +184,35 @@ class TestTelegramBot(unittest.TestCase):
 
     def _make_fake_store(self, integrations=None, configured_keys=None):
         store = unittest.mock.MagicMock()
-        store.check_integrations.return_value = integrations or {"Notion": False, "Email": False}
+        store.check_integrations.return_value = integrations or {"Email": False}
         store.list_configured_keys.return_value = configured_keys or []
         return store
 
     def test_build_setup_trigger_contains_integration_headers(self):
         store = self._make_fake_store()
         msg = telegram_bot._build_setup_trigger_message("123", store)
-        self.assertIn("Notion", msg)
         self.assertIn("Email", msg)
         self.assertIn("[SETUP]", msg)
 
     def test_build_setup_trigger_shows_inactive_when_not_configured(self):
-        store = self._make_fake_store(integrations={"Notion": False, "Email": False})
+        store = self._make_fake_store(integrations={"Email": False})
         msg = telegram_bot._build_setup_trigger_message("123", store)
         self.assertIn("❌", msg)
         self.assertIn("inativa", msg)
 
     def test_build_setup_trigger_shows_active_when_configured(self):
         store = self._make_fake_store(
-            integrations={"Notion": True, "Email": False},
-            configured_keys=["notion_api_key", "notion_database_id"],
+            integrations={"Email": True},
+            configured_keys=["email_from", "email_to"],
         )
         msg = telegram_bot._build_setup_trigger_message("123", store)
         self.assertIn("✅", msg)
         self.assertIn("ativa", msg)
 
     def test_build_setup_trigger_includes_missing_keys(self):
-        store = self._make_fake_store(integrations={"Notion": False, "Email": False})
+        store = self._make_fake_store(integrations={"Email": False})
         msg = telegram_bot._build_setup_trigger_message("123", store)
-        self.assertIn("notion_api_key", msg)
+        self.assertIn("email_from", msg)
 
     def test_build_setup_trigger_ends_with_guide_request(self):
         store = self._make_fake_store()

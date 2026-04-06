@@ -21,20 +21,6 @@ def _resolve(key: str, env_key: str, user_id: Optional[str], store) -> Optional[
     return os.getenv(env_key) or None
 
 
-def load_notion_credentials(project_logger, user_id: Optional[str] = None, store=None):
-    project_logger.debug("Getting Notion credentials...")
-
-    database_id = _resolve("notion_database_id", "NOTION_DATABASE_ID", user_id, store)
-    api_key = _resolve("notion_api_key", "NOTION_API_KEY", user_id, store)
-
-    if not database_id or not api_key:
-        project_logger.debug("Notion credentials not configured for user %s.", user_id)
-        return None
-
-    project_logger.debug("Finished getting Notion credentials.")
-    return {"database_id": database_id, "api_key": api_key}
-
-
 def load_email_config(project_logger, user_id: Optional[str] = None, store=None):
     project_logger.debug("Getting EMAIL credentials...")
 
@@ -48,14 +34,3 @@ def load_email_config(project_logger, user_id: Optional[str] = None, store=None)
 
     project_logger.debug("Finished getting EMAIL credentials.")
     return {"email_from": email_from, "email_to": email_to, "display_name": display_name}
-
-
-def load_notion_db_id(
-    key: str,
-    env_key: str,
-    project_logger,
-    user_id: Optional[str] = None,
-    store=None,
-) -> Optional[str]:
-    """Load a specific Notion database ID from store or env var."""
-    return _resolve(key, env_key, user_id, store)

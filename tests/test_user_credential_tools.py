@@ -57,11 +57,11 @@ class TestManageUserCredentials(unittest.TestCase):
         store = self._make_store()
         ctx = _make_context(store=store)
         result = manage_user_credentials(
-            {"action": "set", "key": "notion_api_key", "value": "secret_123"},
+            {"action": "set", "key": "email_from", "value": "secret_123"},
             ctx,
         )
         self.assertIn("success", result)
-        self.assertEqual(store.get_credential("u1", "notion_api_key"), "secret_123")
+        self.assertEqual(store.get_credential("u1", "email_from"), "secret_123")
 
     def test_set_invalid_key(self):
         from assistant_connector.tools.user_credential_tools import manage_user_credentials
@@ -80,7 +80,7 @@ class TestManageUserCredentials(unittest.TestCase):
         store = self._make_store()
         ctx = _make_context(store=store)
         result = manage_user_credentials(
-            {"action": "set", "key": "notion_api_key"},
+            {"action": "set", "key": "email_from"},
             ctx,
         )
         self.assertIn("error", result)
@@ -102,11 +102,11 @@ class TestManageUserCredentials(unittest.TestCase):
         store = self._make_store()
         ctx = _make_context(store=store)
         manage_user_credentials(
-            {"action": "set", "key": "notion_api_key", "value": "val"},
+            {"action": "set", "key": "email_from", "value": "val"},
             ctx,
         )
         result = manage_user_credentials({"action": "list_configured"}, ctx)
-        self.assertIn("notion_api_key", result["configured_keys"])
+        self.assertIn("email_from", result["configured_keys"])
 
     # --- delete action ---
 
@@ -170,7 +170,7 @@ class TestManageUserCredentials(unittest.TestCase):
         store = self._make_store()
         # user_a configures a credential
         ctx_a = _make_context(user_id="user_a", store=store)
-        manage_user_credentials({"action": "set", "key": "notion_api_key", "value": "secret_a"}, ctx_a)
+        manage_user_credentials({"action": "set", "key": "email_from", "value": "secret_a"}, ctx_a)
 
         # user_b tries to list keys — even if they somehow pass user_a's id in arguments, the
         # tool must only see user_b's own empty key list.
@@ -179,7 +179,7 @@ class TestManageUserCredentials(unittest.TestCase):
             {"action": "list_configured", "user_id": "user_a"},  # ignored extra arg
             ctx_b,
         )
-        self.assertNotIn("notion_api_key", result.get("configured_keys", []))
+        self.assertNotIn("email_from", result.get("configured_keys", []))
 
     def test_tool_contexts_are_isolated(self):
         """Setting a credential via one user context must not be visible via another."""

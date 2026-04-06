@@ -33,7 +33,7 @@ class TestUtilsHelpers(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {"LOG_PATH": temp_dir}, clear=False):
             logger = create_logger.create_logger()
-            self.assertEqual(logger.name, "personal_notion_integration")
+            self.assertEqual(logger.name, "personal_assistant")
             self.assertGreaterEqual(len(logger.handlers), 2)
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "log_file.txt")))
 
@@ -58,36 +58,11 @@ class TestUtilsHelpers(unittest.TestCase):
                 load_credentials._get_required_env("MISSING_ENV", logger)
         self.assertIn("Missing required environment variable: MISSING_ENV", logger.errors[0])
 
-    def test_load_notion_credentials_prefers_store_then_env(self):
-        logger = _LoggerStub()
-        store = MagicMock()
-        store.get_credential.side_effect = ["db-from-store", "api-from-store"]
-        with patch.dict(
-            os.environ,
-            {"NOTION_DATABASE_ID": "db-env", "NOTION_API_KEY": "api-env"},
-            clear=False,
-        ):
-            creds = load_credentials.load_notion_credentials(logger, user_id="u1", store=store)
-        self.assertEqual(creds["database_id"], "db-from-store")
-        self.assertEqual(creds["api_key"], "api-from-store")
-
     def test_load_email_config_returns_none_when_incomplete(self):
         logger = _LoggerStub()
         with patch.dict(os.environ, {"EMAIL_FROM": "from@example.com", "EMAIL_TO": ""}, clear=False):
             cfg = load_credentials.load_email_config(logger)
         self.assertIsNone(cfg)
-
-    def test_load_notion_db_id_uses_env_fallback(self):
-        logger = _LoggerStub()
-        with patch.dict(os.environ, {"NOTION_NOTES_DB_ID": "notes-db"}, clear=False):
-            db_id = load_credentials.load_notion_db_id(
-                key="notion_notes_db_id",
-                env_key="NOTION_NOTES_DB_ID",
-                project_logger=logger,
-                user_id=None,
-                store=None,
-            )
-        self.assertEqual(db_id, "notes-db")
 
     @patch("utils.nice_message_collector.random.choice")
     @patch("utils.nice_message_collector.requests.get")

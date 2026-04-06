@@ -47,7 +47,7 @@ DEFAULT_PROMPT = (
     "\n\nTarefas:"
 )
 TASK_PARSER_PROMPT = (
-    "Você recebe uma frase para criar uma tarefa no Notion e deve retornar somente JSON válido."
+    "Você recebe uma frase para criar uma tarefa e deve retornar somente JSON válido."
     "\nExtraia os campos: task_name, project, due_date, tags."
     "\nRegras:"
     "\n- due_date deve estar em formato YYYY-MM-DD."
@@ -76,7 +76,7 @@ EVENT_PARSER_PROMPT = (
     "\n{\"summary\":\"Reunião\",\"start_datetime\":\"2026-03-03T10:00\",\"end_datetime\":\"2026-03-03T11:00\",\"description\":\"Kickoff\",\"timezone\":\"America/Sao_Paulo\"}"
 )
 NOTE_PARSER_PROMPT = (
-    "Você recebe uma frase para criar uma anotação no Notion e deve retornar somente JSON válido."
+    "Você recebe uma frase para criar uma anotação e deve retornar somente JSON válido."
     "\nExtraia os campos: note_name, tag, observations, url."
     "\nRegras:"
     "\n- note_name deve ser curto e claro."

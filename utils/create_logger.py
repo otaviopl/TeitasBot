@@ -14,7 +14,7 @@ def create_logger():
     os.makedirs(log_file_path, exist_ok=True)
     log_file = os.path.abspath(os.path.join(log_file_path, "log_file.txt"))
 
-    logger = logging.getLogger("personal_notion_integration")
+    logger = logging.getLogger("personal_assistant")
     if logger.handlers:
         return logger
 

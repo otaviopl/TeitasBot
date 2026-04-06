@@ -663,47 +663,8 @@ html, body {
     display: none;
 }
 
-/* Notion status modal */
-.notion-modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 200;
-    align-items: center;
-    justify-content: center;
-}
-.notion-modal-overlay.visible {
-    display: flex;
-}
-.notion-modal {
-    background: var(--color-bg);
-    border-radius: var(--radius-md);
-    padding: 24px;
-    min-width: 280px;
-    max-width: 360px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-}
-.notion-modal h3 {
-    margin: 0 0 16px;
-    font-size: 1rem;
-    font-weight: 600;
-}
-.notion-modal-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 0;
-    font-size: 0.9rem;
-    border-bottom: 1px solid var(--color-border);
-}
-.notion-modal-item:last-child {
-    border-bottom: none;
-}
-.notion-modal-item .status-ok { color: #16a34a; }
-.notion-modal-item .status-error { color: #dc2626; }
-.notion-modal-item .status-na { color: var(--color-text-muted); }
-.notion-modal-close {
+/* Modal styles */
+.modal-close-btn {
     margin-top: 16px;
     width: 100%;
     padding: 8px;
@@ -714,7 +675,7 @@ html, body {
     font-size: 0.85rem;
     color: var(--color-text-muted);
 }
-.notion-modal-close:hover {
+.modal-close-btn:hover {
     background: rgba(0,0,0,0.04);
     color: var(--color-text);
 }
@@ -2168,11 +2129,6 @@ html, body {
     }
 
     /* ---- Modals: fill screen width ---- */
-    .notion-modal {
-        min-width: unset;
-        width: calc(100% - 32px);
-    }
-
     .memories-modal {
         min-width: unset;
         width: calc(100% - 32px);

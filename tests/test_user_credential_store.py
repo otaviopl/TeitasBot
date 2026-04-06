@@ -35,15 +35,15 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("u1", "notion_api_key", "secret_abc")
-        self.assertEqual(store.get_credential("u1", "notion_api_key"), "secret_abc")
+        store.set_credential("u1", "email_from", "secret_abc")
+        self.assertEqual(store.get_credential("u1", "email_from"), "secret_abc")
 
     def test_values_are_encrypted_at_rest(self):
         """Raw DB bytes should NOT contain the plaintext value."""
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("u2", "notion_api_key", "plaintext_secret")
+        store.set_credential("u2", "email_from", "plaintext_secret")
 
         with open(self._db_path, "rb") as f:
             raw = f.read()
@@ -54,32 +54,32 @@ class TestUserCredentialStore(unittest.TestCase):
 
         store = UserCredentialStore(db_path=self._db_path)
         # Disable env fallback to avoid picking up real env vars
-        result = store.get_credential("u3", "notion_api_key", use_env_fallback=False)
+        result = store.get_credential("u3", "email_from", use_env_fallback=False)
         self.assertIsNone(result)
 
     def test_env_fallback_when_not_in_db(self):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        with patch.dict(os.environ, {"NOTION_API_KEY": "env_fallback_value"}):
-            result = store.get_credential("u4", "notion_api_key", use_env_fallback=True)
+        with patch.dict(os.environ, {"EMAIL_FROM": "env_fallback_value"}):
+            result = store.get_credential("u4", "email_from", use_env_fallback=True)
         self.assertEqual(result, "env_fallback_value")
 
     def test_db_value_takes_priority_over_env(self):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("u5", "notion_api_key", "db_value")
-        with patch.dict(os.environ, {"NOTION_API_KEY": "env_value"}):
-            result = store.get_credential("u5", "notion_api_key", use_env_fallback=True)
+        store.set_credential("u5", "email_from", "db_value")
+        with patch.dict(os.environ, {"EMAIL_FROM": "env_value"}):
+            result = store.get_credential("u5", "email_from", use_env_fallback=True)
         self.assertEqual(result, "db_value")
 
     def test_no_env_fallback_when_disabled(self):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        with patch.dict(os.environ, {"NOTION_API_KEY": "env_value"}):
-            result = store.get_credential("u6", "notion_api_key", use_env_fallback=False)
+        with patch.dict(os.environ, {"EMAIL_FROM": "env_value"}):
+            result = store.get_credential("u6", "email_from", use_env_fallback=False)
         self.assertIsNone(result)
 
     # --- update ---
@@ -98,16 +98,16 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("u8", "notion_api_key", "val")
-        result = store.delete_credential("u8", "notion_api_key")
+        store.set_credential("u8", "email_from", "val")
+        result = store.delete_credential("u8", "email_from")
         self.assertTrue(result)
-        self.assertIsNone(store.get_credential("u8", "notion_api_key", use_env_fallback=False))
+        self.assertIsNone(store.get_credential("u8", "email_from", use_env_fallback=False))
 
     def test_delete_nonexistent_returns_false(self):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        result = store.delete_credential("u9", "notion_api_key")
+        result = store.delete_credential("u9", "email_from")
         self.assertFalse(result)
 
     # --- list_configured_keys ---
@@ -116,46 +116,45 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("u10", "notion_api_key", "v1")
-        store.set_credential("u10", "email_from", "v2")
+        store.set_credential("u10", "email_from", "v1")
+        store.set_credential("u10", "email_to", "v2")
         keys = store.list_configured_keys("u10")
-        self.assertIn("notion_api_key", keys)
         self.assertIn("email_from", keys)
+        self.assertIn("email_to", keys)
         self.assertEqual(len(keys), 2)
 
     def test_list_configured_keys_isolated_per_user(self):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("userA", "notion_api_key", "a")
+        store.set_credential("userA", "email_from", "a")
         store.set_credential("userB", "email_from", "b")
-        self.assertEqual(store.list_configured_keys("userA"), ["notion_api_key"])
+        self.assertEqual(store.list_configured_keys("userA"), ["email_from"])
         self.assertEqual(store.list_configured_keys("userB"), ["email_from"])
 
     # --- check_integrations ---
 
-    def test_check_integrations_notion_available(self):
+    def test_check_integrations_email_available(self):
         from assistant_connector.user_credential_store import UserCredentialStore, _INTEGRATION_REQUIREMENTS
 
         store = UserCredentialStore(db_path=self._db_path)
-        notion_keys = _INTEGRATION_REQUIREMENTS.get("Notion", [])
-        for key in notion_keys:
+        email_keys = _INTEGRATION_REQUIREMENTS.get("Email", [])
+        for key in email_keys:
             store.set_credential("u11", key, "dummy")
         result = store.check_integrations("u11")
-        self.assertTrue(result["Notion"])
+        self.assertTrue(result["Email"])
 
-    def test_check_integrations_notion_unavailable(self):
+    def test_check_integrations_email_unavailable(self):
         from assistant_connector.user_credential_store import UserCredentialStore, _INTEGRATION_REQUIREMENTS
 
         store = UserCredentialStore(db_path=self._db_path)
-        # Patch all Notion-related env vars to empty so fallback doesn't kick in
-        notion_keys = _INTEGRATION_REQUIREMENTS.get("Notion", [])
+        email_keys = _INTEGRATION_REQUIREMENTS.get("Email", [])
         from assistant_connector.user_credential_store import _ENV_FALLBACK
 
-        env_overrides = {_ENV_FALLBACK[k]: "" for k in notion_keys if k in _ENV_FALLBACK}
+        env_overrides = {_ENV_FALLBACK[k]: "" for k in email_keys if k in _ENV_FALLBACK}
         with patch.dict(os.environ, env_overrides):
             result = store.check_integrations("u12")
-        self.assertFalse(result.get("Notion", True))
+        self.assertFalse(result.get("Email", True))
 
     # --- missing encryption key ---
 
@@ -179,9 +178,9 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("user_a", "notion_api_key", "secret_for_a")
+        store.set_credential("user_a", "email_from", "secret_for_a")
 
-        result = store.get_credential("user_b", "notion_api_key", use_env_fallback=False)
+        result = store.get_credential("user_b", "email_from", use_env_fallback=False)
         self.assertIsNone(result)
 
     def test_user_cannot_overwrite_another_users_credential(self):
@@ -200,12 +199,12 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("user_a", "notion_api_key", "value_a")
+        store.set_credential("user_a", "email_from", "value_a")
 
-        deleted = store.delete_credential("user_b", "notion_api_key")
+        deleted = store.delete_credential("user_b", "email_from")
         self.assertFalse(deleted)
         self.assertEqual(
-            store.get_credential("user_a", "notion_api_key", use_env_fallback=False),
+            store.get_credential("user_a", "email_from", use_env_fallback=False),
             "value_a",
         )
 
@@ -214,27 +213,27 @@ class TestUserCredentialStore(unittest.TestCase):
         from assistant_connector.user_credential_store import UserCredentialStore
 
         store = UserCredentialStore(db_path=self._db_path)
-        store.set_credential("user_a", "notion_api_key", "a1")
-        store.set_credential("user_a", "email_from", "a2")
-        store.set_credential("user_b", "email_to", "b1")
+        store.set_credential("user_a", "email_from", "a1")
+        store.set_credential("user_a", "email_to", "a2")
+        store.set_credential("user_b", "display_name", "b1")
 
         keys_a = store.list_configured_keys("user_a")
         keys_b = store.list_configured_keys("user_b")
 
-        self.assertNotIn("email_to", keys_a)
-        self.assertNotIn("notion_api_key", keys_b)
+        self.assertNotIn("display_name", keys_a)
         self.assertNotIn("email_from", keys_b)
+        self.assertNotIn("email_to", keys_b)
 
     def test_check_integrations_isolated_per_user(self):
         """Integration status for User A must not reflect User B's credentials."""
         from assistant_connector.user_credential_store import UserCredentialStore, _INTEGRATION_REQUIREMENTS
 
         store = UserCredentialStore(db_path=self._db_path)
-        # Fully configure Notion for user_a
-        for key in _INTEGRATION_REQUIREMENTS["Notion"]:
+        # Fully configure Email for user_a
+        for key in _INTEGRATION_REQUIREMENTS["Email"]:
             store.set_credential("user_a", key, "dummy")
 
-        with patch.dict(os.environ, {"NOTION_API_KEY": "", "NOTION_DATABASE_ID": ""}):
+        with patch.dict(os.environ, {"EMAIL_FROM": "", "EMAIL_TO": ""}):
             result_b = store.check_integrations("user_b")
         # user_b must not inherit user_a's configuration
-        self.assertFalse(result_b.get("Notion", True))
+        self.assertFalse(result_b.get("Email", True))

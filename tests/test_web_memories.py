@@ -25,13 +25,6 @@ def _env_setup(monkeypatch, tmp_path):
     monkeypatch.setenv("GOOGLE_OAUTH_CALLBACK_URL", "")
     monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path / "memories"))
 
-    for var in (
-        "NOTION_API_KEY", "NOTION_DATABASE_ID", "NOTION_NOTES_DB_ID",
-        "NOTION_EXERCISES_DB_ID", "NOTION_MEALS_DB_ID",
-        "NOTION_EXPENSES_DB_ID", "NOTION_MONTHLY_BILLS_DB_ID",
-    ):
-        monkeypatch.setenv(var, "")
-
     import web_app.dependencies as deps
     deps._user_store = None
     deps._assistant_service = None

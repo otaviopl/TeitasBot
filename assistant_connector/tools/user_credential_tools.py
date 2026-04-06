@@ -4,8 +4,6 @@ from assistant_connector.models import ToolExecutionContext
 from assistant_connector.user_credential_store import ALL_VALID_KEYS
 
 _KEY_DESCRIPTIONS = {
-    "notion_api_key": "Chave de integração do Notion (começa com secret_...)",
-    "notion_notes_db_id": "ID do banco de notas no Notion",
     "email_from": "Endereço de email do remetente (Gmail)",
     "email_to": "Endereço de email para notificações",
     "display_name": "Seu nome para exibição nos emails",
