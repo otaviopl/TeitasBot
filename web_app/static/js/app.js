@@ -777,6 +777,7 @@
         headerTabs.querySelectorAll('.header-tab').forEach(function (btn) {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
+        headerTabs.classList.toggle('tab-notes-active', tab === 'notes');
 
         if (tab === 'chat') {
             // Show chat main area, hide notes editor
