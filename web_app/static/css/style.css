@@ -243,10 +243,48 @@ html, body {
     letter-spacing: 0.05em;
 }
 
+.sidebar-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .sidebar-header .btn-new-chat {
     padding: 6px 14px;
     font-size: 0.8rem;
     border-radius: 20px;
+}
+
+.btn-collapse-sidebar {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--color-text-muted);
+    border-radius: var(--radius-sm);
+    transition: background 0.12s, color 0.12s;
+}
+
+.btn-collapse-sidebar:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
+}
+
+.btn-expand-sidebar {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--color-text-muted);
+    border-radius: var(--radius-sm);
+    transition: background 0.12s, color 0.12s;
+}
+
+.btn-expand-sidebar:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
 }
 
 .sidebar-conversations {
@@ -1276,10 +1314,35 @@ html, body {
 @media (min-width: 768px) {
     .chat-header {
         left: var(--sidebar-width);
+        transition: left 0.25s ease;
     }
 
     .sidebar-overlay {
         display: none !important;
+    }
+
+    .btn-collapse-sidebar {
+        display: flex;
+    }
+
+    .sidebar {
+        transition: width 0.25s ease, min-width 0.25s ease;
+    }
+
+    /* Collapsed state */
+    .sidebar-collapsed .sidebar {
+        width: 0;
+        min-width: 0;
+        border-right: none;
+        overflow: hidden;
+    }
+
+    .sidebar-collapsed .chat-header {
+        left: 0;
+    }
+
+    .sidebar-collapsed .btn-expand-sidebar {
+        display: flex;
     }
 }
 

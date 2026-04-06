@@ -29,6 +29,9 @@
     const sidebar = document.getElementById('sidebar');
     const sidebarOverlay = document.getElementById('sidebar-overlay');
     const hamburgerBtn = document.getElementById('btn-hamburger');
+    const collapseSidebarBtn = document.getElementById('btn-collapse-sidebar');
+    const expandSidebarBtn = document.getElementById('btn-expand-sidebar');
+    const appLayout = document.querySelector('.app-layout');
     const newChatBtn = document.getElementById('btn-new-chat');
     const conversationListEl = document.getElementById('conversation-list');
 
@@ -245,6 +248,27 @@
     });
 
     sidebarOverlay.addEventListener('click', closeSidebar);
+
+    // ================================================
+    // Sidebar collapse — Desktop only
+    // ================================================
+
+    function collapseSidebar() {
+        appLayout.classList.add('sidebar-collapsed');
+        localStorage.setItem('pa_sidebar_collapsed', '1');
+    }
+
+    function expandSidebar() {
+        appLayout.classList.remove('sidebar-collapsed');
+        localStorage.removeItem('pa_sidebar_collapsed');
+    }
+
+    collapseSidebarBtn.addEventListener('click', collapseSidebar);
+    expandSidebarBtn.addEventListener('click', expandSidebar);
+
+    if (localStorage.getItem('pa_sidebar_collapsed') === '1') {
+        appLayout.classList.add('sidebar-collapsed');
+    }
 
     async function loadConversations() {
         try {
@@ -947,5 +971,6 @@
     inputEl.focus();
     updateSendButton();
     loadConversations();
+    loadNotes();
     checkGoogleStatus();
 })();
