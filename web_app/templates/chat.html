@@ -9,6 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Assistente">
     <title>Assistente Pessoal</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" href="/static/icons/bot-icon.png">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -26,6 +27,15 @@
             </div>
             <div class="sidebar-conversations" id="conversation-list">
                 <!-- Dynamically populated -->
+            </div>
+            <div class="sidebar-notes hidden" id="notes-list-section">
+                <div class="sidebar-notes-header">
+                    <h2>Anotações</h2>
+                    <button class="btn btn-primary btn-new-note" id="btn-new-note">+ Nova</button>
+                </div>
+                <div class="sidebar-notes-list" id="notes-list">
+                    <!-- Dynamically populated -->
+                </div>
             </div>
             <div class="sidebar-footer">
                 <button class="btn-notion-status" id="btn-notion-status" title="Status Notion">
@@ -69,6 +79,12 @@
                     <h1><img src="/static/icons/bot-icon.png" alt="Assistente" class="header-bot-icon"> Assistente</h1>
                 </div>
                 <div class="chat-header-actions">
+                    <div class="header-tabs" id="header-tabs">
+                        <button class="header-tab active" data-tab="chat">Conversas</button>
+                        <button class="header-tab" data-tab="notes">Anotações</button>
+                    </div>
+                </div>
+                <div class="chat-header-right">
                     <button class="btn btn-ghost" id="btn-reset" title="Limpar conversa">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="3 6 5 6 21 6"/>
@@ -129,6 +145,7 @@
                         id="chat-input"
                         rows="1"
                         placeholder="Digite uma mensagem…"
+                        inputmode="text"
                         autocomplete="off"
                         autocorrect="on"
                         autocapitalize="sentences"
@@ -140,6 +157,49 @@
                             <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                         </svg>
                     </button>
+                </div>
+            </div>
+
+            <!-- Notes editor (hidden by default) -->
+            <div class="notes-editor hidden" id="notes-editor">
+                <div class="notes-editor-header">
+                    <input
+                        type="text"
+                        class="note-title-input"
+                        id="note-title-input"
+                        placeholder="Título da anotação…"
+                        autocomplete="off"
+                    >
+                    <div class="notes-editor-actions">
+                        <span class="note-save-status" id="note-save-status"></span>
+                        <button class="btn btn-ghost" id="btn-delete-note" title="Excluir anotação">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                <path d="M10 11v6"/>
+                                <path d="M14 11v6"/>
+                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="notes-editor-body">
+                    <textarea id="note-content"></textarea>
+                </div>
+            </div>
+
+            <!-- Notes empty state (hidden by default) -->
+            <div class="notes-empty hidden" id="notes-empty">
+                <div class="notes-empty-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    <p>Nenhuma anotação selecionada</p>
+                    <p class="text-muted">Crie uma nova anotação ou selecione uma existente</p>
                 </div>
             </div>
         </div>
@@ -161,6 +221,7 @@
 
     <!-- Markdown renderer (lightweight) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
     <script src="/static/js/audio.js"></script>
     <script src="/static/js/app.js"></script>
 

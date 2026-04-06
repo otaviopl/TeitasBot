@@ -36,6 +36,25 @@
     let isSending = false;
     let activeConversationId = localStorage.getItem('pa_active_conversation') || null;
 
+    // Notes refs
+    const headerTabs = document.getElementById('header-tabs');
+    const conversationListSection = document.getElementById('conversation-list');
+    const notesListSection = document.getElementById('notes-list-section');
+    const notesListEl = document.getElementById('notes-list');
+    const newNoteBtn = document.getElementById('btn-new-note');
+    const notesEditorEl = document.getElementById('notes-editor');
+    const notesEmptyEl = document.getElementById('notes-empty');
+    const noteTitleInput = document.getElementById('note-title-input');
+    const noteSaveStatus = document.getElementById('note-save-status');
+    const deleteNoteBtn = document.getElementById('btn-delete-note');
+    const chatSection = document.querySelector('.chat-messages');
+    const chatInputWrapper = document.querySelector('.chat-input-wrapper');
+
+    let activeTab = 'chat';
+    let activeNoteId = null;
+    let easyMDE = null;
+    let noteSaveTimer = null;
+
     // ---- Markdown setup ----
     if (typeof marked !== 'undefined') {
         marked.setOptions({
@@ -98,12 +117,29 @@
     }
 
     // ---- UI helpers ----
-    var scrollContainer = document.querySelector('.chat-main');
+    var scrollContainer = document.querySelector('.chat-messages');
     function scrollToBottom() {
         requestAnimationFrame(() => {
             scrollContainer.scrollTop = scrollContainer.scrollHeight;
         });
     }
+
+    // iOS keyboard handling via visualViewport API
+    (function setupMobileViewport() {
+        var appLayout = document.querySelector('.app-layout');
+        if (!window.visualViewport) return;
+
+        function onViewportChange() {
+            var vv = window.visualViewport;
+            appLayout.style.height = vv.height + 'px';
+            // Compensate if iOS scrolled the page behind the keyboard
+            appLayout.style.top = vv.offsetTop + 'px';
+            scrollToBottom();
+        }
+
+        window.visualViewport.addEventListener('resize', onViewportChange);
+        window.visualViewport.addEventListener('scroll', onViewportChange);
+    })();
 
     function showTyping() {
         typingEl.classList.add('visible');
@@ -623,6 +659,226 @@
     });
     notionClose.addEventListener('click', function () {
         notionOverlay.classList.remove('visible');
+    });
+
+    // ================================================
+    // Tab switching — Chat / Notes
+    // ================================================
+
+    function switchTab(tab) {
+        if (tab === activeTab) return;
+        activeTab = tab;
+
+        // Update tab buttons
+        headerTabs.querySelectorAll('.header-tab').forEach(function (btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        if (tab === 'chat') {
+            // Show chat, hide notes
+            conversationListSection.classList.remove('hidden');
+            notesListSection.classList.add('hidden');
+            chatSection.classList.remove('hidden');
+            chatInputWrapper.classList.remove('hidden');
+            notesEditorEl.classList.add('hidden');
+            notesEmptyEl.classList.add('hidden');
+            resetBtn.style.display = '';
+            inputEl.focus();
+        } else {
+            // Show notes, hide chat
+            conversationListSection.classList.add('hidden');
+            notesListSection.classList.remove('hidden');
+            chatSection.classList.add('hidden');
+            chatInputWrapper.classList.add('hidden');
+            resetBtn.style.display = 'none';
+            loadNotes();
+        }
+    }
+
+    headerTabs.addEventListener('click', function (e) {
+        var tab = e.target.dataset && e.target.dataset.tab;
+        if (tab) switchTab(tab);
+    });
+
+    // ================================================
+    // Notes — CRUD & Editor
+    // ================================================
+
+    function initEasyMDE() {
+        if (easyMDE) return;
+        easyMDE = new EasyMDE({
+            element: document.getElementById('note-content'),
+            spellChecker: false,
+            autofocus: false,
+            status: false,
+            minHeight: '200px',
+            placeholder: 'Escreva sua anotação em Markdown…',
+            toolbar: [
+                'bold', 'italic', 'heading', '|',
+                'quote', 'unordered-list', 'ordered-list', '|',
+                'link', 'image', 'code', 'table', '|',
+                'preview', 'side-by-side', 'fullscreen', '|',
+                'guide',
+            ],
+        });
+        easyMDE.codemirror.on('change', function () {
+            scheduleNoteSave();
+        });
+    }
+
+    function scheduleNoteSave() {
+        if (!activeNoteId) return;
+        noteSaveStatus.textContent = 'Salvando…';
+        clearTimeout(noteSaveTimer);
+        noteSaveTimer = setTimeout(function () {
+            saveCurrentNote();
+        }, 2000);
+    }
+
+    async function saveCurrentNote() {
+        if (!activeNoteId || !easyMDE) return;
+        var title = noteTitleInput.value.trim();
+        var content = easyMDE.value();
+
+        if (!title) {
+            noteSaveStatus.textContent = 'Título obrigatório';
+            return;
+        }
+
+        try {
+            await apiPatch('/api/notes/' + activeNoteId, { title: title, content: content });
+            noteSaveStatus.textContent = 'Salvo ✓';
+            // Update sidebar title
+            var item = notesListEl.querySelector('.note-item[data-id="' + activeNoteId + '"] .note-item-title');
+            if (item) item.textContent = title;
+        } catch (err) {
+            noteSaveStatus.textContent = 'Erro ao salvar';
+        }
+    }
+
+    async function loadNotes() {
+        try {
+            var data = await apiGet('/api/notes');
+            renderNotesList(data.notes || []);
+        } catch (err) {
+            showToast('Erro ao carregar anotações');
+        }
+    }
+
+    function renderNotesList(notes) {
+        notesListEl.innerHTML = '';
+        notes.forEach(function (note) {
+            var div = document.createElement('div');
+            div.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
+            div.dataset.id = note.id;
+
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'note-item-title';
+            titleSpan.textContent = note.title;
+            div.appendChild(titleSpan);
+
+            var delBtn = document.createElement('button');
+            delBtn.className = 'note-item-delete';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Excluir';
+            delBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                deleteNote(note.id);
+            });
+            div.appendChild(delBtn);
+
+            div.addEventListener('click', function () {
+                selectNote(note.id);
+            });
+
+            notesListEl.appendChild(div);
+        });
+
+        if (!activeNoteId) {
+            notesEditorEl.classList.add('hidden');
+            notesEmptyEl.classList.remove('hidden');
+        }
+    }
+
+    async function createNote() {
+        try {
+            var data = await apiPost('/api/notes', { title: 'Nova anotação' });
+            activeNoteId = data.id;
+            await loadNotes();
+            await selectNote(data.id);
+            noteTitleInput.focus();
+            noteTitleInput.select();
+        } catch (err) {
+            showToast('Erro ao criar anotação');
+        }
+    }
+
+    async function selectNote(noteId) {
+        // Save pending changes for current note first
+        if (activeNoteId && easyMDE) {
+            clearTimeout(noteSaveTimer);
+            await saveCurrentNote();
+        }
+
+        activeNoteId = noteId;
+
+        // Update sidebar active state
+        notesListEl.querySelectorAll('.note-item').forEach(function (item) {
+            item.classList.toggle('active', item.dataset.id === noteId);
+        });
+
+        try {
+            var note = await apiGet('/api/notes/' + noteId);
+            notesEmptyEl.classList.add('hidden');
+            notesEditorEl.classList.remove('hidden');
+            initEasyMDE();
+            noteTitleInput.value = note.title;
+            easyMDE.value(note.content || '');
+            noteSaveStatus.textContent = '';
+            // Close sidebar on mobile after selecting
+            closeSidebar();
+        } catch (err) {
+            showToast('Erro ao abrir anotação');
+            activeNoteId = null;
+        }
+    }
+
+    async function deleteNote(noteId) {
+        if (!confirm('Excluir esta anotação?')) return;
+        try {
+            await apiDelete('/api/notes/' + noteId);
+            if (activeNoteId === noteId) {
+                activeNoteId = null;
+                notesEditorEl.classList.add('hidden');
+                notesEmptyEl.classList.remove('hidden');
+                if (easyMDE) {
+                    easyMDE.value('');
+                }
+                noteTitleInput.value = '';
+            }
+            await loadNotes();
+        } catch (err) {
+            showToast('Erro ao excluir anotação');
+        }
+    }
+
+    // Note title auto-save
+    noteTitleInput.addEventListener('input', function () {
+        scheduleNoteSave();
+    });
+
+    // Keyboard shortcut: Ctrl/Cmd+S to save note immediately
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's' && activeTab === 'notes' && activeNoteId) {
+            e.preventDefault();
+            clearTimeout(noteSaveTimer);
+            saveCurrentNote();
+        }
+    });
+
+    newNoteBtn.addEventListener('click', createNote);
+    deleteNoteBtn.addEventListener('click', function () {
+        if (activeNoteId) deleteNote(activeNoteId);
     });
 
     // ---- Init ----

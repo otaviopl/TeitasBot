@@ -54,6 +54,20 @@ class WebUserStore:
                 CREATE INDEX IF NOT EXISTS idx_web_conversations_user
                     ON web_conversations (user_id, updated_at DESC)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_notes (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    title TEXT NOT NULL DEFAULT 'Nova anotação',
+                    content TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_notes_user
+                    ON web_notes (user_id, updated_at DESC)
+            """)
 
     def create_user(
         self,
@@ -254,6 +268,82 @@ class WebUserStore:
                 "UPDATE web_conversations SET updated_at = ? WHERE id = ?",
                 (now, conversation_id),
             )
+
+    # ---- Note management ----
+
+    _MAX_NOTE_CONTENT_BYTES = 512_000  # 500 KB
+
+    def create_note(self, user_id: str, title: str = "Nova anotação", content: str = "") -> dict:
+        if len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
+            raise ValueError("Note content exceeds 500 KB limit.")
+        note_id = uuid.uuid4().hex
+        now = _utc_now_iso()
+        clean_title = title.strip() or "Nova anotação"
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_notes (id, user_id, title, content, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (note_id, user_id, clean_title, content, now, now),
+            )
+        return {"id": note_id, "user_id": user_id, "title": clean_title, "content": content, "created_at": now, "updated_at": now}
+
+    def list_notes(self, user_id: str, limit: int = 100) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, user_id, title, created_at, updated_at FROM web_notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                (user_id, max(1, limit)),
+            ).fetchall()
+        return [
+            {"id": r["id"], "user_id": r["user_id"], "title": r["title"], "created_at": r["created_at"], "updated_at": r["updated_at"]}
+            for r in rows
+        ]
+
+    def get_note(self, note_id: str, user_id: str) -> Optional[dict]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, user_id, title, content, created_at, updated_at FROM web_notes WHERE id = ? AND user_id = ?",
+                (note_id, user_id),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"], "user_id": row["user_id"], "title": row["title"],
+            "content": row["content"], "created_at": row["created_at"], "updated_at": row["updated_at"],
+        }
+
+    def update_note(self, note_id: str, user_id: str, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+        if content is not None and len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
+            raise ValueError("Note content exceeds 500 KB limit.")
+        now = _utc_now_iso()
+        updates: list[str] = ["updated_at = ?"]
+        params: list = [now]
+        if title is not None:
+            clean_title = title.strip()
+            if not clean_title:
+                raise ValueError("Title cannot be empty.")
+            updates.append("title = ?")
+            params.append(clean_title)
+        if content is not None:
+            updates.append("content = ?")
+            params.append(content)
+        params.extend([note_id, user_id])
+        sql = f"UPDATE web_notes SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+        return cursor.rowcount > 0
+
+    def delete_note(self, note_id: str, user_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM web_notes WHERE id = ? AND user_id = ?",
+                (note_id, user_id),
+            )
+            deleted = cursor.rowcount > 0
+            if deleted:
+                conn.commit()
+        return deleted
 
 
 def _utc_now_iso() -> str:

@@ -48,6 +48,16 @@ class ConversationRename(BaseModel):
     title: str
 
 
+class NoteCreate(BaseModel):
+    title: str = "Nova anotação"
+    content: str = ""
+
+
+class NoteUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+
+
 # ---- Helpers ----
 
 def _build_channel_id(username: str, conversation_id: str | None) -> str:
@@ -338,6 +348,72 @@ async def get_chat_image(filename: str, user: dict = Depends(get_current_user)):
         if os.path.isfile(candidate):
             return FileResponse(candidate)
     raise HTTPException(status_code=404, detail="Image not found")
+
+
+# ---- Note endpoints ----
+
+@app.get("/api/notes")
+async def list_notes(
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    notes = store.list_notes(user["id"])
+    return {"notes": notes}
+
+
+@app.post("/api/notes", status_code=201)
+async def create_note(
+    body: NoteCreate,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    try:
+        note = store.create_note(user["id"], body.title, body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return note
+
+
+@app.get("/api/notes/{note_id}")
+async def get_note(
+    note_id: str,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    note = store.get_note(note_id, user["id"])
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
+@app.patch("/api/notes/{note_id}")
+async def update_note(
+    note_id: str,
+    body: NoteUpdate,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    if body.title is not None and not body.title.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title cannot be empty")
+    try:
+        updated = store.update_note(note_id, user["id"], title=body.title, content=body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"status": "ok"}
+
+
+@app.delete("/api/notes/{note_id}")
+async def delete_note(
+    note_id: str,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    deleted = store.delete_note(note_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"status": "ok"}
 
 
 # ---- Notion connectivity check ----

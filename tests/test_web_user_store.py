@@ -212,3 +212,136 @@ class TestConversations:
         store.touch_conversation(conv["id"])
         fetched = store.get_conversation(conv["id"], user["id"])
         assert fetched["updated_at"] >= original_updated
+
+
+class TestNotes:
+    def test_create_note(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "My note", "# Hello")
+        assert note["title"] == "My note"
+        assert note["content"] == "# Hello"
+        assert note["user_id"] == user["id"]
+        assert note["id"]
+
+    def test_create_note_default_title(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"])
+        assert note["title"] == "Nova anotação"
+
+    def test_create_note_empty_title_uses_default(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "  ")
+        assert note["title"] == "Nova anotação"
+
+    def test_create_note_content_limit(self, store):
+        user = store.create_user("alice", "secret123")
+        with pytest.raises(ValueError, match="500 KB"):
+            store.create_note(user["id"], "Big", "x" * 600_000)
+
+    def test_list_notes_empty(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.list_notes(user["id"]) == []
+
+    def test_list_notes_ordered_by_updated(self, store):
+        user = store.create_user("alice", "secret123")
+        n1 = store.create_note(user["id"], "First")
+        n2 = store.create_note(user["id"], "Second")
+        import time
+        time.sleep(1.1)
+        store.update_note(n1["id"], user["id"], content="updated")
+        notes = store.list_notes(user["id"])
+        assert len(notes) == 2
+        assert notes[0]["id"] == n1["id"]
+
+    def test_list_notes_excludes_content(self, store):
+        user = store.create_user("alice", "secret123")
+        store.create_note(user["id"], "Note", "some content")
+        notes = store.list_notes(user["id"])
+        assert "content" not in notes[0]
+
+    def test_list_notes_user_isolation(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        store.create_note(u1["id"], "Alice's note")
+        store.create_note(u2["id"], "Bob's note")
+        assert len(store.list_notes(u1["id"])) == 1
+        assert len(store.list_notes(u2["id"])) == 1
+
+    def test_get_note(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Note", "content here")
+        fetched = store.get_note(note["id"], user["id"])
+        assert fetched is not None
+        assert fetched["title"] == "Note"
+        assert fetched["content"] == "content here"
+
+    def test_get_note_wrong_user(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        note = store.create_note(u1["id"], "Alice's note")
+        assert store.get_note(note["id"], u2["id"]) is None
+
+    def test_get_note_nonexistent(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.get_note("nonexistent", user["id"]) is None
+
+    def test_update_note_title(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Old title")
+        assert store.update_note(note["id"], user["id"], title="New title") is True
+        fetched = store.get_note(note["id"], user["id"])
+        assert fetched["title"] == "New title"
+
+    def test_update_note_content(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Note", "old")
+        assert store.update_note(note["id"], user["id"], content="new content") is True
+        fetched = store.get_note(note["id"], user["id"])
+        assert fetched["content"] == "new content"
+
+    def test_update_note_both(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Old", "old content")
+        assert store.update_note(note["id"], user["id"], title="New", content="new content") is True
+        fetched = store.get_note(note["id"], user["id"])
+        assert fetched["title"] == "New"
+        assert fetched["content"] == "new content"
+
+    def test_update_note_empty_title_raises(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Note")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.update_note(note["id"], user["id"], title="  ")
+
+    def test_update_note_content_limit(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Note")
+        with pytest.raises(ValueError, match="500 KB"):
+            store.update_note(note["id"], user["id"], content="x" * 600_000)
+
+    def test_update_note_wrong_user(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        note = store.create_note(u1["id"], "Alice's note")
+        assert store.update_note(note["id"], u2["id"], title="Hijacked") is False
+
+    def test_update_note_nonexistent(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.update_note("nonexistent", user["id"], title="X") is False
+
+    def test_delete_note(self, store):
+        user = store.create_user("alice", "secret123")
+        note = store.create_note(user["id"], "Delete me")
+        assert store.delete_note(note["id"], user["id"]) is True
+        assert store.get_note(note["id"], user["id"]) is None
+
+    def test_delete_note_wrong_user(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        note = store.create_note(u1["id"], "Alice's note")
+        assert store.delete_note(note["id"], u2["id"]) is False
+        assert store.get_note(note["id"], u1["id"]) is not None
+
+    def test_delete_note_nonexistent(self, store):
+        user = store.create_user("alice", "secret123")
+        assert store.delete_note("nonexistent", user["id"]) is False
