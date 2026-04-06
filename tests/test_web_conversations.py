@@ -137,55 +137,57 @@ class TestConversationLimit:
         res = client.post("/api/conversations", json={"title": "Test"}, headers=auth_headers(auth_token))
         assert res.status_code == 201
 
-    def test_create_conversation_at_limit(self, client, auth_token):
-        """Creating the 101st conversation should fail with 400."""
+    def test_create_conversation_at_limit_rotates(self, client, auth_token):
+        """Creating the 101st conversation should auto-delete the oldest."""
         from web_app.dependencies import get_user_store
         store = get_user_store()
         user = store.get_user_by_username("testuser")
 
         # Create 100 conversations directly in the store
+        first_conv = None
         for i in range(100):
-            store.create_conversation(user["id"], f"Conv {i}")
+            c = store.create_conversation(user["id"], f"Conv {i}")
+            if i == 0:
+                first_conv = c
 
-        # The 101st via API should fail
-        res = client.post("/api/conversations", json={"title": "Too many"}, headers=auth_headers(auth_token))
-        assert res.status_code == 400
-        assert "100" in res.json()["detail"]
+        # The 101st via API should succeed (oldest auto-deleted)
+        res = client.post("/api/conversations", json={"title": "New one"}, headers=auth_headers(auth_token))
+        assert res.status_code == 201
 
-    def test_create_conversation_after_deleting(self, client, auth_token):
-        """After deleting a conversation, the user should be able to create a new one."""
+        # Verify total is still 100
+        convs = store.list_conversations(user["id"], limit=200)
+        assert len(convs) == 100
+
+        # The oldest should be gone
+        assert store.get_conversation(first_conv["id"], user["id"]) is None
+
+    def test_rotation_keeps_newest_conversations(self, client, auth_token):
+        """Auto-rotation should keep the most recently updated conversations."""
         from web_app.dependencies import get_user_store
         store = get_user_store()
         user = store.get_user_by_username("testuser")
 
-        # Create 100 conversations
-        conv_ids = []
         for i in range(100):
-            conv = store.create_conversation(user["id"], f"Conv {i}")
-            conv_ids.append(conv["id"])
+            store.create_conversation(user["id"], f"Conv {i}")
 
-        # Can't create more
-        res = client.post("/api/conversations", json={"title": "Too many"}, headers=auth_headers(auth_token))
-        assert res.status_code == 400
-
-        # Delete one — need to use a mock service for the delete endpoint
-        mock_service = MagicMock()
-        from web_app.app import app
-        from web_app.dependencies import get_assistant_service
-        app.dependency_overrides[get_assistant_service] = lambda: mock_service
-
-        try:
-            res = client.delete(f"/api/conversations/{conv_ids[0]}", headers=auth_headers(auth_token))
-            assert res.status_code == 200
-
-            # Now we can create again
-            res = client.post("/api/conversations", json={"title": "New one"}, headers=auth_headers(auth_token))
+        # Create 3 more — the 3 oldest should be deleted
+        for i in range(3):
+            res = client.post(
+                "/api/conversations",
+                json={"title": f"New {i}"},
+                headers=auth_headers(auth_token),
+            )
             assert res.status_code == 201
-        finally:
-            app.dependency_overrides.clear()
+
+        convs = store.list_conversations(user["id"], limit=200)
+        assert len(convs) == 100
+        titles = [c["title"] for c in convs]
+        assert "New 0" in titles
+        assert "New 1" in titles
+        assert "New 2" in titles
 
     def test_conversation_limit_per_user(self, client):
-        """Each user has their own independent 100-conversation limit."""
+        """Each user has their own independent conversation pool."""
         from web_app.dependencies import get_user_store
         store = get_user_store()
 
@@ -197,11 +199,12 @@ class TestConversationLimit:
         for i in range(100):
             store.create_conversation(user_a["id"], f"A-{i}")
 
-        # Alice can't create more
-        res = client.post("/api/conversations", json={"title": "X"}, headers=auth_headers(token_a))
-        assert res.status_code == 400
+        # Alice creates one more — oldest rotated out
+        res = client.post("/api/conversations", json={"title": "A-new"}, headers=auth_headers(token_a))
+        assert res.status_code == 201
+        assert len(store.list_conversations(user_a["id"], limit=200)) == 100
 
-        # Bob can still create
+        # Bob is unaffected
         res = client.post("/api/conversations", json={"title": "Bob conv"}, headers=auth_headers(token_b))
         assert res.status_code == 201
 

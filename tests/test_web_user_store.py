@@ -213,6 +213,23 @@ class TestConversations:
         fetched = store.get_conversation(conv["id"], user["id"])
         assert fetched["updated_at"] >= original_updated
 
+    def test_prune_oldest_conversations(self, store):
+        user = store.create_user("alice", "secret123")
+        convs = []
+        for i in range(5):
+            convs.append(store.create_conversation(user["id"], f"Conv {i}"))
+        deleted = store.prune_oldest_conversations(user["id"], 3)
+        assert len(deleted) == 2
+        remaining = store.list_conversations(user["id"])
+        assert len(remaining) == 3
+
+    def test_prune_oldest_conversations_no_excess(self, store):
+        user = store.create_user("alice", "secret123")
+        store.create_conversation(user["id"], "Only one")
+        deleted = store.prune_oldest_conversations(user["id"], 5)
+        assert deleted == []
+        assert len(store.list_conversations(user["id"])) == 1
+
 
 class TestNotes:
     def test_create_note(self, store):

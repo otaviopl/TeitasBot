@@ -260,6 +260,23 @@ class WebUserStore:
                 conn.commit()
         return deleted
 
+    def prune_oldest_conversations(self, user_id: str, max_count: int) -> list[str]:
+        """Delete oldest conversations exceeding max_count. Returns deleted IDs."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM web_conversations WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC, rowid DESC LIMIT -1 OFFSET ?",
+                (user_id, max(1, max_count)),
+            ).fetchall()
+            deleted_ids = [r["id"] for r in rows]
+            if deleted_ids:
+                placeholders = ",".join("?" * len(deleted_ids))
+                conn.execute(
+                    f"DELETE FROM web_conversations WHERE id IN ({placeholders})",
+                    deleted_ids,
+                )
+                conn.commit()
+        return deleted_ids
+
     def touch_conversation(self, conversation_id: str) -> None:
         """Update the updated_at timestamp of a conversation."""
         now = _utc_now_iso()

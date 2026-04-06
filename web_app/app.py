@@ -163,12 +163,7 @@ async def create_conversation(
     user: dict = Depends(get_current_user),
     store: WebUserStore = Depends(get_user_store),
 ):
-    existing = store.list_conversations(user["id"], limit=_MAX_CONVERSATIONS_PER_USER)
-    if len(existing) >= _MAX_CONVERSATIONS_PER_USER:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Limite de {_MAX_CONVERSATIONS_PER_USER} conversas atingido. Exclua conversas antigas para criar novas.",
-        )
+    store.prune_oldest_conversations(user["id"], _MAX_CONVERSATIONS_PER_USER - 1)
     conv = store.create_conversation(user["id"], body.title)
     return conv
 
