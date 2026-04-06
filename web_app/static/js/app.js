@@ -848,7 +848,10 @@
             var limitNotice = document.getElementById('conv-limit-notice');
             if (limitNotice) limitNotice.style.display = '';
             updateChatEmptyState();
-            inputEl.focus();
+            // Only auto-focus on desktop; on mobile this would open the keyboard immediately
+            if (window.matchMedia('(min-width: 768px)').matches) {
+                inputEl.focus();
+            }
         } else {
             // Show notes editor, hide chat main area
             chatSection.classList.add('hidden');
