@@ -689,7 +689,7 @@ html, body {
 .header-tabs {
     display: flex;
     gap: 4px;
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(22, 99, 222, 0.08);
     border-radius: 20px;
     padding: 3px;
 }
@@ -701,7 +701,7 @@ html, body {
     border: none;
     border-radius: 18px;
     background: transparent;
-    color: var(--color-text-muted);
+    color: rgba(22, 99, 222, 0.55);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
     -webkit-tap-highlight-color: transparent;
@@ -710,12 +710,12 @@ html, body {
 
 .header-tab.active {
     background: var(--color-bg);
-    color: var(--color-text);
+    color: var(--color-blue-start);
     box-shadow: var(--shadow-sm);
 }
 
 .header-tab:hover:not(.active) {
-    color: var(--color-text);
+    color: var(--color-blue-start);
 }
 
 .chat-header-right {
