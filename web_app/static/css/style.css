@@ -1333,7 +1333,7 @@ html, body {
 
 /* ---- Notes empty state ---- */
 
-.notes-empty {
+.notes-empty, .chat-empty {
     flex: 1;
     display: flex;
     align-items: center;
@@ -1341,27 +1341,30 @@ html, body {
     padding-top: var(--header-height);
 }
 
-.notes-empty.hidden {
+.notes-empty.hidden, .chat-empty.hidden {
     display: none;
 }
 
-.notes-empty-content {
+.empty-state-content {
     text-align: center;
     color: var(--color-text-muted);
 }
 
-.notes-empty-content svg {
+.empty-state-content svg {
     margin-bottom: 16px;
     opacity: 0.4;
 }
 
-.notes-empty-content p {
-    font-size: 0.95rem;
-    margin-bottom: 4px;
+.empty-state-content h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 6px;
 }
 
-.notes-empty-content .text-muted {
+.empty-state-content p {
     font-size: 0.85rem;
+    margin-bottom: 20px;
     opacity: 0.7;
 }
 

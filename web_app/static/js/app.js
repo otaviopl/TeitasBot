@@ -47,6 +47,7 @@
     const newNoteBtn = document.getElementById('btn-new-note');
     const notesEditorEl = document.getElementById('notes-editor');
     const notesEmptyEl = document.getElementById('notes-empty');
+    const chatEmptyEl = document.getElementById('chat-empty');
     const noteTitleDisplay = document.getElementById('note-title-display');
     const noteTagsEl = document.getElementById('note-tags');
     const noteSaveStatus = document.getElementById('note-save-status');
@@ -177,6 +178,13 @@
         messages.forEach(function (m) { m.remove(); });
         conversationMessageCount = 0;
         hideConversationLimitNotice();
+        updateChatEmptyState();
+    }
+
+    function updateChatEmptyState() {
+        var hasMessages = messagesEl.querySelectorAll('.message').length > 0;
+        chatEmptyEl.classList.toggle('hidden', hasMessages);
+        chatSection.style.display = hasMessages ? '' : 'none';
     }
 
     function formatTimestamp(isoStr) {
@@ -227,6 +235,7 @@
         }
 
         scrollToBottom();
+        updateChatEmptyState();
         return div;
     }
 
@@ -781,15 +790,17 @@
 
         if (tab === 'chat') {
             // Show chat main area, hide notes editor
-            chatSection.classList.remove('hidden');
+            chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.remove('hidden');
             notesEditorEl.classList.add('hidden');
             notesEmptyEl.classList.add('hidden');
             resetBtn.style.visibility = '';
+            updateChatEmptyState();
             inputEl.focus();
         } else {
             // Show notes editor, hide chat main area
-            chatSection.classList.add('hidden');
+            chatSection.style.display = 'none';
+            chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.add('hidden');
             resetBtn.style.visibility = 'hidden';
             loadNotes();
@@ -1148,9 +1159,18 @@
         loadNotes();
     });
 
+    // Empty state buttons
+    document.getElementById('btn-new-note-empty').addEventListener('click', function () {
+        newNoteBtn.click();
+    });
+    document.getElementById('btn-new-chat-empty').addEventListener('click', function () {
+        createConversation();
+    });
+
     // ---- Init ----
     inputEl.focus();
     updateSendButton();
+    updateChatEmptyState();
     loadConversations();
     loadNotes();
     checkGoogleStatus();
