@@ -397,8 +397,8 @@ html, body {
     align-items: center;
     justify-content: center;
     background: none;
-    border: 1px solid var(--color-border);
-    border-radius: 50%;
+    border: none;
+    border-radius: var(--radius-sm);
     width: 30px;
     height: 30px;
     cursor: pointer;
@@ -414,7 +414,6 @@ html, body {
 .btn-search-notes.active {
     background: rgba(22, 99, 222, 0.08);
     color: var(--color-blue-start);
-    border-color: rgba(22, 99, 222, 0.3);
 }
 
 .sidebar-notes-header .btn-new-note {
@@ -806,8 +805,8 @@ html, body {
 }
 
 .header-tab {
-    padding: 5px 0;
-    width: 100px;
+    flex: 1;
+    padding: 5px 16px;
     text-align: center;
     font-size: 0.82rem;
     font-weight: 600;
@@ -1449,8 +1448,7 @@ html, body {
     }
 
     .header-tab {
-        padding: 4px 0;
-        width: 90px;
+        padding: 4px 12px;
         font-size: 0.78rem;
     }
 
