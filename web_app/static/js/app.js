@@ -872,14 +872,21 @@
         if (!activeNoteId || !easyMDE) return;
         var noteId = activeNoteId;
         var content = easyMDE.value();
-        if (content.trim().length < 5) return;
 
         clearTimeout(noteSaveTimer);
         clearTimeout(noteMetadataTimer);
 
+        // Always save content first
         try {
             await apiPatch('/api/notes/' + noteId, { content: content });
         } catch (_) { /* ignore save error here */ }
+
+        // Skip metadata generation for very short content
+        if (content.trim().length < 5) {
+            if (activeNoteId === noteId) noteSaveStatus.textContent = 'Salvo ✓';
+            activeNoteContentDirty = false;
+            return;
+        }
 
         if (activeNoteId === noteId) noteSaveStatus.textContent = 'Gerando título…';
 
@@ -901,7 +908,7 @@
             activeNoteContentDirty = false;
             refreshUserTags();
         }).catch(function () {
-            if (activeNoteId === noteId) noteSaveStatus.textContent = '';
+            if (activeNoteId === noteId) noteSaveStatus.textContent = 'Salvo ✓';
         });
     }
 
