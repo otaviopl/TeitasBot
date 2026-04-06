@@ -975,7 +975,62 @@
             pill.textContent = tag;
             noteTagsEl.appendChild(pill);
         });
+        // Store current tags for edit mode
+        noteTagsEl._currentTags = tags || [];
     }
+
+    // ---- Tag editing ----
+    var editTagsBtn = document.getElementById('btn-edit-tags');
+    var tagsEditEl = document.getElementById('note-tags-edit');
+    var tagsInput = document.getElementById('note-tags-input');
+    var tagsSaveBtn = document.getElementById('note-tags-save');
+    var tagsCancelBtn = document.getElementById('note-tags-cancel');
+
+    function openTagEditor() {
+        var tags = noteTagsEl._currentTags || [];
+        tagsInput.value = tags.join(', ');
+        noteTagsEl.style.display = 'none';
+        editTagsBtn.style.display = 'none';
+        tagsEditEl.classList.remove('hidden');
+        tagsInput.focus();
+    }
+
+    function closeTagEditor() {
+        tagsEditEl.classList.add('hidden');
+        noteTagsEl.style.display = '';
+        editTagsBtn.style.display = '';
+    }
+
+    async function saveTagEdits() {
+        if (!activeNoteId) return;
+        var raw = tagsInput.value;
+        var tags = raw.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+        // Remove duplicates
+        tags = tags.filter(function (t, i, arr) { return arr.indexOf(t) === i; });
+        closeTagEditor();
+        renderNoteTags(tags);
+        try {
+            await apiPatch('/api/notes/' + activeNoteId, { tags: tags });
+            // Update sidebar tags
+            var sidebarItem = notesListEl.querySelector('[data-id="' + activeNoteId + '"]');
+            if (sidebarItem) {
+                var tagContainer = sidebarItem.querySelector('.note-item-tags');
+                if (tagContainer) renderSidebarNoteTags(tagContainer, tags);
+            }
+            refreshUserTags();
+            noteSaveStatus.textContent = 'Tags salvas ✓';
+        } catch (_) {
+            noteSaveStatus.textContent = 'Erro ao salvar tags';
+        }
+    }
+
+    editTagsBtn.addEventListener('click', openTagEditor);
+    tagsSaveBtn.addEventListener('click', saveTagEdits);
+    tagsCancelBtn.addEventListener('click', closeTagEditor);
+    tagsInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); saveTagEdits(); }
+        if (e.key === 'Escape') { closeTagEditor(); }
+    });
 
     function renderSidebarNoteTags(container, tags) {
         container.innerHTML = '';

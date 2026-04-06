@@ -1281,6 +1281,77 @@ html, body {
     letter-spacing: 0.01em;
 }
 
+.btn-edit-tags {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.btn-edit-tags:hover {
+    opacity: 1;
+}
+
+.note-title-area:hover .btn-edit-tags,
+.note-tags:not(:empty) ~ .btn-edit-tags {
+    display: inline-flex;
+}
+
+.note-tags-edit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+    width: 100%;
+}
+
+.note-tags-edit.hidden {
+    display: none;
+}
+
+.note-tags-input {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    outline: none;
+    color: var(--color-text);
+    background: var(--color-bg);
+    min-width: 0;
+}
+
+.note-tags-input:focus {
+    border-color: var(--color-blue-start);
+}
+
+.note-tags-save,
+.note-tags-cancel {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-text-muted);
+    transition: color 0.15s;
+}
+
+.note-tags-save:hover {
+    color: #16a34a;
+}
+
+.note-tags-cancel:hover {
+    color: #dc2626;
+}
+
 /* Tags in sidebar note items */
 .note-item-tags {
     display: flex;
