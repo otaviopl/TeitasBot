@@ -39,7 +39,24 @@
             <div class="sidebar-notes" id="notes-list-section">
                 <div class="sidebar-notes-header">
                     <h2>Anotações</h2>
-                    <button class="btn btn-primary btn-new-note" id="btn-new-note">+ Nova</button>
+                    <div class="sidebar-notes-actions">
+                        <button class="btn-search-notes" id="btn-search-notes" title="Buscar por tag">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </button>
+                        <button class="btn btn-primary btn-new-note" id="btn-new-note">+ Nova</button>
+                    </div>
+                </div>
+                <div class="sidebar-notes-search hidden" id="notes-search">
+                    <div class="notes-search-wrapper">
+                        <input type="text" class="notes-search-input" id="notes-search-input" placeholder="Filtrar por tag…" autocomplete="off">
+                        <button class="notes-search-clear" id="notes-search-clear" title="Limpar filtro">✕</button>
+                    </div>
+                    <div class="notes-search-autocomplete hidden" id="notes-search-autocomplete">
+                        <!-- Dynamically populated -->
+                    </div>
                 </div>
                 <div class="sidebar-notes-list" id="notes-list">
                     <!-- Dynamically populated -->
@@ -176,13 +193,12 @@
             <!-- Notes editor (hidden by default) -->
             <div class="notes-editor hidden" id="notes-editor">
                 <div class="notes-editor-header">
-                    <input
-                        type="text"
-                        class="note-title-input"
-                        id="note-title-input"
-                        placeholder="Título da anotação…"
-                        autocomplete="off"
-                    >
+                    <div class="note-title-area">
+                        <h2 class="note-title-display" id="note-title-display">Nova anotação</h2>
+                        <div class="note-tags" id="note-tags">
+                            <!-- Dynamically populated with tag pills -->
+                        </div>
+                    </div>
                     <div class="notes-editor-actions">
                         <span class="note-save-status" id="note-save-status"></span>
                         <button class="btn btn-ghost" id="btn-delete-note" title="Excluir anotação">

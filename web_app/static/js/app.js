@@ -47,16 +47,27 @@
     const newNoteBtn = document.getElementById('btn-new-note');
     const notesEditorEl = document.getElementById('notes-editor');
     const notesEmptyEl = document.getElementById('notes-empty');
-    const noteTitleInput = document.getElementById('note-title-input');
+    const noteTitleDisplay = document.getElementById('note-title-display');
+    const noteTagsEl = document.getElementById('note-tags');
     const noteSaveStatus = document.getElementById('note-save-status');
     const deleteNoteBtn = document.getElementById('btn-delete-note');
     const chatSection = document.querySelector('.chat-messages');
     const chatInputWrapper = document.querySelector('.chat-input-wrapper');
 
+    // Search refs
+    const searchNotesBtn = document.getElementById('btn-search-notes');
+    const notesSearchEl = document.getElementById('notes-search');
+    const notesSearchInput = document.getElementById('notes-search-input');
+    const notesSearchClear = document.getElementById('notes-search-clear');
+    const notesSearchAutocomplete = document.getElementById('notes-search-autocomplete');
+
     let activeTab = 'chat';
     let activeNoteId = null;
+    let activeNoteContentDirty = false;
     let easyMDE = null;
     let noteSaveTimer = null;
+    let allUserTags = [];
+    let activeTagFilter = null;
     let conversationMessageCount = 0;
     let conversationMessageLimit = 40;
 
@@ -754,6 +765,12 @@
 
     function switchTab(tab) {
         if (tab === activeTab) return;
+
+        // Generate metadata when leaving notes tab
+        if (activeTab === 'notes' && activeNoteId && activeNoteContentDirty) {
+            flushNoteAndGenerateMetadata();
+        }
+
         activeTab = tab;
 
         // Update tab buttons
@@ -811,6 +828,7 @@
 
     function scheduleNoteSave() {
         if (!activeNoteId) return;
+        activeNoteContentDirty = true;
         noteSaveStatus.textContent = 'Salvando…';
         clearTimeout(noteSaveTimer);
         noteSaveTimer = setTimeout(function () {
@@ -820,28 +838,73 @@
 
     async function saveCurrentNote() {
         if (!activeNoteId || !easyMDE) return;
-        var title = noteTitleInput.value.trim();
         var content = easyMDE.value();
 
-        if (!title) {
-            noteSaveStatus.textContent = 'Título obrigatório';
-            return;
-        }
-
         try {
-            await apiPatch('/api/notes/' + activeNoteId, { title: title, content: content });
+            await apiPatch('/api/notes/' + activeNoteId, { content: content });
             noteSaveStatus.textContent = 'Salvo ✓';
-            // Update sidebar title
-            var item = notesListEl.querySelector('.note-item[data-id="' + activeNoteId + '"] .note-item-title');
-            if (item) item.textContent = title;
         } catch (err) {
             noteSaveStatus.textContent = 'Erro ao salvar';
         }
     }
 
+    async function flushNoteAndGenerateMetadata() {
+        if (!activeNoteId || !easyMDE) return;
+        var noteId = activeNoteId;
+        var content = easyMDE.value();
+
+        clearTimeout(noteSaveTimer);
+
+        try {
+            await apiPatch('/api/notes/' + noteId, { content: content });
+        } catch (_) { /* ignore save error here */ }
+
+        // Fire metadata generation (don't block UI)
+        apiPost('/api/notes/' + noteId + '/generate-metadata', {}).then(function (meta) {
+            if (!meta) return;
+            // Update sidebar title
+            var item = notesListEl.querySelector('.note-item[data-id="' + noteId + '"] .note-item-title');
+            if (item) item.textContent = meta.title;
+            // Update tags in sidebar
+            var tagsContainer = notesListEl.querySelector('.note-item[data-id="' + noteId + '"] .note-item-tags');
+            if (tagsContainer) renderSidebarNoteTags(tagsContainer, meta.tags || []);
+            // Update editor if still viewing the same note
+            if (activeNoteId === noteId) {
+                noteTitleDisplay.textContent = meta.title;
+                renderNoteTags(meta.tags || []);
+            }
+            activeNoteContentDirty = false;
+            refreshUserTags();
+        }).catch(function () {
+            // Non-critical
+        });
+    }
+
+    function renderNoteTags(tags) {
+        noteTagsEl.innerHTML = '';
+        (tags || []).forEach(function (tag) {
+            var pill = document.createElement('span');
+            pill.className = 'note-tag-pill';
+            pill.textContent = tag;
+            noteTagsEl.appendChild(pill);
+        });
+    }
+
+    function renderSidebarNoteTags(container, tags) {
+        container.innerHTML = '';
+        (tags || []).forEach(function (tag) {
+            var span = document.createElement('span');
+            span.className = 'note-item-tag';
+            span.textContent = tag;
+            container.appendChild(span);
+        });
+    }
+
     async function loadNotes() {
         try {
-            var data = await apiGet('/api/notes');
+            var url = '/api/notes';
+            if (activeTagFilter) url += '?tag=' + encodeURIComponent(activeTagFilter);
+            var data = await apiGet(url);
             renderNotesList(data.notes || []);
         } catch (err) {
             showToast('Erro ao carregar anotações');
@@ -855,10 +918,20 @@
             div.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
             div.dataset.id = note.id;
 
+            var contentDiv = document.createElement('div');
+            contentDiv.className = 'note-item-content';
+
             var titleSpan = document.createElement('span');
             titleSpan.className = 'note-item-title';
             titleSpan.textContent = note.title;
-            div.appendChild(titleSpan);
+            contentDiv.appendChild(titleSpan);
+
+            var tagsDiv = document.createElement('div');
+            tagsDiv.className = 'note-item-tags';
+            renderSidebarNoteTags(tagsDiv, note.tags || []);
+            contentDiv.appendChild(tagsDiv);
+
+            div.appendChild(contentDiv);
 
             var delBtn = document.createElement('button');
             delBtn.className = 'note-item-delete';
@@ -884,13 +957,17 @@
     }
 
     async function createNote() {
+        // Generate metadata for current note before creating new one
+        if (activeNoteId && easyMDE && activeNoteContentDirty) {
+            flushNoteAndGenerateMetadata();
+        }
+
         try {
             var data = await apiPost('/api/notes', { title: 'Nova anotação' });
             activeNoteId = data.id;
+            activeNoteContentDirty = false;
             await loadNotes();
             await selectNote(data.id);
-            noteTitleInput.focus();
-            noteTitleInput.select();
         } catch (err) {
             showToast('Erro ao criar anotação');
         }
@@ -900,6 +977,11 @@
         // Auto-switch to notes tab if not already there
         if (activeTab !== 'notes') switchTab('notes');
 
+        // Generate metadata for previous note if content changed
+        if (activeNoteId && activeNoteId !== noteId && easyMDE && activeNoteContentDirty) {
+            flushNoteAndGenerateMetadata();
+        }
+
         // Save pending changes for current note first
         if (activeNoteId && easyMDE) {
             clearTimeout(noteSaveTimer);
@@ -907,6 +989,7 @@
         }
 
         activeNoteId = noteId;
+        activeNoteContentDirty = false;
 
         // Update sidebar active state
         notesListEl.querySelectorAll('.note-item').forEach(function (item) {
@@ -918,9 +1001,11 @@
             notesEmptyEl.classList.add('hidden');
             notesEditorEl.classList.remove('hidden');
             initEasyMDE();
-            noteTitleInput.value = note.title;
+            noteTitleDisplay.textContent = note.title;
+            renderNoteTags(note.tags || []);
             easyMDE.value(note.content || '');
             noteSaveStatus.textContent = '';
+            activeNoteContentDirty = false;
             // Close sidebar on mobile after selecting
             closeSidebar();
         } catch (err) {
@@ -935,23 +1020,21 @@
             await apiDelete('/api/notes/' + noteId);
             if (activeNoteId === noteId) {
                 activeNoteId = null;
+                activeNoteContentDirty = false;
                 notesEditorEl.classList.add('hidden');
                 notesEmptyEl.classList.remove('hidden');
                 if (easyMDE) {
                     easyMDE.value('');
                 }
-                noteTitleInput.value = '';
+                noteTitleDisplay.textContent = 'Nova anotação';
+                noteTagsEl.innerHTML = '';
             }
             await loadNotes();
+            refreshUserTags();
         } catch (err) {
             showToast('Erro ao excluir anotação');
         }
     }
-
-    // Note title auto-save
-    noteTitleInput.addEventListener('input', function () {
-        scheduleNoteSave();
-    });
 
     // Keyboard shortcut: Ctrl/Cmd+S to save note immediately
     document.addEventListener('keydown', function (e) {
@@ -965,6 +1048,103 @@
     newNoteBtn.addEventListener('click', createNote);
     deleteNoteBtn.addEventListener('click', function () {
         if (activeNoteId) deleteNote(activeNoteId);
+    });
+
+    // ================================================
+    // Notes — Search by tag
+    // ================================================
+
+    async function refreshUserTags() {
+        try {
+            var data = await apiGet('/api/notes/tags');
+            allUserTags = data.tags || [];
+        } catch (_) {
+            allUserTags = [];
+        }
+    }
+
+    function toggleNotesSearch() {
+        var isVisible = !notesSearchEl.classList.contains('hidden');
+        if (isVisible) {
+            notesSearchEl.classList.add('hidden');
+            searchNotesBtn.classList.remove('active');
+            if (activeTagFilter) {
+                activeTagFilter = null;
+                notesSearchInput.value = '';
+                loadNotes();
+            }
+        } else {
+            notesSearchEl.classList.remove('hidden');
+            searchNotesBtn.classList.add('active');
+            notesSearchInput.focus();
+            refreshUserTags();
+        }
+    }
+
+    function showAutocomplete(filter) {
+        var text = (filter || '').toLowerCase();
+        var matches = allUserTags.filter(function (tag) {
+            return tag.toLowerCase().indexOf(text) >= 0;
+        });
+        notesSearchAutocomplete.innerHTML = '';
+        if (matches.length === 0 || (text.length === 0 && matches.length === 0)) {
+            notesSearchAutocomplete.classList.add('hidden');
+            return;
+        }
+        matches.forEach(function (tag) {
+            var div = document.createElement('div');
+            div.className = 'notes-search-autocomplete-item';
+            div.textContent = tag;
+            div.addEventListener('click', function () {
+                notesSearchInput.value = tag;
+                notesSearchAutocomplete.classList.add('hidden');
+                activeTagFilter = tag;
+                loadNotes();
+            });
+            notesSearchAutocomplete.appendChild(div);
+        });
+        notesSearchAutocomplete.classList.remove('hidden');
+    }
+
+    searchNotesBtn.addEventListener('click', toggleNotesSearch);
+
+    notesSearchInput.addEventListener('input', function () {
+        showAutocomplete(notesSearchInput.value);
+    });
+
+    notesSearchInput.addEventListener('focus', function () {
+        if (notesSearchInput.value.length === 0) {
+            showAutocomplete('');
+        }
+    });
+
+    notesSearchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            var text = notesSearchInput.value.trim().toLowerCase();
+            notesSearchAutocomplete.classList.add('hidden');
+            if (text) {
+                activeTagFilter = text;
+            } else {
+                activeTagFilter = null;
+            }
+            loadNotes();
+        } else if (e.key === 'Escape') {
+            notesSearchAutocomplete.classList.add('hidden');
+        }
+    });
+
+    // Close autocomplete when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!notesSearchEl.contains(e.target)) {
+            notesSearchAutocomplete.classList.add('hidden');
+        }
+    });
+
+    notesSearchClear.addEventListener('click', function () {
+        notesSearchInput.value = '';
+        activeTagFilter = null;
+        notesSearchAutocomplete.classList.add('hidden');
+        loadNotes();
     });
 
     // ---- Init ----

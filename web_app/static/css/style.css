@@ -386,10 +386,117 @@ html, body {
     letter-spacing: 0.05em;
 }
 
+.sidebar-notes-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-search-notes {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: background 0.12s, color 0.12s;
+}
+
+.btn-search-notes:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--color-text);
+}
+
+.btn-search-notes.active {
+    background: rgba(22, 99, 222, 0.08);
+    color: var(--color-blue-start);
+    border-color: rgba(22, 99, 222, 0.3);
+}
+
 .sidebar-notes-header .btn-new-note {
     padding: 6px 14px;
     font-size: 0.8rem;
     border-radius: 20px;
+}
+
+/* ---- Notes search ---- */
+.sidebar-notes-search {
+    padding: 0 12px 8px;
+    flex-shrink: 0;
+}
+
+.sidebar-notes-search.hidden {
+    display: none;
+}
+
+.notes-search-wrapper {
+    display: flex;
+    align-items: center;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.notes-search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    padding: 7px 10px;
+    font-size: 0.82rem;
+    font-family: var(--font-stack);
+    background: transparent;
+    color: var(--color-text);
+}
+
+.notes-search-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+.notes-search-clear {
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
+.notes-search-clear:hover {
+    color: var(--color-error);
+}
+
+.notes-search-autocomplete {
+    margin-top: 4px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    max-height: 160px;
+    overflow-y: auto;
+    box-shadow: var(--shadow-md);
+}
+
+.notes-search-autocomplete.hidden {
+    display: none;
+}
+
+.notes-search-autocomplete-item {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    color: var(--color-text);
+    transition: background 0.1s;
+}
+
+.notes-search-autocomplete-item:hover,
+.notes-search-autocomplete-item.selected {
+    background: rgba(22, 99, 222, 0.08);
+    color: var(--color-blue-start);
 }
 
 .sidebar-notes-list {
@@ -408,7 +515,7 @@ html, body {
 
 .note-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 10px 12px;
     margin-bottom: 2px;
@@ -426,8 +533,12 @@ html, body {
     background: rgba(22, 99, 222, 0.08);
 }
 
-.note-item-title {
+.note-item-content {
     flex: 1;
+    min-width: 0;
+}
+
+.note-item-title {
     font-size: 0.88rem;
     color: var(--color-text);
     overflow: hidden;
@@ -1020,7 +1131,7 @@ html, body {
 
 .notes-editor-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 12px 16px;
     border-bottom: 1px solid var(--color-border);
@@ -1030,21 +1141,63 @@ html, body {
     margin: 0 auto;
 }
 
-.note-title-input {
+.note-title-area {
     flex: 1;
-    font-size: 1.15rem;
+    min-width: 0;
+}
+
+.note-title-display {
+    font-size: 1.1rem;
     font-weight: 700;
     font-family: var(--font-stack);
     color: var(--color-text);
-    background: transparent;
-    border: none;
-    outline: none;
-    padding: 4px 0;
+    margin: 0;
+    padding: 4px 0 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.note-title-input::placeholder {
-    color: var(--color-text-muted);
-    font-weight: 400;
+/* ---- Note tag pills ---- */
+.note-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-top: 4px;
+}
+
+.note-tags:empty {
+    display: none;
+}
+
+.note-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-blue-start);
+    background: rgba(22, 99, 222, 0.08);
+    border-radius: 12px;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+}
+
+/* Tags in sidebar note items */
+.note-item-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.note-item-tag {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: rgba(22, 99, 222, 0.7);
+    background: rgba(22, 99, 222, 0.06);
+    padding: 1px 6px;
+    border-radius: 8px;
 }
 
 .notes-editor-actions {

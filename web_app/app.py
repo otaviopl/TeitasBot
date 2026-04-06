@@ -56,6 +56,7 @@ class NoteCreate(BaseModel):
 class NoteUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
+    tags: list[str] | None = None
 
 
 # ---- Helpers ----
@@ -388,12 +389,22 @@ async def get_chat_image(filename: str, user: dict = Depends(get_current_user)):
 
 # ---- Note endpoints ----
 
-@app.get("/api/notes")
-async def list_notes(
+@app.get("/api/notes/tags")
+async def list_note_tags(
     user: dict = Depends(get_current_user),
     store: WebUserStore = Depends(get_user_store),
 ):
-    notes = store.list_notes(user["id"])
+    tags = store.list_user_tags(user["id"])
+    return {"tags": tags}
+
+
+@app.get("/api/notes")
+async def list_notes(
+    tag: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    notes = store.list_notes(user["id"], tag=tag)
     return {"notes": notes}
 
 
@@ -432,12 +443,37 @@ async def update_note(
     if body.title is not None and not body.title.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title cannot be empty")
     try:
-        updated = store.update_note(note_id, user["id"], title=body.title, content=body.content)
+        updated = store.update_note(note_id, user["id"], title=body.title, content=body.content, tags=body.tags)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if not updated:
         raise HTTPException(status_code=404, detail="Note not found")
     return {"status": "ok"}
+
+
+@app.post("/api/notes/{note_id}/generate-metadata")
+async def generate_note_metadata_endpoint(
+    note_id: str,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    note = store.get_note(note_id, user["id"])
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    from openai_connector.llm_api import generate_note_metadata, OpenAICallError
+    from utils import create_logger
+
+    logger = create_logger.create_logger()
+    try:
+        metadata = await asyncio.get_event_loop().run_in_executor(
+            None, generate_note_metadata, note["content"], logger
+        )
+    except OpenAICallError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    store.update_note(note_id, user["id"], title=metadata["title"], tags=metadata["tags"])
+    return {"title": metadata["title"], "tags": metadata["tags"]}
 
 
 @app.delete("/api/notes/{note_id}")

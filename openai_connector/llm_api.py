@@ -87,6 +87,18 @@ NOTE_PARSER_PROMPT = (
     "\nExemplo:"
     "\n{\"note_name\":\"Ideia para onboarding\",\"tag\":\"IDEA\",\"observations\":\"Criar checklist inicial para novos clientes.\",\"url\":\"\"}"
 )
+NOTE_METADATA_PROMPT = (
+    "Você recebe o conteúdo Markdown de uma anotação pessoal e deve retornar somente JSON válido."
+    "\nGere dois campos: title e tags."
+    "\nRegras:"
+    "\n- title: um título curto e descritivo (máx. 60 caracteres) que resuma o conteúdo."
+    "\n- tags: lista de 1 a 5 tags relevantes em minúsculas. Tags são palavras-chave curtas (1-2 palavras)."
+    "\n- Use o mesmo idioma do conteúdo para título e tags."
+    "\n- Se o conteúdo estiver vazio ou for muito curto, use title \"Nova anotação\" e tags []."
+    "\n- Não inclua texto fora do JSON."
+    "\nExemplo:"
+    "\n{\"title\":\"Planejamento sprint Q2\",\"tags\":[\"trabalho\",\"sprint\",\"planejamento\"]}"
+)
 CALENDAR_SUMMARY_PROMPT = (
     "Você é um assistente e deve resumir eventos da agenda da semana para o assistente pessoal em português."
     "\nFormato obrigatório em Markdown:"
@@ -253,6 +265,46 @@ def parse_add_note_input(user_input, project_logger):
         description="parse_add_note_input",
     )
     return parse_add_note_output(completion.output_text)
+
+
+def generate_note_metadata(content: str, project_logger) -> dict:
+    """Call LLM to generate title and tags from note content. Returns {"title": str, "tags": list[str]}."""
+    content_trimmed = (content or "").strip()
+    if len(content_trimmed) < 5:
+        return {"title": "Nova anotação", "tags": []}
+
+    openai_client = _create_openai_client()
+    llm_model = _get_llm_model()
+
+    # Limit content sent to LLM to avoid excessive token usage
+    max_chars = 4000
+    input_content = content_trimmed[:max_chars]
+
+    project_logger.info("Calling LLM to generate note metadata...")
+    completion = _safe_openai_call(
+        lambda: openai_client.responses.create(
+            model=llm_model,
+            input=f"{NOTE_METADATA_PROMPT}\n\nConteúdo da anotação:\n{input_content}",
+        ),
+        description="generate_note_metadata",
+    )
+
+    raw = completion.output_text.strip()
+    try:
+        start = raw.index("{")
+        end = raw.rindex("}") + 1
+        data = json.loads(raw[start:end])
+    except (ValueError, json.JSONDecodeError):
+        project_logger.warning("LLM returned invalid JSON for note metadata: %s", raw[:200])
+        return {"title": "Nova anotação", "tags": []}
+
+    title = str(data.get("title", "Nova anotação")).strip()[:60] or "Nova anotação"
+    raw_tags = data.get("tags", [])
+    if not isinstance(raw_tags, list):
+        raw_tags = []
+    tags = [str(t).strip().lower() for t in raw_tags[:5] if str(t).strip()]
+
+    return {"title": title, "tags": tags}
 
 
 def transcribe_audio_input(audio_bytes, filename, mime_type, project_logger):

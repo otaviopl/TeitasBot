@@ -68,6 +68,18 @@ class WebUserStore:
                 CREATE INDEX IF NOT EXISTS idx_web_notes_user
                     ON web_notes (user_id, updated_at DESC)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_note_tags (
+                    note_id TEXT NOT NULL,
+                    tag TEXT NOT NULL,
+                    PRIMARY KEY (note_id, tag),
+                    FOREIGN KEY (note_id) REFERENCES web_notes(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_note_tags_tag
+                    ON web_note_tags (tag)
+            """)
 
     def create_user(
         self,
@@ -290,6 +302,13 @@ class WebUserStore:
 
     _MAX_NOTE_CONTENT_BYTES = 512_000  # 500 KB
 
+    def _get_note_tags(self, conn: sqlite3.Connection, note_id: str) -> list[str]:
+        rows = conn.execute(
+            "SELECT tag FROM web_note_tags WHERE note_id = ? ORDER BY tag",
+            (note_id,),
+        ).fetchall()
+        return [r["tag"] for r in rows]
+
     def create_note(self, user_id: str, title: str = "Nova anotação", content: str = "") -> dict:
         if len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
             raise ValueError("Note content exceeds 500 KB limit.")
@@ -304,18 +323,34 @@ class WebUserStore:
                 """,
                 (note_id, user_id, clean_title, content, now, now),
             )
-        return {"id": note_id, "user_id": user_id, "title": clean_title, "content": content, "created_at": now, "updated_at": now}
+        return {"id": note_id, "user_id": user_id, "title": clean_title, "content": content, "tags": [], "created_at": now, "updated_at": now}
 
-    def list_notes(self, user_id: str, limit: int = 100) -> list[dict]:
+    def list_notes(self, user_id: str, limit: int = 100, tag: str | None = None) -> list[dict]:
         with self._lock, self._connect() as conn:
-            rows = conn.execute(
-                "SELECT id, user_id, title, created_at, updated_at FROM web_notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
-                (user_id, max(1, limit)),
-            ).fetchall()
-        return [
-            {"id": r["id"], "user_id": r["user_id"], "title": r["title"], "created_at": r["created_at"], "updated_at": r["updated_at"]}
-            for r in rows
-        ]
+            if tag:
+                rows = conn.execute(
+                    """
+                    SELECT n.id, n.user_id, n.title, n.created_at, n.updated_at
+                    FROM web_notes n
+                    JOIN web_note_tags t ON t.note_id = n.id
+                    WHERE n.user_id = ? AND t.tag = ?
+                    ORDER BY n.updated_at DESC LIMIT ?
+                    """,
+                    (user_id, tag, max(1, limit)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, user_id, title, created_at, updated_at FROM web_notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                    (user_id, max(1, limit)),
+                ).fetchall()
+            result = []
+            for r in rows:
+                tags = self._get_note_tags(conn, r["id"])
+                result.append({
+                    "id": r["id"], "user_id": r["user_id"], "title": r["title"],
+                    "tags": tags, "created_at": r["created_at"], "updated_at": r["updated_at"],
+                })
+        return result
 
     def get_note(self, note_id: str, user_id: str) -> Optional[dict]:
         with self._lock, self._connect() as conn:
@@ -323,14 +358,15 @@ class WebUserStore:
                 "SELECT id, user_id, title, content, created_at, updated_at FROM web_notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id),
             ).fetchone()
-        if not row:
-            return None
+            if not row:
+                return None
+            tags = self._get_note_tags(conn, note_id)
         return {
             "id": row["id"], "user_id": row["user_id"], "title": row["title"],
-            "content": row["content"], "created_at": row["created_at"], "updated_at": row["updated_at"],
+            "content": row["content"], "tags": tags, "created_at": row["created_at"], "updated_at": row["updated_at"],
         }
 
-    def update_note(self, note_id: str, user_id: str, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+    def update_note(self, note_id: str, user_id: str, title: Optional[str] = None, content: Optional[str] = None, tags: Optional[list[str]] = None) -> bool:
         if content is not None and len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
             raise ValueError("Note content exceeds 500 KB limit.")
         now = _utc_now_iso()
@@ -349,10 +385,47 @@ class WebUserStore:
         sql = f"UPDATE web_notes SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
         with self._lock, self._connect() as conn:
             cursor = conn.execute(sql, params)
+            if tags is not None and cursor.rowcount > 0:
+                self._set_note_tags(conn, note_id, tags)
         return cursor.rowcount > 0
+
+    def _set_note_tags(self, conn: sqlite3.Connection, note_id: str, tags: list[str]) -> None:
+        conn.execute("DELETE FROM web_note_tags WHERE note_id = ?", (note_id,))
+        clean_tags = list(dict.fromkeys(t.strip().lower() for t in tags if t.strip()))
+        for tag in clean_tags:
+            conn.execute(
+                "INSERT OR IGNORE INTO web_note_tags (note_id, tag) VALUES (?, ?)",
+                (note_id, tag),
+            )
+
+    def set_note_tags(self, note_id: str, user_id: str, tags: list[str]) -> bool:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM web_notes WHERE id = ? AND user_id = ?",
+                (note_id, user_id),
+            ).fetchone()
+            if not row:
+                return False
+            self._set_note_tags(conn, note_id, tags)
+        return True
+
+    def list_user_tags(self, user_id: str) -> list[str]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT t.tag
+                FROM web_note_tags t
+                JOIN web_notes n ON n.id = t.note_id
+                WHERE n.user_id = ?
+                ORDER BY t.tag
+                """,
+                (user_id,),
+            ).fetchall()
+        return [r["tag"] for r in rows]
 
     def delete_note(self, note_id: str, user_id: str) -> bool:
         with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM web_note_tags WHERE note_id = ?", (note_id,))
             cursor = conn.execute(
                 "DELETE FROM web_notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id),
