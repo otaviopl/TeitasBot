@@ -226,12 +226,19 @@ html, body {
     overflow: hidden;
 }
 
+.sidebar-top {
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px 12px 0;
+    padding-top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    flex-shrink: 0;
+}
+
 .sidebar-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px;
-    padding-top: calc(var(--header-height) + 12px + env(safe-area-inset-top, 0px));
+    padding: 8px 16px 16px;
     flex-shrink: 0;
 }
 
