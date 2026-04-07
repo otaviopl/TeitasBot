@@ -59,6 +59,21 @@ class NoteUpdate(BaseModel):
     tags: list[str] | None = None
 
 
+class TaskCreate(BaseModel):
+    name: str
+    deadline: str | None = None
+    project: str | None = None
+    tags: list[str] = []
+
+
+class TaskUpdate(BaseModel):
+    name: str | None = None
+    deadline: str | None = "__unset__"
+    project: str | None = "__unset__"
+    done: bool | None = None
+    tags: list[str] | None = None
+
+
 # ---- Helpers ----
 
 _MAX_CONVERSATIONS_PER_USER = 100
@@ -255,7 +270,7 @@ async def chat_send(
     )
 
     if req.conversation_id:
-        store.touch_conversation(req.conversation_id)
+        store.touch_conversation(req.conversation_id, user["id"])
 
     return {"text": response.text, "image_urls": _extract_image_urls(response.image_paths)}
 
@@ -310,7 +325,7 @@ async def chat_upload(
     )
 
     if conv_id:
-        store.touch_conversation(conv_id)
+        store.touch_conversation(conv_id, user["id"])
 
     return {"text": response.text, "image_urls": _extract_image_urls(response.image_paths)}
 
@@ -361,7 +376,7 @@ async def chat_audio(
     )
 
     if conv_id:
-        store.touch_conversation(conv_id)
+        store.touch_conversation(conv_id, user["id"])
 
     return {
         "text": response.text,
@@ -380,10 +395,20 @@ async def get_chat_image(filename: str, user: dict = Depends(get_current_user)):
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "files")),
     )
     safe_filename = os.path.basename(filename)
-    for search_dir in [charts_dir, files_dir]:
-        candidate = os.path.join(search_dir, safe_filename)
-        if os.path.isfile(candidate):
-            return FileResponse(candidate)
+
+    # Charts are UUID-named and generated per-session; any authenticated user may access.
+    charts_candidate = os.path.join(charts_dir, safe_filename)
+    if os.path.isfile(charts_candidate):
+        return FileResponse(charts_candidate)
+
+    # Uploaded files are scoped to the current user's directory.
+    user_session_id = f"web:{user['username']}"
+    user_files_dir = os.path.realpath(os.path.join(files_dir, user_session_id))
+    candidate = os.path.join(user_files_dir, safe_filename)
+    real = os.path.realpath(candidate)
+    if real.startswith(user_files_dir + os.sep) and os.path.isfile(real):
+        return FileResponse(real)
+
     raise HTTPException(status_code=404, detail="Image not found")
 
 
@@ -603,7 +628,70 @@ async def list_memories(user: dict = Depends(get_current_user)):
     return {"files": result, "count": len(result)}
 
 
-# ---- Health (meals + exercises) endpoints ----
+_MAX_MEMORY_CONTENT = 100 * 1024  # 100 KB
+
+
+@app.put("/api/memories/{filename}")
+async def update_memory(
+    filename: str,
+    body: dict,
+    user: dict = Depends(get_current_user),
+):
+    """Update the content of a user memory file."""
+    import re
+
+    # Validate filename: must be a .md file with no path separators
+    if (
+        not filename.lower().endswith(".md")
+        or "/" in filename
+        or "\\" in filename
+        or ".." in filename
+    ):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    reserved = {"readme.md"}
+    if filename.lower() in reserved:
+        raise HTTPException(status_code=403, detail="Cannot edit reserved file")
+
+    content = body.get("content", "")
+    if not isinstance(content, str):
+        raise HTTPException(status_code=400, detail="content must be a string")
+    if len(content) > _MAX_MEMORY_CONTENT:
+        raise HTTPException(status_code=413, detail="Content too large")
+
+    user_id = f"web:{user['username']}"
+    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", user_id)
+
+    base_dir = os.getenv(
+        "ASSISTANT_MEMORIES_DIR",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "memories")),
+    )
+    user_dir = os.path.join(base_dir, safe_id)
+
+    if not os.path.isdir(user_dir):
+        try:
+            os.makedirs(user_dir, exist_ok=True, mode=0o700)
+        except OSError:
+            raise HTTPException(status_code=500, detail="Could not create memory directory")
+
+    fpath = os.path.join(user_dir, filename)
+    real = os.path.realpath(fpath)
+    if not real.startswith(os.path.realpath(user_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not os.path.isfile(real):
+        raise HTTPException(status_code=404, detail="Memory file not found")
+
+    try:
+        with open(real, "w", encoding="utf-8") as fh:
+            fh.write(content)
+    except OSError:
+        raise HTTPException(status_code=500, detail="Failed to write file")
+
+    return {"ok": True, "filename": filename}
+
+
+
 
 
 _VALID_MEAL_TYPES = {"ALMOÇO", "JANTAR", "LANCHE", "CAFÉ DA MANHÃ", "SUPLEMENTO"}
@@ -752,6 +840,53 @@ async def health_weekly(
     return {"days": days}
 
 
+@app.post("/api/health/analysis")
+async def health_nutritional_analysis(
+    user: dict = Depends(get_current_user),
+):
+    """Generate a detailed 7-day nutritional analysis via LLM."""
+    import datetime as _dt
+
+    from assistant_connector.health_store import HealthStore
+    from openai_connector.llm_api import OpenAICallError, generate_nutritional_analysis
+
+    end = _dt.date.today()
+    start = end - _dt.timedelta(days=6)
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+
+    async def fetch_meals():
+        try:
+            return await asyncio.to_thread(
+                store.list_meals_by_date_range,
+                user_id=user_id,
+                start_date=start.isoformat(),
+                end_date=end.isoformat(),
+            )
+        except Exception:
+            return []
+
+    async def fetch_exercises():
+        try:
+            return await asyncio.to_thread(
+                store.list_exercises_by_date_range,
+                user_id=user_id,
+                start_date=start.isoformat(),
+                end_date=end.isoformat(),
+            )
+        except Exception:
+            return []
+
+    meals, exercises = await asyncio.gather(fetch_meals(), fetch_exercises())
+
+    try:
+        analysis = await asyncio.to_thread(generate_nutritional_analysis, meals, exercises, logger)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar análise: {exc}")
+
+    return {"analysis": analysis}
+
+
 class CreateMealRequest(BaseModel):
     food: str
     meal_type: str
@@ -813,6 +948,7 @@ class CreateExerciseRequest(BaseModel):
     calories: float
     observations: str = ""
     done: bool = True
+    duration_minutes: int | None = None
 
 
 @app.post("/api/health/exercises")
@@ -844,6 +980,7 @@ async def create_health_exercise(
         date=today_iso_in_configured_timezone(),
         observations=observations,
         done=body.done,
+        duration_minutes=body.duration_minutes,
     )
     return {"status": "created", "exercise": result}
 
@@ -853,6 +990,7 @@ class UpdateExerciseRequest(BaseModel):
     calories: float | None = None
     observations: str | None = None
     done: bool | None = None
+    duration_minutes: int | None = None
 
 
 @app.patch("/api/health/exercises/{exercise_id}")
@@ -883,6 +1021,10 @@ async def update_health_exercise(
         kwargs["observations"] = body.observations
     if body.done is not None:
         kwargs["done"] = body.done
+    if body.duration_minutes is not None:
+        if body.duration_minutes < 1 or body.duration_minutes > 1440:
+            raise HTTPException(status_code=400, detail="duration_minutes must be between 1 and 1440")
+        kwargs["duration_minutes"] = body.duration_minutes
 
     if not kwargs:
         raise HTTPException(status_code=400, detail="At least one field must be provided to update")
@@ -1132,6 +1274,145 @@ async def finance_dashboard(
         },
         "category_breakdown": category_breakdown,
     }
+
+
+# ---- Health Goals endpoints ----
+
+
+class UpdateHealthGoalsRequest(BaseModel):
+    calorie_goal: int | None = None
+    exercise_calorie_goal: int | None = None
+    exercise_time_goal: int | None = None
+
+
+@app.get("/api/health/goals")
+async def get_health_goals_endpoint(user: dict = Depends(get_current_user)):
+    from assistant_connector.health_store import HealthStore
+
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    return await asyncio.to_thread(store.get_health_goals, user_id)
+
+
+@app.put("/api/health/goals")
+async def set_health_goals_endpoint(
+    body: UpdateHealthGoalsRequest,
+    user: dict = Depends(get_current_user),
+):
+    from assistant_connector.health_store import HealthStore
+
+    for field, val in [
+        ("calorie_goal", body.calorie_goal),
+        ("exercise_calorie_goal", body.exercise_calorie_goal),
+        ("exercise_time_goal", body.exercise_time_goal),
+    ]:
+        if val is not None and (val < 0 or val > 99999):
+            raise HTTPException(status_code=400, detail=f"{field} must be between 0 and 99999")
+
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    return await asyncio.to_thread(
+        store.set_health_goals,
+        user_id,
+        body.calorie_goal,
+        body.exercise_calorie_goal,
+        body.exercise_time_goal,
+    )
+
+
+# ---- Task endpoints ----
+
+import re as _re
+_DEADLINE_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.get("/api/tasks/meta")
+async def list_tasks_meta(
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    projects = store.list_task_projects(user["id"])
+    tags = store.list_task_tags(user["id"])
+    return {"projects": projects, "tags": tags}
+
+
+@app.get("/api/tasks")
+async def list_tasks(
+    include_done: bool = Query(default=True),
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    tasks = store.list_tasks(user["id"], include_done=include_done)
+    return {"tasks": tasks}
+
+
+@app.post("/api/tasks", status_code=201)
+async def create_task(
+    body: TaskCreate,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    clean_name = body.name.strip() if body.name else ""
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task name is required")
+    if len(clean_name) > 200:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task name too long (max 200 chars)")
+    if body.deadline is not None and not _DEADLINE_RE.match(body.deadline):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deadline must be YYYY-MM-DD")
+    clean_project = None
+    if body.project is not None:
+        clean_project = body.project.strip()[:100] or None
+    clean_tags = [t.strip().lower()[:50] for t in (body.tags or []) if t.strip()][:10]
+    task = store.create_task(user["id"], clean_name, deadline=body.deadline, project=clean_project, tags=clean_tags)
+    return task
+
+
+@app.patch("/api/tasks/{task_id}")
+async def update_task(
+    task_id: str,
+    body: TaskUpdate,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    name = None
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task name cannot be empty")
+        if len(name) > 200:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task name too long (max 200 chars)")
+    deadline = body.deadline
+    if deadline != "__unset__" and deadline is not None and not _DEADLINE_RE.match(deadline):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deadline must be YYYY-MM-DD")
+    project = body.project
+    if project != "__unset__" and project is not None:
+        project = project.strip()[:100] or None
+    tags = None
+    if body.tags is not None:
+        tags = [t.strip().lower()[:50] for t in body.tags if t.strip()][:10]
+    updated = store.update_task(
+        task_id, user["id"],
+        name=name,
+        deadline=deadline,
+        project=project,
+        done=body.done,
+        tags=tags,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "ok"}
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(
+    task_id: str,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    deleted = store.delete_task(task_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "ok"}
 
 
 @app.get("/api/health")
