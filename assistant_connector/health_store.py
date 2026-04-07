@@ -219,6 +219,20 @@ class HealthStore:
                 CREATE INDEX IF NOT EXISTS idx_financial_bills_user_paid
                     ON financial_bills (user_id, paid, reference_month)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_health_goals (
+                    user_id TEXT PRIMARY KEY,
+                    calorie_goal INTEGER NOT NULL DEFAULT 2400,
+                    exercise_calorie_goal INTEGER NOT NULL DEFAULT 0,
+                    exercise_time_goal INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            # Migration: add duration_minutes to existing health_exercises tables
+            try:
+                conn.execute("ALTER TABLE health_exercises ADD COLUMN duration_minutes INTEGER")
+            except Exception:
+                pass  # column already exists
 
     # ---- Tasks ----
 
@@ -415,6 +429,7 @@ class HealthStore:
         date: Optional[str] = None,
         observations: str = "",
         done: Optional[bool] = None,
+        duration_minutes: Optional[int] = None,
     ) -> dict:
         exercise_id = uuid.uuid4().hex
         now = _utc_now_iso()
@@ -428,11 +443,11 @@ class HealthStore:
             conn.execute(
                 """
                 INSERT INTO health_exercises
-                  (id, user_id, activity, calories, date, observations, done, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, user_id, activity, calories, date, observations, done, duration_minutes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (exercise_id, user_id, activity.strip(), calories, exercise_date,
-                 observations or "", 1 if done else 0, now, now),
+                 observations or "", 1 if done else 0, duration_minutes, now, now),
             )
         return {
             "id": exercise_id,
@@ -441,6 +456,7 @@ class HealthStore:
             "date": exercise_date,
             "observations": observations or "",
             "done": done,
+            "duration_minutes": duration_minutes,
         }
 
     def update_exercise(self, user_id: str, exercise_id: str, **kwargs) -> dict:
@@ -465,6 +481,10 @@ class HealthStore:
         if "done" in kwargs:
             updates.append("done = ?")
             params.append(1 if kwargs["done"] else 0)
+        if "duration_minutes" in kwargs:
+            dm = kwargs["duration_minutes"]
+            updates.append("duration_minutes = ?")
+            params.append(int(dm) if dm is not None else None)
         params.extend([exercise_id, user_id])
         sql = f"UPDATE health_exercises SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
         with self._lock, self._connect() as conn:
@@ -517,7 +537,50 @@ class HealthStore:
             "date": r["date"],
             "observations": r.get("observations", ""),
             "done": bool(r.get("done", 1)),
+            "duration_minutes": r.get("duration_minutes"),
         }
+
+    def get_health_goals(self, user_id: str) -> dict:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM user_health_goals WHERE user_id = ?", (user_id,)
+            ).fetchone()
+        if row:
+            r = dict(row)
+            return {
+                "calorie_goal": r["calorie_goal"],
+                "exercise_calorie_goal": r["exercise_calorie_goal"],
+                "exercise_time_goal": r["exercise_time_goal"],
+            }
+        return {"calorie_goal": 2400, "exercise_calorie_goal": 0, "exercise_time_goal": 0}
+
+    def set_health_goals(
+        self,
+        user_id: str,
+        calorie_goal: Optional[int] = None,
+        exercise_calorie_goal: Optional[int] = None,
+        exercise_time_goal: Optional[int] = None,
+    ) -> dict:
+        now = _utc_now_iso()
+        current = self.get_health_goals(user_id)
+        cg = calorie_goal if calorie_goal is not None else current["calorie_goal"]
+        ecg = exercise_calorie_goal if exercise_calorie_goal is not None else current["exercise_calorie_goal"]
+        etg = exercise_time_goal if exercise_time_goal is not None else current["exercise_time_goal"]
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_health_goals
+                  (user_id, calorie_goal, exercise_calorie_goal, exercise_time_goal, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    calorie_goal = excluded.calorie_goal,
+                    exercise_calorie_goal = excluded.exercise_calorie_goal,
+                    exercise_time_goal = excluded.exercise_time_goal,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, cg, ecg, etg, now),
+            )
+        return {"calorie_goal": cg, "exercise_calorie_goal": ecg, "exercise_time_goal": etg}
 
     # ---- Expenses ----
 

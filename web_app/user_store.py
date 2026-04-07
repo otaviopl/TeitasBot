@@ -80,6 +80,34 @@ class WebUserStore:
                 CREATE INDEX IF NOT EXISTS idx_web_note_tags_tag
                     ON web_note_tags (tag)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_tasks (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    deadline TEXT,
+                    project TEXT,
+                    done INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_tasks_user
+                    ON web_tasks (user_id, created_at DESC)
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_task_tags (
+                    task_id TEXT NOT NULL,
+                    tag TEXT NOT NULL,
+                    PRIMARY KEY (task_id, tag),
+                    FOREIGN KEY (task_id) REFERENCES web_tasks(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_task_tags
+                    ON web_task_tags (task_id)
+            """)
 
     def create_user(
         self,
@@ -289,13 +317,13 @@ class WebUserStore:
                 conn.commit()
         return deleted_ids
 
-    def touch_conversation(self, conversation_id: str) -> None:
-        """Update the updated_at timestamp of a conversation."""
+    def touch_conversation(self, conversation_id: str, user_id: str) -> None:
+        """Update the updated_at timestamp of a conversation owned by user_id."""
         now = _utc_now_iso()
         with self._lock, self._connect() as conn:
             conn.execute(
-                "UPDATE web_conversations SET updated_at = ? WHERE id = ?",
-                (now, conversation_id),
+                "UPDATE web_conversations SET updated_at = ? WHERE id = ? AND user_id = ?",
+                (now, conversation_id, user_id),
             )
 
     # ---- Note management ----
@@ -424,16 +452,15 @@ class WebUserStore:
         return [r["tag"] for r in rows]
 
     def delete_note(self, note_id: str, user_id: str) -> bool:
+        # FK ON DELETE CASCADE handles web_note_tags cleanup automatically.
+        # Do NOT delete tags before verifying ownership — the with-block
+        # auto-commits on normal exit, which could erase another user's tags.
         with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM web_note_tags WHERE note_id = ?", (note_id,))
             cursor = conn.execute(
                 "DELETE FROM web_notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id),
             )
-            deleted = cursor.rowcount > 0
-            if deleted:
-                conn.commit()
-        return deleted
+            return cursor.rowcount > 0
 
     def search_notes(self, user_id: str, query: str, limit: int = 20) -> list[dict]:
         """Search notes by title or content using LIKE matching."""
@@ -459,6 +486,156 @@ class WebUserStore:
                     "created_at": r["created_at"], "updated_at": r["updated_at"],
                 })
         return result
+
+
+    # ---- Task management ----
+
+    def _get_task_tags(self, conn: sqlite3.Connection, task_id: str) -> list[str]:
+        rows = conn.execute(
+            "SELECT tag FROM web_task_tags WHERE task_id = ? ORDER BY tag",
+            (task_id,),
+        ).fetchall()
+        return [r["tag"] for r in rows]
+
+    def _set_task_tags(self, conn: sqlite3.Connection, task_id: str, tags: list[str]) -> None:
+        conn.execute("DELETE FROM web_task_tags WHERE task_id = ?", (task_id,))
+        clean_tags = list(dict.fromkeys(t.strip().lower() for t in tags if t.strip()))
+        for tag in clean_tags:
+            conn.execute(
+                "INSERT OR IGNORE INTO web_task_tags (task_id, tag) VALUES (?, ?)",
+                (task_id, tag),
+            )
+
+    def create_task(
+        self,
+        user_id: str,
+        name: str,
+        deadline: Optional[str] = None,
+        project: Optional[str] = None,
+        tags: list[str] = [],
+    ) -> dict:
+        task_id = str(uuid.uuid4())
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_tasks (id, user_id, name, deadline, project, done, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (task_id, user_id, name, deadline, project, now, now),
+            )
+            if tags:
+                self._set_task_tags(conn, task_id, tags)
+            clean_tags = list(dict.fromkeys(t.strip().lower() for t in tags if t.strip()))
+        return {
+            "id": task_id, "user_id": user_id, "name": name,
+            "deadline": deadline, "project": project, "done": False,
+            "tags": clean_tags, "created_at": now, "updated_at": now,
+        }
+
+    def list_tasks(self, user_id: str, include_done: bool = True) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            if include_done:
+                rows = conn.execute(
+                    "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE user_id = ? AND done = 0 ORDER BY created_at DESC",
+                    (user_id,),
+                ).fetchall()
+            result = []
+            for r in rows:
+                tags = self._get_task_tags(conn, r["id"])
+                result.append({
+                    "id": r["id"], "user_id": r["user_id"], "name": r["name"],
+                    "deadline": r["deadline"], "project": r["project"],
+                    "done": bool(r["done"]), "tags": tags,
+                    "created_at": r["created_at"], "updated_at": r["updated_at"],
+                })
+        return result
+
+    def get_task(self, task_id: str, user_id: str) -> Optional[dict]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE id = ? AND user_id = ?",
+                (task_id, user_id),
+            ).fetchone()
+            if not row:
+                return None
+            tags = self._get_task_tags(conn, task_id)
+        return {
+            "id": row["id"], "user_id": row["user_id"], "name": row["name"],
+            "deadline": row["deadline"], "project": row["project"],
+            "done": bool(row["done"]), "tags": tags,
+            "created_at": row["created_at"], "updated_at": row["updated_at"],
+        }
+
+    def update_task(
+        self,
+        task_id: str,
+        user_id: str,
+        name: Optional[str] = None,
+        deadline: Optional[str] = "__unset__",
+        project: Optional[str] = "__unset__",
+        done: Optional[bool] = None,
+        tags: Optional[list[str]] = None,
+    ) -> bool:
+        now = _utc_now_iso()
+        updates: list[str] = ["updated_at = ?"]
+        params: list = [now]
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if deadline != "__unset__":
+            updates.append("deadline = ?")
+            params.append(deadline)
+        if project != "__unset__":
+            updates.append("project = ?")
+            params.append(project)
+        if done is not None:
+            updates.append("done = ?")
+            params.append(1 if done else 0)
+        params.extend([task_id, user_id])
+        sql = f"UPDATE web_tasks SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+            updated = cursor.rowcount > 0
+            if tags is not None and updated:
+                self._set_task_tags(conn, task_id, tags)
+        return updated
+
+    def delete_task(self, task_id: str, user_id: str) -> bool:
+        # FK ON DELETE CASCADE handles web_task_tags cleanup automatically.
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM web_tasks WHERE id = ? AND user_id = ?",
+                (task_id, user_id),
+            )
+            return cursor.rowcount > 0
+
+    def list_task_projects(self, user_id: str) -> list[str]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT project FROM web_tasks WHERE user_id = ? AND project IS NOT NULL ORDER BY project",
+                (user_id,),
+            ).fetchall()
+        return [r["project"] for r in rows]
+
+    def list_task_tags(self, user_id: str) -> list[str]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT tt.tag
+                FROM web_task_tags tt
+                JOIN web_tasks t ON t.id = tt.task_id
+                WHERE t.user_id = ?
+                ORDER BY tt.tag
+                """,
+                (user_id,),
+            ).fetchall()
+        return [r["tag"] for r in rows]
 
 
 def _utc_now_iso() -> str:
