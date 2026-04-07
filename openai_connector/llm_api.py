@@ -360,6 +360,89 @@ def estimate_calories(description: str, category: str = "meal", logger=None) -> 
     return None
 
 
+_NUTRITIONAL_ANALYSIS_PROMPT = (
+    "Você é um nutricionista esportivo profissional. Analise os dados de alimentação e exercícios "
+    "dos últimos 7 dias fornecidos abaixo e produza uma análise nutricional completa e detalhada em português.\n\n"
+    "A análise deve conter:\n"
+    "1. **Resumo calórico** — média diária consumida vs. queimada, tendência da semana\n"
+    "2. **Macronutrientes estimados** — estimativa de proteínas, carboidratos e gorduras com base nos alimentos listados\n"
+    "3. **Micronutrientes relevantes** — análise de cálcio, ferro, vitaminas A, C, D, B12, magnésio, zinco, etc. "
+    "baseado nos alimentos consumidos\n"
+    "4. **Fibras e hidratação** — estimativa de fibras com base nos alimentos\n"
+    "5. **Equilíbrio dos exercícios** — calorias gastas, frequência, variedade, adequação ao consumo calórico\n"
+    "6. **Pontos positivos** — o que está indo bem\n"
+    "7. **Pontos de atenção** — deficiências prováveis, excessos, desequilíbrios\n"
+    "8. **Recomendações** — sugestões práticas para melhorar a dieta e os exercícios\n\n"
+    "Use formatação Markdown (títulos, listas, negrito). Seja específico e baseado nos dados reais fornecidos. "
+    "Se não houver dados suficientes para uma seção, indique isso claramente."
+)
+
+
+def generate_nutritional_analysis(meals: list[dict], exercises: list[dict], logger=None) -> str:
+    """Call LLM to produce a detailed 7-day nutritional analysis.
+
+    Args:
+        meals: List of meal dicts with keys: food, meal_type, quantity, calories, date.
+        exercises: List of exercise dicts with keys: activity, calories, duration_minutes, date.
+        logger: Optional logger instance.
+
+    Returns:
+        Markdown-formatted analysis string.
+    """
+    if not meals and not exercises:
+        return "Sem dados de refeições ou exercícios nos últimos 7 dias para analisar."
+
+    # Build data summary for the prompt
+    lines = []
+    lines.append("## Refeições dos últimos 7 dias\n")
+    if meals:
+        for m in meals:
+            food = m.get("food", "?")
+            meal_type = m.get("meal_type", "?")
+            qty = m.get("quantity", "")
+            cal = m.get("calories", 0)
+            date = str(m.get("date", ""))[:10]
+            lines.append(f"- [{date}] {meal_type}: {food} ({qty}) — {cal} kcal")
+    else:
+        lines.append("_Nenhuma refeição registrada._")
+
+    lines.append("\n## Exercícios dos últimos 7 dias\n")
+    if exercises:
+        for e in exercises:
+            activity = e.get("activity", "?")
+            cal = e.get("calories", 0)
+            dur = e.get("duration_minutes")
+            date = str(e.get("date", ""))[:10]
+            dur_str = f", {dur} min" if dur else ""
+            lines.append(f"- [{date}] {activity} — {cal} kcal{dur_str}")
+    else:
+        lines.append("_Nenhum exercício registrado._")
+
+    data_text = "\n".join(lines)
+    # Limit to avoid excessive tokens
+    if len(data_text) > 8000:
+        data_text = data_text[:8000] + "\n... (dados truncados)"
+
+    openai_client = _create_openai_client()
+    llm_model = _get_llm_model()
+
+    full_prompt = f"{_NUTRITIONAL_ANALYSIS_PROMPT}\n\n---\n\n{data_text}"
+
+    if logger:
+        logger.info("Calling LLM for nutritional analysis (%d meals, %d exercises)...", len(meals), len(exercises))
+
+    try:
+        completion = _safe_openai_call(
+            lambda: openai_client.responses.create(model=llm_model, input=full_prompt),
+            description="generate_nutritional_analysis",
+        )
+        return completion.output_text.strip()
+    except OpenAICallError as exc:
+        if logger:
+            logger.error("Nutritional analysis LLM call failed: %s", exc)
+        return f"Erro ao gerar análise nutricional: {exc}"
+
+
 def transcribe_audio_input(audio_bytes, filename, mime_type, project_logger):
     if not audio_bytes:
         raise ValueError("audio_bytes is required")
