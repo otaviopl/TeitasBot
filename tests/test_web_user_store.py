@@ -157,7 +157,7 @@ class TestConversations:
         # Touch c1 so it has a newer updated_at
         import time
         time.sleep(1.1)
-        store.touch_conversation(c1["id"])
+        store.touch_conversation(c1["id"], user["id"])
         convs = store.list_conversations(user["id"])
         assert len(convs) == 2
         # c1 was touched most recently, should be first
@@ -209,9 +209,22 @@ class TestConversations:
         original_updated = conv["updated_at"]
         import time
         time.sleep(1.1)
-        store.touch_conversation(conv["id"])
+        store.touch_conversation(conv["id"], user["id"])
         fetched = store.get_conversation(conv["id"], user["id"])
         assert fetched["updated_at"] >= original_updated
+
+    def test_touch_conversation_wrong_user_is_noop(self, store):
+        u1 = store.create_user("alice", "secret123")
+        u2 = store.create_user("bob", "secret456")
+        conv = store.create_conversation(u1["id"], "Alice's chat")
+        original_updated = conv["updated_at"]
+        import time
+        time.sleep(1.1)
+        # Bob tries to touch Alice's conversation — should be silently ignored
+        store.touch_conversation(conv["id"], u2["id"])
+        fetched = store.get_conversation(conv["id"], u1["id"])
+        # updated_at must NOT have changed
+        assert fetched["updated_at"] == original_updated
 
     def test_prune_oldest_conversations(self, store):
         user = store.create_user("alice", "secret123")

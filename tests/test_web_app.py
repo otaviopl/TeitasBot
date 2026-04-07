@@ -295,3 +295,270 @@ class TestConversationEndpoints:
             assert conv_id in call_kwargs.kwargs.get("channel_id", call_kwargs[1].get("channel_id", ""))
         finally:
             app.dependency_overrides.clear()
+
+
+class TestMemoriesEndpoints:
+    def test_list_memories_empty_dir(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        res = client.get("/api/memories", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        assert res.json()["count"] == 0
+
+    def test_list_memories_with_files(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        import re
+        user_dir = tmp_path / re.sub(r"[^a-zA-Z0-9_\-]", "", "web:testuser")
+        user_dir.mkdir()
+        (user_dir / "notes.md").write_text("Hello memory")
+
+        res = client.get("/api/memories", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["count"] == 1
+        assert data["files"][0]["filename"] == "notes.md"
+        assert data["files"][0]["content"] == "Hello memory"
+
+    def test_update_memory_success(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        import re
+        user_dir = tmp_path / re.sub(r"[^a-zA-Z0-9_\-]", "", "web:testuser")
+        user_dir.mkdir()
+        (user_dir / "notes.md").write_text("Original content")
+
+        res = client.put(
+            "/api/memories/notes.md",
+            json={"content": "Updated content"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+        assert (user_dir / "notes.md").read_text() == "Updated content"
+
+    def test_update_memory_invalid_filename(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        res = client.put(
+            "/api/memories/../../etc/passwd",
+            json={"content": "bad"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code in (400, 404, 422)
+
+    def test_update_memory_reserved_file(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        import re
+        user_dir = tmp_path / re.sub(r"[^a-zA-Z0-9_\-]", "", "web:testuser")
+        user_dir.mkdir()
+        (user_dir / "readme.md").write_text("Readme")
+
+        res = client.put(
+            "/api/memories/readme.md",
+            json={"content": "new"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 403
+
+    def test_update_memory_not_found(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        import re
+        user_dir = tmp_path / re.sub(r"[^a-zA-Z0-9_\-]", "", "web:testuser")
+        user_dir.mkdir()
+
+        res = client.put(
+            "/api/memories/nonexistent.md",
+            json={"content": "new"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 404
+
+    def test_update_memory_content_too_large(self, client, auth_token, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASSISTANT_MEMORIES_DIR", str(tmp_path))
+        import re
+        user_dir = tmp_path / re.sub(r"[^a-zA-Z0-9_\-]", "", "web:testuser")
+        user_dir.mkdir()
+        (user_dir / "notes.md").write_text("ok")
+
+        res = client.put(
+            "/api/memories/notes.md",
+            json={"content": "x" * (100 * 1024 + 1)},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 413
+
+    def test_update_memory_unauthenticated(self, client):
+        res = client.put("/api/memories/notes.md", json={"content": "new"})
+        assert res.status_code == 401
+
+
+class TestTaskEndpoints:
+    def test_list_tasks_empty(self, client, auth_token):
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        assert res.json()["tasks"] == []
+
+    def test_create_task_minimal(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Minha tarefa"}, headers=auth_headers(auth_token))
+        assert res.status_code == 201
+        data = res.json()
+        assert data["name"] == "Minha tarefa"
+        assert data["id"]
+        assert data["done"] is False
+        assert data["tags"] == []
+        assert data["deadline"] is None
+        assert data["project"] is None
+
+    def test_create_task_full(self, client, auth_token):
+        res = client.post(
+            "/api/tasks",
+            json={"name": "Tarefa completa", "deadline": "2030-12-31", "project": "Proj Alpha", "tags": ["urgente", "backend"]},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 201
+        data = res.json()
+        assert data["name"] == "Tarefa completa"
+        assert data["deadline"] == "2030-12-31"
+        assert data["project"] == "Proj Alpha"
+        assert set(data["tags"]) == {"urgente", "backend"}
+
+    def test_create_task_missing_name(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "   "}, headers=auth_headers(auth_token))
+        assert res.status_code in (400, 422)
+
+    def test_list_tasks_with_data(self, client, auth_token):
+        client.post("/api/tasks", json={"name": "Task A", "tags": ["alpha"]}, headers=auth_headers(auth_token))
+        client.post("/api/tasks", json={"name": "Task B", "tags": ["beta"]}, headers=auth_headers(auth_token))
+
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        tasks = res.json()["tasks"]
+        assert len(tasks) == 2
+        names = {t["name"] for t in tasks}
+        assert names == {"Task A", "Task B"}
+        # Each task has tags list
+        for t in tasks:
+            assert "tags" in t
+            assert isinstance(t["tags"], list)
+
+    def test_update_task_done(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Marcar como feita"}, headers=auth_headers(auth_token))
+        task_id = res.json()["id"]
+
+        res = client.patch(f"/api/tasks/{task_id}", json={"done": True}, headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        assert res.json()["status"] == "ok"
+
+        # Verify it's marked done
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        tasks = res.json()["tasks"]
+        task = next(t for t in tasks if t["id"] == task_id)
+        assert task["done"] is True
+
+    def test_update_task_deadline_and_project(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Atualizar detalhes"}, headers=auth_headers(auth_token))
+        task_id = res.json()["id"]
+
+        res = client.patch(
+            f"/api/tasks/{task_id}",
+            json={"name": "Novo nome", "deadline": "2031-06-15", "project": "Novo projeto"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        task = next(t for t in res.json()["tasks"] if t["id"] == task_id)
+        assert task["name"] == "Novo nome"
+        assert task["deadline"] == "2031-06-15"
+        assert task["project"] == "Novo projeto"
+
+    def test_delete_task(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Deletar isso"}, headers=auth_headers(auth_token))
+        task_id = res.json()["id"]
+
+        res = client.delete(f"/api/tasks/{task_id}", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        tasks = res.json()["tasks"]
+        assert all(t["id"] != task_id for t in tasks)
+
+        # Re-delete should 404
+        res = client.delete(f"/api/tasks/{task_id}", headers=auth_headers(auth_token))
+        assert res.status_code == 404
+
+    def test_tasks_meta(self, client, auth_token):
+        client.post("/api/tasks", json={"name": "T1", "project": "Alpha", "tags": ["foo", "bar"]}, headers=auth_headers(auth_token))
+        client.post("/api/tasks", json={"name": "T2", "project": "Beta", "tags": ["baz"]}, headers=auth_headers(auth_token))
+
+        res = client.get("/api/tasks/meta", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert "projects" in data
+        assert "tags" in data
+        assert set(data["projects"]) == {"Alpha", "Beta"}
+        assert set(data["tags"]) == {"foo", "bar", "baz"}
+
+    def test_tasks_unauthenticated(self, client):
+        res = client.get("/api/tasks")
+        assert res.status_code in (401, 403)
+        res = client.post("/api/tasks", json={"name": "x"})
+        assert res.status_code in (401, 403)
+        res = client.patch("/api/tasks/abc", json={"done": True})
+        assert res.status_code in (401, 403)
+        res = client.delete("/api/tasks/abc")
+        assert res.status_code in (401, 403)
+        res = client.get("/api/tasks/meta")
+        assert res.status_code in (401, 403)
+
+
+def _register_and_login(client, username, password):
+    from web_app.dependencies import get_user_store
+    store = get_user_store()
+    store.create_user(username, password, display_name=username)
+    res = client.post("/api/auth/login", json={"username": username, "password": password})
+    return res.json()["token"]
+
+
+class TestTaskUserIsolation:
+    """Security: user A must NOT be able to access or affect user B's tasks."""
+
+    def test_list_only_own_tasks(self, client):
+        token_a = _register_and_login(client, "alice_t", "passA123")
+        token_b = _register_and_login(client, "bob_t", "passB456")
+
+        client.post("/api/tasks", json={"name": "Alice task"}, headers=auth_headers(token_a))
+        client.post("/api/tasks", json={"name": "Bob task"}, headers=auth_headers(token_b))
+
+        alice_tasks = client.get("/api/tasks", headers=auth_headers(token_a)).json()["tasks"]
+        bob_tasks = client.get("/api/tasks", headers=auth_headers(token_b)).json()["tasks"]
+
+        assert len(alice_tasks) == 1 and alice_tasks[0]["name"] == "Alice task"
+        assert len(bob_tasks) == 1 and bob_tasks[0]["name"] == "Bob task"
+
+    def test_cannot_update_other_users_task(self, client):
+        token_a = _register_and_login(client, "alice_u", "passA123")
+        token_b = _register_and_login(client, "bob_u", "passB456")
+
+        task_id = client.post("/api/tasks", json={"name": "Alice original"}, headers=auth_headers(token_a)).json()["id"]
+
+        res = client.patch(f"/api/tasks/{task_id}", json={"name": "Hijacked!"}, headers=auth_headers(token_b))
+        assert res.status_code == 404
+
+        task = client.get("/api/tasks", headers=auth_headers(token_a)).json()["tasks"][0]
+        assert task["name"] == "Alice original"
+
+    def test_cannot_delete_other_users_task_or_its_tags(self, client):
+        token_a = _register_and_login(client, "alice_d", "passA123")
+        token_b = _register_and_login(client, "bob_d", "passB456")
+
+        task_id = client.post(
+            "/api/tasks",
+            json={"name": "Alice tagged", "tags": ["important", "work"]},
+            headers=auth_headers(token_a),
+        ).json()["id"]
+
+        res = client.delete(f"/api/tasks/{task_id}", headers=auth_headers(token_b))
+        assert res.status_code == 404
+
+        # Task still exists for Alice with tags intact
+        tasks = client.get("/api/tasks", headers=auth_headers(token_a)).json()["tasks"]
+        assert len(tasks) == 1
+        assert set(tasks[0]["tags"]) == {"important", "work"}

@@ -292,17 +292,26 @@ class TestNotesUserIsolation:
 
         create_res = client.post(
             "/api/notes",
-            json={"title": "Alice note"},
+            json={"title": "Alice note", "content": "private"},
             headers=auth_headers(token_a),
         )
         note_id = create_res.json()["id"]
 
+        # Give the note some tags
+        client.patch(
+            f"/api/notes/{note_id}",
+            json={"tags": ["important", "work"]},
+            headers=auth_headers(token_a),
+        )
+
+        # Bob tries to delete it
         res = client.delete(f"/api/notes/{note_id}", headers=auth_headers(token_b))
         assert res.status_code == 404
 
-        # Verify still exists for Alice
+        # Note still exists for Alice — AND tags must NOT have been wiped
         fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(token_a))
         assert fetched.status_code == 200
+        assert set(fetched.json()["tags"]) == {"important", "work"}
 
     def test_list_only_own_notes(self, client):
         token_a = _create_user_and_login(client, "alice", "secret123")
