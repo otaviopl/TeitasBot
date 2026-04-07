@@ -1,5 +1,5 @@
 /* sw.js — Service Worker for PWA (cache-first static assets, network-first API) */
-var CACHE_NAME = 'pa-pwa-v3';
+var CACHE_NAME = 'pa-pwa-v4';
 var STATIC_ASSETS = [
     '/',
     '/chat',
@@ -8,6 +8,7 @@ var STATIC_ASSETS = [
     '/static/js/audio.js',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',
+    '/static/icons/bot-icon.png',
 ];
 
 self.addEventListener('install', function (event) {
