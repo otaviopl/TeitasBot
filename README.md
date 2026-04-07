@@ -1,40 +1,69 @@
 # Personal Assistant :rocket:
 
-![Personal Assistant Banner](./banner/personal-assistant-banner.png)
+A personal productivity web app (PWA) powered by LLM tool-calling. Manage tasks, notes, finances, health tracking, email, and calendar — all from a single conversational interface or dedicated UI screens.
 
-A personal digital assistant on Telegram to help with your daily routine across multiple domains: tasks, email, calendar, expenses, meals, fitness, news, and more.
+All data is stored locally in SQLite. No external database dependencies.
 
-Notion is one of the available connections, alongside OpenAI, Gmail, Google Calendar, and other assistant capabilities.
+## Features
 
-## What this project is
+### Conversational AI assistant
+Chat with an AI assistant that can take actions on your behalf using 30+ integrated tools:
+- **Tasks**: create, edit, and organize tasks by project with deadlines and tags.
+- **Notes**: full Markdown notes with auto-generated titles and tags via LLM.
+- **Expenses & bills**: register expenses by category, track monthly bills and payments.
+- **Meals**: log meals with food, quantity (grams), and calorie estimation (LLM-inferred).
+- **Exercises**: register and analyze workouts with calories burned.
+- **Metabolism**: BMR/TDEE calculator with history tracking.
+- **Google Calendar**: list upcoming events and create new ones (with Meet links).
+- **Gmail**: send, search, and read emails; analyze attachments (PDF/DOCX/XLSX).
+- **Scheduled tasks**: recurring or one-time reminders with retry logic.
+- **News**: Google News + Hacker News aggregation by topic.
+- **Contacts**: fuzzy search and registration from persistent memory.
+- **Voice input**: audio messages transcribed and processed as text.
+- **File uploads**: PDF, TXT, CSV, MD, DOCX (up to 20 MB).
 
-This bot centralizes personal productivity workflows in Telegram using conversational messages and LLM-powered tool-calling.
+### Dedicated UI screens
+Beyond the chat, the web app provides direct interfaces for:
+- **Tasks board** — Kanban-style grouped by deadline (overdue, today, this week, etc.) with inline creation.
+- **Notes editor** — Markdown editor (EasyMDE) with tag management, search, and auto-save.
+- **Health dashboard** — Meals, exercises, weekly summaries, and calorie goals.
+- **Finance dashboard** — Expenses and recurring bills with payment tracking.
 
-Current focus:
-- Task capture and prioritization (Notion)
-- Calendar summary and event creation (Google Calendar)
-- Email management: send, search, read (Gmail)
-- Expense, meal, and exercise tracking (Notion)
-- Metabolism and fitness analytics
-- News digests and contact search
+### PWA support
+Installable as a Progressive Web App on mobile and desktop.
 
-## Architecture at a glance
+## Architecture
 
-Main modules:
-- `run.py`: app entrypoint
-- `telegram_bot.py`: Telegram bot client and message handlers
-- `google_auth_server.py`: background HTTP server for Google OAuth2 callback
-- `notion_connector/`: task, notes, expenses, meals, and exercises read/write integration
-- `gmail_connector/`: Gmail auth and email sending/reading
-- `calendar_connector/`: Google Calendar read/write integration
-- `openai_connector/`: LLM prompts/parsing/summaries
-- `assistant_connector/`: conversational agent runtime, tool registry, and SQLite memory
-- `templates/`: email rendering templates
-- `utils/`: logging, credential loading, timezone helpers
+```
+personal-assistant/
+├── run_web.py                # Entry point: uvicorn web server
+├── web_app/                  # FastAPI app, auth, routes, user store
+│   ├── app.py                # API routes (auth, chat, conversations, notes, tasks, health, finance)
+│   ├── auth.py               # JWT authentication (HS256)
+│   ├── user_store.py         # SQLite CRUD for users, conversations, notes
+│   ├── google_oauth.py       # Google OAuth2 flow
+│   ├── manage_users.py       # CLI user management
+│   ├── static/               # Frontend (vanilla JS, CSS)
+│   └── templates/            # HTML template (single-page PWA)
+│
+├── assistant_connector/      # Core AI framework
+│   ├── service.py            # AssistantService: chat, reset, file upload
+│   ├── runtime.py            # Tool execution, conversation memory, response formatting
+│   ├── config/agents.json    # Tool + agent definitions (30+ tools)
+│   ├── tools/                # Tool plugins (tasks, email, calendar, memory, etc.)
+│   ├── memory_store.py       # SQLite conversation + audit history
+│   ├── file_store.py         # File upload/storage
+│   └── user_credential_store.py  # Encrypted per-user credential storage (Fernet)
+│
+├── openai_connector/         # OpenAI API: LLM calls, audio transcription, metadata generation
+├── gmail_connector/          # Gmail API: send/search/read, attachments, HTML templates
+├── calendar_connector/       # Google Calendar API: events, Meet links
+├── utils/                    # Logging, credentials, timezone, message parsing
+├── memories/                 # Persistent user memory files + contacts
+└── deploy/                   # Production: Nginx, systemd, deploy script
+```
 
-The conversational assistant is config-driven:
-- Agent + tool catalog: `assistant_connector/config/agents.json`
-- New tools can be added by declaring JSON metadata and implementing a Python handler.
+The assistant is **config-driven** — tools and agents are declared in `agents.json` and handlers are loaded dynamically via `module.path:function_name`.
 
 ## Setup
 
@@ -48,165 +77,104 @@ pip install -r requirements.txt
 
 ### 2) Google credentials (Gmail + Calendar)
 
-Follow the Google API quickstart to create OAuth credentials:
-- https://developers.google.com/gmail/api/quickstart/python
+Follow the [Google API quickstart](https://developers.google.com/gmail/api/quickstart/python) to create OAuth credentials and place `credentials.json` in the project root.
 
-Place `credentials.json` in the project root.
+Users authorize Google via the web app's Google OAuth flow (Settings → Connect Google).
 
-Google authentication is done **per-user via Telegram** using the `/google_auth` command (no manual `token.json` needed):
-1. Send `/google_auth` in the bot chat.
-2. Click the link, sign in with Google, and grant permissions.
-3. The bot stores the token securely per user in the SQLite database.
+### 3) Configure `.env`
 
-### 3) Notion credentials
+Create a `.env` at the project root.
 
-Notion credentials are configured **per-user via the bot** (not in `.env`). After starting the bot, send `/setup` or tell the bot `configure notion_api_key: secret_xxx`. See [User credentials](#user-credentials) below.
-
-### 4) Configure `.env`
-
-Create a `.env` at project root.
-
-**Required to run the server:**
+**Required:**
 
 ```env
-# Telegram
-TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"           # required — get from @BotFather
-TELEGRAM_ALLOWED_USER_IDS="123456789"                       # required — comma-separated Telegram user IDs
-CREDENTIAL_ENCRYPTION_KEY="..."                             # required — generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
 # OpenAI
 OPENAI_KEY="sk-..."
 
-# Google OAuth (for Gmail + Calendar)
-GOOGLE_OAUTH_CALLBACK_URL="https://yourdomain.com/auth/google/callback"  # public URL for OAuth redirect
-GOOGLE_AUTH_SERVER_PORT="8080"                              # port for the local OAuth callback HTTP server
+# Web app
+WEB_JWT_SECRET="your-jwt-secret"                            # required — secret for signing JWT tokens
+CREDENTIAL_ENCRYPTION_KEY="..."                             # required — generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Google OAuth (enables Gmail + Calendar integration)
+GOOGLE_OAUTH_CALLBACK_URL="https://yourdomain.com/api/google/callback"
 ```
 
-**Optional server-level defaults** (can be overridden per-user via `/setup`):
+**Optional:**
 
 ```env
-LLM_MODEL="gpt-4.1-mini"                                   # LLM model for the assistant
-TIMEZONE="America/Sao_Paulo"                                # timezone for dates and scheduled tasks
-LOG_PATH="."
-API_DAYS_TO_CONSIDER="0"                                    # includes overdue + next N days in task queries
-AUDIO_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"             # model used to transcribe voice messages
+WEB_HOST="0.0.0.0"                                         # bind address (default: 0.0.0.0)
+WEB_PORT="8001"                                             # port (default: 8001)
+WEB_JWT_EXPIRY_HOURS="72"                                   # token expiry (default: 72)
+WEB_RELOAD="0"                                              # hot reload for development (default: 0)
+LLM_MODEL="gpt-4.1-mini"                                   # LLM model (default: gpt-4.1-mini)
+TIMEZONE="America/Sao_Paulo"                                # IANA timezone (default: America/Sao_Paulo)
+LOG_PATH="."                                                # log directory
+AUDIO_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"             # audio transcription model
 ```
 
 **Optional assistant tuning:**
 
 ```env
-ASSISTANT_AGENT_ID="personal_assistant"
 ASSISTANT_MEMORY_PATH="./assistant_memory.sqlite3"
 ASSISTANT_MAX_MESSAGES_PER_SESSION="300"
 ASSISTANT_MAX_TOOL_CALLS_PER_SESSION="300"
-ASSISTANT_MAX_STORED_MESSAGE_CHARS="4000"
-ASSISTANT_MAX_STORED_TOOL_PAYLOAD_CHARS="12000"
 ASSISTANT_MAX_HISTORY_CHARS="12000"
 ASSISTANT_MAX_TOOL_OUTPUT_CHARS="8000"
 ```
 
-> **Note:** Notion and email variables (`NOTION_API_KEY`, `NOTION_DATABASE_ID`, `EMAIL_FROM`, `EMAIL_TO`, etc.) can still be set in `.env` as global defaults, but are overridden by the per-user credentials stored in the database. See [User credentials](#user-credentials).
+> Email settings (`EMAIL_FROM`, `EMAIL_TO`, `DISPLAY_NAME`, etc.) can be set in `.env` as defaults or configured per-user via the assistant chat.
 
-## User credentials
+### 4) Create a user
 
-Integration credentials (Notion keys, email settings) are stored **per-user and encrypted** in SQLite — not in `.env`. Each Telegram user configures their own credentials via the bot.
-
-**Set a credential:**
-> *"configure notion_api_key: secret_xxx"*
-> *"configure email_from: me@example.com"*
-
-Or use the `/setup` command for a guided panel.
-
-**Supported credential keys:**
-
-| Key | Description |
-|-----|-------------|
-| `notion_api_key` | Notion integration secret |
-| `notion_database_id` | Main tasks database ID |
-| `notion_notes_db_id` | Notes database ID |
-| `notion_expenses_db_id` | Expenses database ID |
-| `notion_meals_db_id` | Meals database ID |
-| `notion_exercises_db_id` | Exercises database ID |
-| `notion_monthly_bills_db_id` | Monthly bills database ID |
-| `email_from` | Gmail address to send from |
-| `email_to` | Default email recipient |
-| `display_name` | Display name used in emails |
-| `email_tone` | Tone for assistant-written emails |
-| `email_signature` | Signature appended to emails |
-| `email_style_guide` | Extra style instructions for email |
-| `email_subject_prefix` | Optional prefix added to email subjects |
-
-Google (Gmail + Calendar) credentials are managed automatically via `/google_auth` — no manual key entry needed.
-
+```sh
+python -m web_app.manage_users create --username carlos --password <password> [--display-name "Carlos"]
+python -m web_app.manage_users list
+```
 
 ## Run
 
 ```sh
-python run.py
+python run_web.py
 ```
 
-## Tests
+The app starts at `http://localhost:8001` by default.
 
-Run the full suite:
+## Tests
 
 ```sh
 ./env/bin/python -m pytest -q
 ```
 
-Testing guardrails:
-- External network/API calls are blocked by default during tests (`tests/conftest.py`).
-- Coverage is enforced with a minimum of **80%** on core runtime/integration modules via `pytest.ini`.
+- **750+ tests** with a minimum coverage threshold of **80%**.
+- External network calls are blocked by default (`tests/conftest.py`).
+- Coverage scope: `assistant_connector`, `gmail_connector`, `openai_connector`, `calendar_connector`, `web_app`, `utils`.
 
-## Telegram commands and conversational mode
+## User credential management
 
-The bot works entirely through natural language messages in Telegram. There are no slash commands to memorize — just talk to it.
+Integration credentials (email settings, etc.) are stored **per-user and encrypted** in SQLite. Users can configure them via the assistant chat:
 
-Built-in commands:
-- `/reset` (or `/new_chat`) — Clear the conversation history for the current chat.
-- `/setup` — Show the integration setup panel (Notion, Email, Google).
-- `/google_auth` — Start the Google OAuth2 flow to authorize Gmail and Google Calendar.
+> *"configure email_from: me@example.com"*
 
-### What the assistant can do
+| Key | Description |
+|-----|-------------|
+| `email_from` | Gmail address to send from |
+| `email_to` | Default email recipient |
+| `display_name` | Display name used in emails |
+| `email_tone` | Tone for assistant-written emails |
+| `email_signature` | Signature appended to emails |
+| `email_style_guide` | Style instructions for email composition |
+| `email_subject_prefix` | Prefix added to email subjects |
 
-In any message, the assistant can:
-- **Notion tasks**: list, create, and edit tasks; manage projects and due dates.
-- **Notion notes**: create and list notes with date filters.
-- **Expenses**: register and analyze monthly expenses by category.
-- **Meals**: log meals with food, quantity (in grams), and estimated calories.
-- **Exercises**: register, edit, and analyze workouts; track calories burned.
-- **Metabolism**: calculate BMR/TDEE and track changes over time.
-- **Google Calendar**: list upcoming events and create new events.
-- **Gmail**: send emails (with explicit confirmation), search and read messages.
-- **Scheduled tasks**: create recurring or one-time tasks delivered via Telegram (and optionally email).
-- **News**: fetch recent news by topic/query (Google News RSS, with optional Hacker News).
-- **Contacts**: search contacts from `memories/contacts.csv` and register new contacts in persistent memory (`contacts.csv`).
-- **Voice messages**: voice notes are transcribed automatically (Whisper) and processed as text.
+Google (Gmail + Calendar) credentials are managed via the OAuth flow in the web app settings.
 
-For expense analysis, `analyze_monthly_expenses` supports a `date` parameter (YYYY-MM-DD) to isolate a specific day.
-Meal registration requires explicit quantity in grams and estimated calories (LLM-provided, no local fallback).
+## Deploy (production)
 
-## Run as Ubuntu service (systemd)
-
-Service template:
-
-`deploy/systemd/personal-assistant-bot.service`
-
-Install and start (system service, requires sudo):
+- **Stack:** Ubuntu 22.04 + Nginx (SSL/Let's Encrypt) + systemd + uvicorn
+- **Deploy:** `sudo ./deploy/deploy_web_app.sh` (idempotent)
+- **Service:** `deploy/systemd/personal-assistant-web.service`
 
 ```sh
-sudo cp deploy/systemd/personal-assistant-bot.service /etc/systemd/system/
+sudo cp deploy/systemd/personal-assistant-web.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now personal-assistant-bot
-sudo systemctl status personal-assistant-bot --no-pager
-```
-
-If sudo is unavailable, run as a user service:
-
-```sh
-mkdir -p ~/.config/systemd/user
-cp deploy/systemd/personal-assistant-bot.service ~/.config/systemd/user/personal-assistant-bot.service
-sed -i '/^User=/d; s/multi-user.target/default.target/' ~/.config/systemd/user/personal-assistant-bot.service
-systemctl --user daemon-reload
-systemctl --user enable --now personal-assistant-bot
-systemctl --user status personal-assistant-bot --no-pager
+sudo systemctl enable --now personal-assistant-web
 ```
