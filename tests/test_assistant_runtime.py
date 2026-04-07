@@ -1425,11 +1425,11 @@ class TestResolveUserMemoriesDir(unittest.TestCase):
             self.assertEqual(result, user_dir)
 
     def test_path_traversal_user_id_stripped_stays_in_base(self):
-        """'../other' is sanitized to 'other' — path stays inside base; falls back to base if no subdir."""
+        """'../other' is sanitized to 'other' — resolved path stays inside base."""
         with tempfile.TemporaryDirectory() as base:
             rt = self._build_minimal_runtime(memories_dir=base, db_path=os.path.join(base, "mem.sqlite3"))
             result = rt._resolve_user_memories_dir("../other")
-            # No subdir named "other" exists → falls back to base, which is safe
+            # Sanitized to "other" subdir inside base, never escapes
             if result is not None:
                 self.assertTrue(os.path.realpath(result).startswith(os.path.realpath(base)))
 
@@ -1455,12 +1455,13 @@ class TestResolveUserMemoriesDir(unittest.TestCase):
             result = rt._resolve_user_memories_dir("12345")
             self.assertIsNone(result)
 
-    def test_nonexistent_base_memories_dir_returns_configured_path(self):
+    def test_nonexistent_base_memories_dir_returns_user_subdir_path(self):
         with tempfile.TemporaryDirectory() as base:
             missing_base = os.path.join(base, "missing-memories")
             rt = self._build_minimal_runtime(memories_dir=missing_base, db_path=os.path.join(base, "mem.sqlite3"))
             result = rt._resolve_user_memories_dir("12345")
-            self.assertEqual(result, missing_base)
+            # Always returns user-specific subdir — never falls back to root dir
+            self.assertEqual(result, os.path.join(missing_base, "12345"))
 
 
 class TestSelectUserMemoryContext(unittest.TestCase):

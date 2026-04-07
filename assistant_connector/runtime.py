@@ -298,13 +298,9 @@ class AssistantRuntime:
         # Ensure path stays inside memories_dir (guards against symlink escape)
         if not user_dir.startswith(base + os.sep) and user_dir != base:
             return None
-        if os.path.isdir(user_dir):
-            return user_dir
-        # Fallback: use root memories dir if no user-specific subfolder exists yet
-        if os.path.isdir(self._memories_dir):
-            return self._memories_dir
-        # Keep configured path when base dir does not exist yet so write tools can create it.
-        return self._memories_dir
+        # Always return the user-specific path — never fall back to the root memories dir.
+        # Read tools handle non-existence gracefully; write tools (edit_memory_file) create it.
+        return user_dir
 
     def _resolve_user_memories(self, user_id: str) -> dict[str, str]:
         """Load memory files for the given user from their memories subfolder.
