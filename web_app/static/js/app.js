@@ -53,6 +53,11 @@
     const deleteNoteBtn = document.getElementById('btn-delete-note');
     const chatSection = document.querySelector('.chat-messages');
     const chatInputWrapper = document.querySelector('.chat-input-wrapper');
+    const noteViewBodyEl = document.getElementById('note-view-body');
+    const noteViewContentEl = document.getElementById('note-view-content');
+    const notesEditorBodyEl = document.querySelector('.notes-editor-body');
+    const editNoteBtn = document.getElementById('btn-edit-note');
+    const doneEditingBtn = document.getElementById('btn-done-editing');
 
     // Search refs
     const searchNotesBtn = document.getElementById('btn-search-notes');
@@ -63,6 +68,8 @@
 
     let activeTab = 'chat';
     let activeNoteId = null;
+    let activeNoteData = null;
+    let noteIsEditing = false;
     let activeNoteContentDirty = false;
     let easyMDE = null;
     let noteSaveTimer = null;
@@ -85,6 +92,16 @@
     let healthDate = new Date();
     let healthLoading = false;
 
+    // Health goals state (loaded from API)
+    var healthGoals = { calorie_goal: 2400, exercise_calorie_goal: 0, exercise_time_goal: 0 };
+
+    // Health goals modal refs
+    const healthGoalsOverlay = document.getElementById('health-goals-overlay');
+    const healthGoalsForm = document.getElementById('health-goals-form');
+    const goalCalorieGoalInput = document.getElementById('goal-calorie-goal');
+    const goalExerciseCalorieGoalInput = document.getElementById('goal-exercise-calorie-goal');
+    const goalExerciseTimeGoalInput = document.getElementById('goal-exercise-time-goal');
+
     // Finance refs
     const financeViewEl = document.getElementById('finance-view');
     const financeMonthLabel = document.getElementById('finance-month-label');
@@ -101,11 +118,18 @@
     let financeMonth = new Date();
     let financeLoading = false;
 
+    // Tasks state
+    let tasksData = [];
+    let tasksMeta = { projects: [], tags: [] };
+    let tasksShowDone = false;
+
     // Sidebar nav refs
     const sidebarNavChat = document.getElementById('sidebar-nav-chat');
     const sidebarNavNotes = document.getElementById('sidebar-nav-notes');
     const sidebarNavHealth = document.getElementById('sidebar-nav-health');
     const sidebarNavFinance = document.getElementById('sidebar-nav-finance');
+    const sidebarNavTasks = document.getElementById('sidebar-nav-tasks');
+    const tasksViewEl = document.getElementById('tasks-view');
     const sidebarHeaderEl = document.querySelector('.sidebar-header');
 
     let allUserTags = [];
@@ -178,6 +202,10 @@
 
     async function apiPatch(url, body) {
         return apiRequest('PATCH', url, body);
+    }
+
+    async function apiPut(url, body) {
+        return apiRequest('PUT', url, body);
     }
 
     // ---- UI helpers ----
@@ -347,8 +375,14 @@
 
             if (data.conversations.length === 0) {
                 await createConversation();
-            } else if (!activeConversationId || !data.conversations.find(function (c) { return c.id === activeConversationId; })) {
-                await switchConversation(data.conversations[0].id);
+            } else if (!activeConversationId) {
+                // No saved conversation — show empty state, don't auto-select
+                updateChatEmptyState();
+            } else if (!data.conversations.find(function (c) { return c.id === activeConversationId; })) {
+                // Saved conversation no longer exists — clear it and show empty state
+                activeConversationId = null;
+                localStorage.removeItem('pa_active_conversation');
+                updateChatEmptyState();
             } else {
                 highlightActiveConversation();
                 await loadConversationMessages(activeConversationId);
@@ -764,6 +798,146 @@
     var memoriesContent = document.getElementById('memories-modal-content');
     var memoriesClose = document.getElementById('memories-modal-close');
 
+    function buildMemoryCard(file) {
+        var card = document.createElement('div');
+        card.className = 'memories-file';
+        card.dataset.filename = file.filename;
+
+        // Header
+        var header = document.createElement('div');
+        header.className = 'memories-file-header';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.textContent = '\u{1F4C4} ' + file.display_name;
+        header.appendChild(nameSpan);
+
+        var headerRight = document.createElement('div');
+        headerRight.className = 'memories-file-header-right';
+
+        var editBtn = document.createElement('button');
+        editBtn.className = 'memories-edit-btn';
+        editBtn.title = 'Editar memória';
+        editBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        headerRight.appendChild(editBtn);
+
+        var chevron = document.createElement('span');
+        chevron.className = 'chevron';
+        chevron.textContent = '\u25B6';
+        headerRight.appendChild(chevron);
+
+        header.appendChild(headerRight);
+        card.appendChild(header);
+
+        // Read-only content
+        var contentDiv = document.createElement('div');
+        contentDiv.className = 'memories-file-content';
+        contentDiv.textContent = file.content;
+        card.appendChild(contentDiv);
+
+        // Edit area (hidden by default)
+        var editArea = document.createElement('div');
+        editArea.className = 'memories-file-edit hidden';
+
+        var textarea = document.createElement('textarea');
+        textarea.className = 'memories-edit-textarea';
+        textarea.value = file.content;
+        editArea.appendChild(textarea);
+
+        var editActions = document.createElement('div');
+        editActions.className = 'memories-edit-actions';
+
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'memories-edit-save';
+        saveBtn.textContent = 'Salvar';
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'memories-edit-cancel';
+        cancelBtn.textContent = 'Cancelar';
+
+        var expandBtn = document.createElement('button');
+        expandBtn.className = 'memories-edit-expand-btn';
+        expandBtn.title = 'Expandir editor';
+        expandBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Expandir';
+
+        editActions.appendChild(saveBtn);
+        editActions.appendChild(cancelBtn);
+        editActions.appendChild(expandBtn);
+        editArea.appendChild(editActions);
+        card.appendChild(editArea);
+
+        var isExpanded = false;
+
+        function setExpanded(on) {
+            isExpanded = on;
+            textarea.classList.toggle('textarea-expanded', on);
+            expandBtn.innerHTML = on
+                ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg> Recolher'
+                : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> Expandir';
+            memoriesContent.style.overflowY = on ? 'hidden' : 'auto';
+        }
+
+        expandBtn.addEventListener('click', function () { setExpanded(!isExpanded); });
+
+        // Collapse toggle on header (skip clicks on edit button or actions)
+        header.addEventListener('click', function (e) {
+            if (e.target.closest('.memories-edit-btn')) return;
+            if (card.classList.contains('editing')) return;
+            card.classList.toggle('expanded');
+        });
+
+        function enterEdit() {
+            card.classList.add('expanded', 'editing');
+            textarea.value = contentDiv.textContent;
+            contentDiv.classList.add('hidden');
+            editArea.classList.remove('hidden');
+            textarea.focus();
+        }
+
+        function exitEdit() {
+            card.classList.remove('editing');
+            setExpanded(false);
+            contentDiv.classList.remove('hidden');
+            editArea.classList.add('hidden');
+        }
+
+        // Enter edit mode
+        editBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            enterEdit();
+        });
+
+        // Save
+        saveBtn.addEventListener('click', async function () {
+            var newContent = textarea.value;
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Salvando…';
+            try {
+                var resp = await fetch('/api/memories/' + encodeURIComponent(file.filename), {
+                    method: 'PUT',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+                    body: JSON.stringify({ content: newContent }),
+                });
+                if (!resp.ok) throw new Error();
+                file.content = newContent;
+                contentDiv.textContent = newContent;
+                exitEdit();
+            } catch (_) {
+                showToast('Erro ao salvar memória');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Salvar';
+            }
+        });
+
+        // Cancel
+        cancelBtn.addEventListener('click', function () {
+            textarea.value = file.content;
+            exitEdit();
+        });
+
+        return card;
+    }
+
     memoriesBtn.addEventListener('click', async function () {
         memoriesOverlay.classList.add('visible');
         memoriesContent.innerHTML = '<div class="loading-spinner"></div>';
@@ -771,20 +945,13 @@
             var resp = await fetch('/api/memories', { headers: authHeaders() });
             if (!resp.ok) throw new Error();
             var data = await resp.json();
+            memoriesContent.innerHTML = '';
             if (data.count === 0) {
                 memoriesContent.innerHTML = '<p style="color:var(--color-text-muted);text-align:center;padding:12px 0">Nenhuma memória encontrada</p>';
             } else {
-                var html = '';
                 data.files.forEach(function (file) {
-                    html += '<div class="memories-file">' +
-                        '<div class="memories-file-header" onclick="this.parentElement.classList.toggle(\'expanded\')">' +
-                        '<span>\u{1F4C4} ' + escapeHtml(file.display_name) + '</span>' +
-                        '<span class="chevron">\u25B6</span>' +
-                        '</div>' +
-                        '<div class="memories-file-content">' + escapeHtml(file.content) + '</div>' +
-                        '</div>';
+                    memoriesContent.appendChild(buildMemoryCard(file));
                 });
-                memoriesContent.innerHTML = html;
             }
         } catch (_) {
             memoriesContent.innerHTML = '<p style="color:#dc2626;text-align:center;padding:12px 0">Erro ao carregar memórias</p>';
@@ -817,6 +984,7 @@
         sidebarNavNotes.classList.toggle('active', tab === 'notes');
         sidebarNavHealth.classList.toggle('active', tab === 'health');
         sidebarNavFinance.classList.toggle('active', tab === 'finance');
+        sidebarNavTasks.classList.toggle('active', tab === 'tasks');
 
         // Show/hide sidebar list sections
         sidebarHeaderEl.style.display = (tab === 'chat') ? '' : 'none';
@@ -831,6 +999,7 @@
         notesEmptyEl.classList.add('hidden');
         healthViewEl.classList.add('hidden');
         financeViewEl.classList.add('hidden');
+        tasksViewEl.classList.add('hidden');
         resetBtn.style.visibility = 'hidden';
         var limitNotice = document.getElementById('conv-limit-notice');
         if (limitNotice) limitNotice.style.display = 'none';
@@ -848,10 +1017,13 @@
             loadNotes();
         } else if (tab === 'health') {
             healthViewEl.classList.remove('hidden');
-            loadHealthDashboard();
+            loadHealthGoals().then(loadHealthDashboard);
         } else if (tab === 'finance') {
             financeViewEl.classList.remove('hidden');
             loadFinanceDashboard();
+        } else if (tab === 'tasks') {
+            tasksViewEl.classList.remove('hidden');
+            loadTasks();
         }
     }
 
@@ -871,6 +1043,24 @@
     // ================================================
     // Notes — CRUD & Editor
     // ================================================
+
+    function enterViewMode() {
+        noteIsEditing = false;
+        notesEditorEl.dataset.mode = 'view';
+        var content = (activeNoteData && activeNoteData.content) || '';
+        noteViewContentEl.innerHTML = content ? marked.parse(content) : '';
+    }
+
+    function enterEditMode() {
+        noteIsEditing = true;
+        notesEditorEl.dataset.mode = 'edit';
+        initEasyMDE();
+        var content = (activeNoteData && activeNoteData.content) || '';
+        easyMDE.value(content);
+        noteSaveStatus.textContent = '';
+        activeNoteContentDirty = false;
+        setTimeout(function () { easyMDE.codemirror.refresh(); easyMDE.codemirror.focus(); }, 50);
+    }
 
     function initEasyMDE() {
         if (easyMDE) return;
@@ -917,6 +1107,9 @@
 
         try {
             await apiPatch('/api/notes/' + activeNoteId, { content: content });
+            if (activeNoteData && activeNoteData.id === activeNoteId) {
+                activeNoteData.content = content;
+            }
             noteSaveStatus.textContent = 'Salvo ✓';
         } catch (err) {
             noteSaveStatus.textContent = 'Erro ao salvar';
@@ -934,6 +1127,9 @@
         // Always save content first
         try {
             await apiPatch('/api/notes/' + noteId, { content: content });
+            if (activeNoteData && activeNoteData.id === noteId) {
+                activeNoteData.content = content;
+            }
         } catch (_) { /* ignore save error here */ }
 
         // Skip metadata generation for very short content
@@ -954,11 +1150,15 @@
             // Update tags in sidebar
             var tagsContainer = notesListEl.querySelector('.note-item[data-id="' + noteId + '"] .note-item-tags');
             if (tagsContainer) renderSidebarNoteTags(tagsContainer, meta.tags || []);
-            // Update editor if still viewing the same note
+            // Update header if still viewing the same note
             if (activeNoteId === noteId) {
                 noteTitleDisplay.textContent = meta.title;
                 renderNoteTags(meta.tags || []);
                 noteSaveStatus.textContent = 'Salvo ✓';
+                if (activeNoteData && activeNoteData.id === noteId) {
+                    activeNoteData.title = meta.title;
+                    activeNoteData.tags = meta.tags || [];
+                }
             }
             activeNoteContentDirty = false;
             refreshUserTags();
@@ -1011,6 +1211,9 @@
         renderNoteTags(tags);
         try {
             await apiPatch('/api/notes/' + activeNoteId, { tags: tags });
+            if (activeNoteData && activeNoteData.id === activeNoteId) {
+                activeNoteData.tags = tags;
+            }
             // Update sidebar tags
             var sidebarItem = notesListEl.querySelector('[data-id="' + activeNoteId + '"]');
             if (sidebarItem) {
@@ -1098,8 +1301,8 @@
         } else if (activeTab === 'notes') {
             notesEmptyEl.classList.add('hidden');
             notesEditorEl.classList.remove('hidden');
-            // Refresh CodeMirror layout after being hidden
-            if (easyMDE) setTimeout(function () { easyMDE.codemirror.refresh(); }, 0);
+            // Refresh CodeMirror layout only when in edit mode
+            if (easyMDE && noteIsEditing) setTimeout(function () { easyMDE.codemirror.refresh(); }, 0);
         }
     }
 
@@ -1114,28 +1317,30 @@
             activeNoteId = data.id;
             activeNoteContentDirty = false;
             await loadNotes();
-            await selectNote(data.id);
+            await selectNote(data.id, { startEditing: true });
         } catch (err) {
             showToast('Erro ao criar anotação');
         }
     }
 
-    async function selectNote(noteId) {
+    async function selectNote(noteId, options) {
+        var startEditing = (options && options.startEditing) || false;
+
         // Auto-switch to notes tab if not already there
         if (activeTab !== 'notes') switchTab('notes');
 
-        // Generate metadata for previous note if content changed
-        if (activeNoteId && activeNoteId !== noteId && easyMDE && activeNoteContentDirty) {
-            flushNoteAndGenerateMetadata();
-        }
-
-        // Save pending changes for current note first
-        if (activeNoteId && easyMDE) {
+        // Save and flush previous note if it was being edited
+        if (activeNoteId && activeNoteId !== noteId && noteIsEditing) {
+            if (activeNoteContentDirty) flushNoteAndGenerateMetadata();
+            else { clearTimeout(noteSaveTimer); await saveCurrentNote(); }
+        } else if (activeNoteId && noteIsEditing) {
             clearTimeout(noteSaveTimer);
             await saveCurrentNote();
         }
 
         activeNoteId = noteId;
+        activeNoteData = null;
+        noteIsEditing = false;
         activeNoteContentDirty = false;
         clearTimeout(noteMetadataTimer);
 
@@ -1146,19 +1351,24 @@
 
         try {
             var note = await apiGet('/api/notes/' + noteId);
+            activeNoteData = note;
             notesEmptyEl.classList.add('hidden');
             notesEditorEl.classList.remove('hidden');
-            initEasyMDE();
             noteTitleDisplay.textContent = note.title;
             renderNoteTags(note.tags || []);
-            easyMDE.value(note.content || '');
             noteSaveStatus.textContent = '';
             activeNoteContentDirty = false;
+            if (startEditing) {
+                enterEditMode();
+            } else {
+                enterViewMode();
+            }
             // Close sidebar on mobile after selecting
             closeSidebar();
         } catch (err) {
             showToast('Erro ao abrir anotação');
             activeNoteId = null;
+            activeNoteData = null;
         }
     }
 
@@ -1168,12 +1378,12 @@
             await apiDelete('/api/notes/' + noteId);
             if (activeNoteId === noteId) {
                 activeNoteId = null;
+                activeNoteData = null;
+                noteIsEditing = false;
                 activeNoteContentDirty = false;
                 notesEditorEl.classList.add('hidden');
                 notesEmptyEl.classList.remove('hidden');
-                if (easyMDE) {
-                    easyMDE.value('');
-                }
+                if (easyMDE) easyMDE.value('');
                 noteTitleDisplay.textContent = 'Nova anotação';
                 noteTagsEl.innerHTML = '';
             }
@@ -1183,6 +1393,18 @@
             showToast('Erro ao excluir anotação');
         }
     }
+
+    editNoteBtn.addEventListener('click', function () {
+        if (activeNoteId) enterEditMode();
+    });
+
+    doneEditingBtn.addEventListener('click', async function () {
+        if (!activeNoteId) return;
+        clearTimeout(noteSaveTimer);
+        clearTimeout(noteMetadataTimer);
+        await saveCurrentNote();
+        enterViewMode();
+    });
 
     // Keyboard shortcut: Ctrl/Cmd+S to save note immediately
     document.addEventListener('keydown', function (e) {
@@ -1310,7 +1532,88 @@
     var DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     var MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    var CALORIE_GOAL = 2400;
+
+    async function loadHealthGoals() {
+        try {
+            var g = await apiGet('/api/health/goals');
+            healthGoals.calorie_goal = g.calorie_goal || 2400;
+            healthGoals.exercise_calorie_goal = g.exercise_calorie_goal || 0;
+            healthGoals.exercise_time_goal = g.exercise_time_goal || 0;
+        } catch (e) { /* use defaults */ }
+    }
+
+    // Goals modal: open
+    document.getElementById('btn-health-goals').addEventListener('click', function () {
+        goalCalorieGoalInput.value = healthGoals.calorie_goal || '';
+        goalExerciseCalorieGoalInput.value = healthGoals.exercise_calorie_goal || '';
+        goalExerciseTimeGoalInput.value = healthGoals.exercise_time_goal || '';
+        healthGoalsOverlay.classList.add('visible');
+    });
+
+    // Goals modal: close
+    document.getElementById('health-goals-close').addEventListener('click', function () {
+        healthGoalsOverlay.classList.remove('visible');
+    });
+    healthGoalsOverlay.addEventListener('click', function (e) {
+        if (e.target === healthGoalsOverlay) healthGoalsOverlay.classList.remove('visible');
+    });
+
+    // Goals modal: save
+    healthGoalsForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var btn = document.getElementById('goal-save-btn');
+        btn.disabled = true;
+        btn.textContent = 'Salvando…';
+        try {
+            var payload = {
+                calorie_goal: parseInt(goalCalorieGoalInput.value) || 0,
+                exercise_calorie_goal: parseInt(goalExerciseCalorieGoalInput.value) || 0,
+                exercise_time_goal: parseInt(goalExerciseTimeGoalInput.value) || 0,
+            };
+            var updated = await apiPut('/api/health/goals', payload);
+            healthGoals.calorie_goal = updated.calorie_goal;
+            healthGoals.exercise_calorie_goal = updated.exercise_calorie_goal;
+            healthGoals.exercise_time_goal = updated.exercise_time_goal;
+            healthGoalsOverlay.classList.remove('visible');
+            showToast('Metas salvas!');
+            loadHealthDashboard();
+        } catch (err) {
+            showToast('Erro ao salvar metas: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Salvar Metas';
+        }
+    });
+
+    // Nutritional analysis modal
+    var analysisOverlay = document.getElementById('health-analysis-overlay');
+    var analysisLoadingEl = document.getElementById('health-analysis-loading');
+    var analysisContentEl = document.getElementById('health-analysis-content');
+
+    document.getElementById('btn-health-analysis').addEventListener('click', async function () {
+        analysisOverlay.classList.add('visible');
+        analysisLoadingEl.classList.remove('hidden');
+        analysisContentEl.classList.add('hidden');
+        analysisContentEl.innerHTML = '';
+
+        try {
+            var data = await apiPost('/api/health/analysis', {});
+            var html = typeof marked !== 'undefined' ? marked.parse(data.analysis || '') : escapeHtml(data.analysis || '');
+            analysisContentEl.innerHTML = html;
+        } catch (err) {
+            analysisContentEl.innerHTML = '<p style="color:#DC2626">Erro ao gerar análise: ' + escapeHtml(err.message) + '</p>';
+        } finally {
+            analysisLoadingEl.classList.add('hidden');
+            analysisContentEl.classList.remove('hidden');
+        }
+    });
+
+    document.getElementById('health-analysis-close').addEventListener('click', function () {
+        analysisOverlay.classList.remove('visible');
+    });
+    analysisOverlay.addEventListener('click', function (e) {
+        if (e.target === analysisOverlay) analysisOverlay.classList.remove('visible');
+    });
 
     function formatHealthDate(d) {
         var today = new Date();
@@ -1389,13 +1692,44 @@
         var consumed = data.totals.calories_consumed;
         var burned = data.totals.calories_burned;
         var balance = data.totals.balance;
+        var calorieGoal = healthGoals.calorie_goal || 2400;
 
-        healthCaloriesConsumed.textContent = Math.round(consumed) + ' / ' + CALORIE_GOAL + ' kcal consumidas';
-        healthCaloriesBurned.textContent = Math.round(burned) + ' kcal queimadas';
+        healthCaloriesConsumed.textContent = Math.round(consumed) + ' / ' + calorieGoal + ' kcal consumidas';
+        healthCaloriesBurned.textContent = Math.round(burned) + ' kcal queimadas'
+            + (healthGoals.exercise_calorie_goal > 0 ? ' / ' + healthGoals.exercise_calorie_goal + ' meta' : '');
         healthBalance.textContent = 'Saldo: ' + (balance >= 0 ? '+' : '') + Math.round(balance) + ' kcal';
 
-        var pct = Math.min((consumed / CALORIE_GOAL) * 100, 100);
+        var pct = Math.min((consumed / calorieGoal) * 100, 100);
         healthProgressFill.style.width = pct + '%';
+        healthProgressFill.title = Math.round(pct) + '%';
+
+        // Exercise time goal row
+        var timeRowEl = document.getElementById('health-exercise-time-row');
+        if (healthGoals.exercise_time_goal > 0) {
+            var totalMin = (data.exercises || []).reduce(function (s, e) { return s + (parseInt(e.duration_minutes) || 0); }, 0);
+            var timePct = Math.min((totalMin / healthGoals.exercise_time_goal) * 100, 100);
+            if (!timeRowEl) {
+                var summary = document.getElementById('health-summary');
+                var row = document.createElement('div');
+                row.id = 'health-exercise-time-row';
+                row.className = 'health-summary-row';
+                row.innerHTML = '<span class="health-summary-icon">⏱️</span>'
+                    + '<span class="health-summary-text" id="health-exercise-time-text"></span>';
+                summary.appendChild(row);
+                var pb = document.createElement('div');
+                pb.className = 'health-progress-bar';
+                pb.innerHTML = '<div class="health-progress-fill health-progress-fill--exercise-time" id="health-exercise-time-fill"></div>';
+                summary.appendChild(pb);
+                timeRowEl = row;
+            }
+            document.getElementById('health-exercise-time-text').textContent = totalMin + ' / ' + healthGoals.exercise_time_goal + ' min de exercício';
+            document.getElementById('health-exercise-time-fill').style.width = timePct + '%';
+            timeRowEl.style.display = '';
+            timeRowEl.nextElementSibling.style.display = '';
+        } else if (timeRowEl) {
+            timeRowEl.style.display = 'none';
+            timeRowEl.nextElementSibling.style.display = 'none';
+        }
 
         // Render meals grouped by type
         renderMealGroups(data.meals);
@@ -1479,6 +1813,9 @@
             html += '<div class="health-exercise-item">';
             html += '<div class="health-exercise-check ' + (isDone ? 'done' : '') + '" data-page-id="' + escapeHtml(pageId) + '" data-done="' + isDone + '">' + (isDone ? '✓' : '') + '</div>';
             html += '<span class="health-exercise-name">' + escapeHtml(e.activity || '') + '</span>';
+            if (e.duration_minutes) {
+                html += '<span class="health-exercise-duration">' + e.duration_minutes + ' min</span>';
+            }
             if (e.observations) {
                 html += '<span class="health-exercise-obs">' + escapeHtml(e.observations) + '</span>';
             }
@@ -1516,7 +1853,7 @@
             return;
         }
 
-        var maxCal = Math.max(CALORIE_GOAL, Math.max.apply(null, days.map(function (d) { return d.calories_consumed; })));
+        var maxCal = Math.max(healthGoals.calorie_goal || 2400, Math.max.apply(null, days.map(function (d) { return d.calories_consumed; })));
 
         var html = '';
         days.forEach(function (d) {
@@ -1618,11 +1955,14 @@
         exerciseSubmitBtn.textContent = 'Registrando…';
 
         try {
+            var durVal = document.getElementById('exercise-duration').value;
+            var durMin = durVal ? parseInt(durVal) : null;
             await apiPost('/api/health/exercises', {
                 activity: document.getElementById('exercise-activity').value.trim(),
                 calories: parseFloat(document.getElementById('exercise-calories').value),
                 observations: document.getElementById('exercise-observations').value.trim(),
-                done: document.getElementById('exercise-done').checked
+                done: document.getElementById('exercise-done').checked,
+                duration_minutes: durMin && durMin > 0 ? durMin : null,
             });
             exerciseOverlay.classList.remove('visible');
             exerciseForm.reset();
@@ -1970,6 +2310,402 @@
     updateSendButton();
     updateChatEmptyState();
     loadConversations();
-    loadNotes();
     checkGoogleStatus();
+
+    // ================================================
+    // Tasks
+    // ================================================
+
+    async function loadTasks() {
+        var loadingEl = document.getElementById('tasks-loading');
+        var contentEl = document.getElementById('tasks-content');
+        if (loadingEl) loadingEl.style.display = 'flex';
+
+        try {
+            var data = await apiGet('/api/tasks?include_done=true');
+            tasksData = data.tasks || [];
+            var metaData = await apiGet('/api/tasks/meta');
+            tasksMeta = metaData || { projects: [], tags: [] };
+        } catch (err) {
+            showToast('Erro ao carregar tarefas');
+            return;
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+        renderTaskGroups();
+    }
+
+    function classifyTask(task) {
+        if (!task.deadline) return 'no-deadline';
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var dl = new Date(task.deadline + 'T00:00:00');
+        var diff = Math.floor((dl - today) / 86400000);
+        if (diff < 0) return 'overdue';
+        if (diff === 0) return 'today';
+        if (diff <= 7) return 'week';
+        return 'later';
+    }
+
+    function renderTaskGroups() {
+        var contentEl = document.getElementById('tasks-content');
+        if (!contentEl) return;
+        contentEl.innerHTML = '';
+
+        var pending = tasksData.filter(function (t) { return !t.done; });
+        var done = tasksData.filter(function (t) { return t.done; });
+
+        var groups = [
+            { key: 'overdue', label: 'Atrasadas', accent: 'red', tasks: [] },
+            { key: 'today', label: 'Hoje', accent: 'orange', tasks: [] },
+            { key: 'week', label: 'Próximos 7 dias', accent: 'blue', tasks: [] },
+            { key: 'later', label: 'Mais tarde', accent: 'gray', tasks: [] },
+            { key: 'no-deadline', label: 'Sem prazo', accent: 'gray', tasks: [] },
+        ];
+
+        pending.forEach(function (t) {
+            var g = groups.find(function (g) { return g.key === classifyTask(t); });
+            if (g) g.tasks.push(t);
+        });
+
+        groups.forEach(function (g) {
+            if (g.tasks.length === 0) return;
+            contentEl.appendChild(buildTaskGroup(g));
+        });
+
+        if (tasksShowDone && done.length > 0) {
+            contentEl.appendChild(buildTaskGroup({ key: 'done', label: 'Concluídas', accent: 'gray', tasks: done, collapsed: true }));
+        }
+
+        if (pending.length === 0 && !(tasksShowDone && done.length > 0)) {
+            var empty = document.createElement('div');
+            empty.className = 'tasks-empty';
+            empty.textContent = 'Nenhuma tarefa pendente.';
+            contentEl.appendChild(empty);
+        }
+    }
+
+    function buildTaskGroup(group) {
+        var el = document.createElement('div');
+        el.className = 'task-group' + (group.collapsed ? ' collapsed' : '');
+        el.dataset.key = group.key;
+
+        var header = document.createElement('div');
+        header.className = 'task-group-header';
+        header.dataset.accent = group.accent;
+
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'task-group-label';
+        labelSpan.textContent = group.label;
+
+        var badge = document.createElement('span');
+        badge.className = 'task-group-count';
+        badge.textContent = group.tasks.length;
+
+        header.appendChild(labelSpan);
+        header.appendChild(badge);
+
+        if (group.collapsed) {
+            var arrow = document.createElement('span');
+            arrow.className = 'task-group-arrow';
+            arrow.textContent = '▸';
+            header.appendChild(arrow);
+        }
+
+        header.addEventListener('click', function () {
+            el.classList.toggle('collapsed');
+            if (arrow) arrow.textContent = el.classList.contains('collapsed') ? '▸' : '▾';
+        });
+
+        var list = document.createElement('div');
+        list.className = 'task-group-list';
+
+        group.tasks.forEach(function (task) {
+            list.appendChild(buildTaskItem(task));
+        });
+
+        el.appendChild(header);
+        el.appendChild(list);
+        return el;
+    }
+
+    function buildTaskItem(task) {
+        var el = document.createElement('div');
+        el.className = 'task-item' + (task.done ? ' done' : '');
+        el.dataset.taskId = task.id;
+
+        // Checkbox
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'task-checkbox';
+        cb.checked = task.done;
+        cb.addEventListener('change', function () {
+            toggleTaskDone(task.id, cb.checked);
+        });
+
+        // Name
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'task-item-name';
+        nameSpan.textContent = task.name;
+        nameSpan.addEventListener('click', function () {
+            openTaskEditInline(el, task);
+        });
+
+        el.appendChild(cb);
+        el.appendChild(nameSpan);
+
+        // Project badge
+        if (task.project) {
+            var proj = document.createElement('span');
+            proj.className = 'task-project-badge';
+            proj.textContent = task.project;
+            el.appendChild(proj);
+        }
+
+        // Tag pills
+        if (task.tags && task.tags.length > 0) {
+            task.tags.forEach(function (tag) {
+                var pill = document.createElement('span');
+                pill.className = 'task-tag-pill';
+                pill.textContent = tag;
+                el.appendChild(pill);
+            });
+        }
+
+        // Deadline badge
+        if (task.deadline) {
+            el.appendChild(buildDeadlineBadge(task.deadline));
+        }
+
+        // Delete button
+        var delBtn = document.createElement('button');
+        delBtn.className = 'task-delete-btn';
+        delBtn.title = 'Excluir tarefa';
+        delBtn.innerHTML = '&times;';
+        delBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            deleteTask(task.id);
+        });
+        el.appendChild(delBtn);
+
+        return el;
+    }
+
+    function buildDeadlineBadge(deadline) {
+        var span = document.createElement('span');
+        span.className = 'task-deadline-badge';
+
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var dl = new Date(deadline + 'T00:00:00');
+        var diff = Math.floor((dl - today) / 86400000);
+
+        if (diff < 0) {
+            span.classList.add('overdue');
+            span.textContent = formatDeadline(deadline);
+        } else if (diff === 0) {
+            span.classList.add('today');
+            span.textContent = 'hoje';
+        } else if (diff === 1) {
+            span.textContent = 'amanhã';
+        } else {
+            span.textContent = formatDeadline(deadline);
+        }
+        return span;
+    }
+
+    function formatDeadline(dateStr) {
+        var parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        return parts[2] + '/' + parts[1];
+    }
+
+    async function createTask(name, deadline, project, tags) {
+        var body = { name: name };
+        if (deadline) body.deadline = deadline;
+        if (project) body.project = project;
+        if (tags && tags.length > 0) body.tags = tags;
+        try {
+            await apiPost('/api/tasks', body);
+            await loadTasks();
+        } catch (err) {
+            showToast('Erro ao criar tarefa: ' + err.message);
+        }
+    }
+
+    async function toggleTaskDone(taskId, done) {
+        try {
+            await apiPatch('/api/tasks/' + taskId, { done: done });
+            var idx = tasksData.findIndex(function (t) { return t.id === taskId; });
+            if (idx !== -1) tasksData[idx].done = done;
+            renderTaskGroups();
+        } catch (err) {
+            showToast('Erro ao atualizar tarefa');
+        }
+    }
+
+    async function deleteTask(taskId) {
+        try {
+            await apiDelete('/api/tasks/' + taskId);
+            tasksData = tasksData.filter(function (t) { return t.id !== taskId; });
+            renderTaskGroups();
+        } catch (err) {
+            showToast('Erro ao excluir tarefa');
+        }
+    }
+
+    async function saveTaskEdit(taskId, data) {
+        try {
+            await apiPatch('/api/tasks/' + taskId, data);
+            await loadTasks();
+        } catch (err) {
+            showToast('Erro ao salvar tarefa');
+        }
+    }
+
+    function openTaskEditInline(taskEl, task) {
+        // Prevent double-edit
+        if (taskEl.querySelector('.task-edit-input')) return;
+
+        var nameSpan = taskEl.querySelector('.task-item-name');
+        var originalName = task.name;
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'task-edit-input';
+        input.value = originalName;
+        input.maxLength = 200;
+
+        nameSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        function save() {
+            var newName = input.value.trim();
+            if (!newName) {
+                cancel();
+                return;
+            }
+            saveTaskEdit(task.id, { name: newName });
+        }
+
+        function cancel() {
+            input.replaceWith(nameSpan);
+        }
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
+            if (e.key === 'Escape') cancel();
+        });
+        input.addEventListener('blur', function () { save(); });
+    }
+
+    // Autocomplete helper
+    function setupTaskAutocomplete(inputEl, acEl, getItems, onSelect) {
+        inputEl.addEventListener('input', function () {
+            var val = inputEl.value.split(',').pop().trim().toLowerCase();
+            if (!val) { acEl.classList.add('hidden'); return; }
+            var items = getItems().filter(function (i) {
+                return i.toLowerCase().startsWith(val);
+            });
+            if (items.length === 0) { acEl.classList.add('hidden'); return; }
+            acEl.innerHTML = '';
+            items.slice(0, 8).forEach(function (item) {
+                var div = document.createElement('div');
+                div.className = 'tasks-autocomplete-item';
+                div.textContent = item;
+                div.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    onSelect(item);
+                    acEl.classList.add('hidden');
+                });
+                acEl.appendChild(div);
+            });
+            acEl.classList.remove('hidden');
+        });
+        inputEl.addEventListener('blur', function () {
+            setTimeout(function () { acEl.classList.add('hidden'); }, 150);
+        });
+    }
+
+    // Wire up add-task form
+    var btnNewTask = document.getElementById('btn-new-task');
+    var tasksAddForm = document.getElementById('tasks-add-form');
+    var taskFormName = document.getElementById('task-form-name');
+    var taskFormDeadline = document.getElementById('task-form-deadline');
+    var taskFormProject = document.getElementById('task-form-project');
+    var taskFormProjectAc = document.getElementById('task-form-project-ac');
+    var taskFormTags = document.getElementById('task-form-tags');
+    var taskFormTagsAc = document.getElementById('task-form-tags-ac');
+    var taskFormSave = document.getElementById('task-form-save');
+    var taskFormCancel = document.getElementById('task-form-cancel');
+    var tasksShowDoneEl = document.getElementById('tasks-show-done');
+
+    if (btnNewTask) {
+        btnNewTask.addEventListener('click', function () {
+            tasksAddForm.classList.toggle('hidden');
+            if (!tasksAddForm.classList.contains('hidden')) {
+                taskFormName.focus();
+            }
+        });
+    }
+
+    function clearTaskForm() {
+        taskFormName.value = '';
+        taskFormDeadline.value = '';
+        taskFormProject.value = '';
+        taskFormTags.value = '';
+        tasksAddForm.classList.add('hidden');
+    }
+
+    if (taskFormSave) {
+        taskFormSave.addEventListener('click', async function () {
+            var name = taskFormName.value.trim();
+            if (!name) { taskFormName.focus(); return; }
+            var deadline = taskFormDeadline.value || null;
+            var project = taskFormProject.value.trim() || null;
+            var rawTags = taskFormTags.value.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+            clearTaskForm();
+            await createTask(name, deadline, project, rawTags);
+        });
+    }
+
+    if (taskFormCancel) {
+        taskFormCancel.addEventListener('click', function () { clearTaskForm(); });
+    }
+
+    if (taskFormName) {
+        taskFormName.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); taskFormSave && taskFormSave.click(); }
+        });
+    }
+
+    if (tasksShowDoneEl) {
+        tasksShowDoneEl.addEventListener('change', function () {
+            tasksShowDone = tasksShowDoneEl.checked;
+            renderTaskGroups();
+        });
+    }
+
+    // Set up autocomplete for project and tags
+    if (taskFormProject && taskFormProjectAc) {
+        setupTaskAutocomplete(
+            taskFormProject, taskFormProjectAc,
+            function () { return tasksMeta.projects || []; },
+            function (item) { taskFormProject.value = item; }
+        );
+    }
+
+    if (taskFormTags && taskFormTagsAc) {
+        setupTaskAutocomplete(
+            taskFormTags, taskFormTagsAc,
+            function () { return tasksMeta.tags || []; },
+            function (item) {
+                var parts = taskFormTags.value.split(',');
+                parts[parts.length - 1] = item;
+                taskFormTags.value = parts.join(', ');
+            }
+        );
+    }
+
 })();
