@@ -16,7 +16,7 @@
     const sendBtn = document.getElementById('btn-send');
     const resetBtn = document.getElementById('btn-reset');
     const logoutBtn = document.getElementById('btn-logout');
-    const logoutSidebarBtn = document.getElementById('btn-logout-sidebar');
+    const headerNewBtn = document.getElementById('btn-header-new');
     const attachBtn = document.getElementById('btn-attach');
     const fileInput = document.getElementById('file-input');
     const filePreview = document.getElementById('file-preview');
@@ -58,6 +58,7 @@
     const notesEditorBodyEl = document.querySelector('.notes-editor-body');
     const editNoteBtn = document.getElementById('btn-edit-note');
     const doneEditingBtn = document.getElementById('btn-done-editing');
+    const exportPdfBtn = document.getElementById('btn-export-pdf');
 
     // Search refs
     const searchNotesBtn = document.getElementById('btn-search-notes');
@@ -84,6 +85,8 @@
     const healthContentEl = document.getElementById('health-content');
     const healthCaloriesConsumed = document.getElementById('health-calories-consumed');
     const healthCaloriesBurned = document.getElementById('health-calories-burned');
+    const healthCaloriesBurnedSub = document.getElementById('health-calories-burned-sub');
+    const healthCaloriesGoal = document.getElementById('health-calories-goal');
     const healthBalance = document.getElementById('health-balance');
     const healthProgressFill = document.getElementById('health-progress-fill');
     const healthMealsEl = document.getElementById('health-meals');
@@ -122,6 +125,9 @@
     let tasksData = [];
     let tasksMeta = { projects: [], tags: [] };
     let tasksShowDone = false;
+    let taskGroupCollapsed = (function() {
+        try { return JSON.parse(localStorage.getItem('pa_task_groups') || '{}'); } catch(e) { return {}; }
+    })();
 
     // Sidebar nav refs
     const sidebarNavChat = document.getElementById('sidebar-nav-chat');
@@ -134,6 +140,7 @@
 
     let allUserTags = [];
     let activeTagFilter = null;
+    let allMealFoods = [];
     let conversationMessageCount = 0;
     let conversationMessageLimit = 40;
 
@@ -237,7 +244,7 @@
 
     function showTyping() {
         typingEl.classList.add('visible');
-        scrollToBottom();
+        if (activeTab === 'chat') scrollToBottom();
     }
 
     function hideTyping() {
@@ -259,6 +266,7 @@
     }
 
     function updateChatEmptyState() {
+        if (activeTab !== 'chat') return;
         var hasMessages = messagesEl.querySelectorAll('.message').length > 0;
         chatEmptyEl.classList.toggle('hidden', hasMessages);
         chatSection.classList.toggle('hidden', !hasMessages);
@@ -322,6 +330,17 @@
         sendBtn.disabled = (!hasText && !hasFile) || isSending;
     }
 
+    function updateHeaderNewBtn() {
+        var showForChat = activeTab === 'chat' && activeConversationId !== null;
+        var showForNotes = activeTab === 'notes' && activeNoteId !== null;
+        if (showForChat || showForNotes) {
+            headerNewBtn.textContent = showForChat ? '+ Nova conversa' : '+ Nova nota';
+            headerNewBtn.classList.remove('hidden');
+        } else {
+            headerNewBtn.classList.add('hidden');
+        }
+    }
+
     // ================================================
     // Sidebar — Conversation management
     // ================================================
@@ -383,9 +402,11 @@
                 activeConversationId = null;
                 localStorage.removeItem('pa_active_conversation');
                 updateChatEmptyState();
+                updateHeaderNewBtn();
             } else {
                 highlightActiveConversation();
                 await loadConversationMessages(activeConversationId);
+                updateHeaderNewBtn();
             }
         } catch (err) {
             showToast('Erro ao carregar conversas');
@@ -444,6 +465,7 @@
             clearMessages();
             await loadConversations();
             inputEl.focus();
+            updateHeaderNewBtn();
         } catch (err) {
             showToast('Erro ao criar conversa');
         }
@@ -460,6 +482,7 @@
         clearMessages();
         await loadConversationMessages(conversationId);
         inputEl.focus();
+        updateHeaderNewBtn();
     }
 
     async function loadConversationMessages(conversationId) {
@@ -512,6 +535,7 @@
                 activeConversationId = null;
                 localStorage.removeItem('pa_active_conversation');
                 clearMessages();
+                updateHeaderNewBtn();
             }
             await loadConversations();
         } catch (err) {
@@ -537,6 +561,14 @@
         closeSidebar();
     });
 
+    headerNewBtn.addEventListener('click', function () {
+        if (activeTab === 'chat') {
+            createConversation();
+        } else if (activeTab === 'notes') {
+            createNote();
+        }
+    });
+
     // ---- Textarea auto-resize ----
     inputEl.addEventListener('input', function () {
         this.style.height = 'auto';
@@ -560,6 +592,11 @@
 
         if (!text && !file) return;
         if (isSending) return;
+
+        // Auto-create a conversation if none is active
+        if (!activeConversationId) {
+            await createConversation();
+        }
 
         isSending = true;
         updateSendButton();
@@ -664,6 +701,12 @@
 
     async function sendAudio(blob) {
         if (isSending) return;
+
+        // Auto-create a conversation if none is active
+        if (!activeConversationId) {
+            await createConversation();
+        }
+
         isSending = true;
         updateSendButton();
 
@@ -728,7 +771,7 @@
     }
 
     logoutBtn.addEventListener('click', doLogout);
-    logoutSidebarBtn.addEventListener('click', doLogout);
+
 
     // ---- Google OAuth ----
     var googleBtn = document.getElementById('btn-google-connect');
@@ -1013,18 +1056,29 @@
             if (window.matchMedia('(min-width: 768px)').matches) {
                 inputEl.focus();
             }
+            document.getElementById('health-date-nav-header').classList.add('hidden');
+            document.getElementById('finance-month-nav-header').classList.add('hidden');
         } else if (tab === 'notes') {
             loadNotes();
+            document.getElementById('health-date-nav-header').classList.add('hidden');
+            document.getElementById('finance-month-nav-header').classList.add('hidden');
         } else if (tab === 'health') {
             healthViewEl.classList.remove('hidden');
+            document.getElementById('health-date-nav-header').classList.remove('hidden');
+            document.getElementById('finance-month-nav-header').classList.add('hidden');
             loadHealthGoals().then(loadHealthDashboard);
         } else if (tab === 'finance') {
             financeViewEl.classList.remove('hidden');
+            document.getElementById('health-date-nav-header').classList.add('hidden');
+            document.getElementById('finance-month-nav-header').classList.remove('hidden');
             loadFinanceDashboard();
         } else if (tab === 'tasks') {
             tasksViewEl.classList.remove('hidden');
+            document.getElementById('health-date-nav-header').classList.add('hidden');
+            document.getElementById('finance-month-nav-header').classList.add('hidden');
             loadTasks();
         }
+        updateHeaderNewBtn();
     }
 
     // Sidebar nav click handler
@@ -1044,22 +1098,32 @@
     // Notes — CRUD & Editor
     // ================================================
 
-    function enterViewMode() {
-        noteIsEditing = false;
-        notesEditorEl.dataset.mode = 'view';
-        var content = (activeNoteData && activeNoteData.content) || '';
-        noteViewContentEl.innerHTML = content ? marked.parse(content) : '';
-    }
-
     function enterEditMode() {
         noteIsEditing = true;
         notesEditorEl.dataset.mode = 'edit';
         initEasyMDE();
         var content = (activeNoteData && activeNoteData.content) || '';
         easyMDE.value(content);
-        noteSaveStatus.textContent = '';
-        activeNoteContentDirty = false;
-        setTimeout(function () { easyMDE.codemirror.refresh(); easyMDE.codemirror.focus(); }, 50);
+        setTimeout(function () { easyMDE.codemirror.refresh(); easyMDE.codemirror.focus(); }, 0);
+    }
+
+    function enterViewMode() {
+        noteIsEditing = false;
+        notesEditorEl.dataset.mode = 'view';
+        var content = (activeNoteData && activeNoteData.content) || '';
+        noteViewContentEl.innerHTML = content ? marked.parse(content) : '';
+        injectImageTokens(noteViewContentEl);
+        if (exportPdfBtn) exportPdfBtn.style.display = '';
+    }
+
+    function injectImageTokens(container) {
+        if (!token) return;
+        container.querySelectorAll('img').forEach(function (img) {
+            var src = img.getAttribute('src') || '';
+            if (src.startsWith('/api/notes/images/') && src.indexOf('?token=') === -1) {
+                img.src = src + '?token=' + encodeURIComponent(token);
+            }
+        });
     }
 
     function initEasyMDE() {
@@ -1071,16 +1135,97 @@
             status: false,
             minHeight: '200px',
             placeholder: 'Escreva sua anotação em Markdown…',
+            imageUploadFunction: uploadNoteImage,
+            imageAccept: 'image/jpeg, image/png, image/gif, image/webp',
+            imageMaxSize: 5 * 1024 * 1024,
+            previewRender: function (plainText, preview) {
+                var html = marked.parse(plainText);
+                // Inject tokens asynchronously after DOM update
+                setTimeout(function () { injectImageTokens(preview); }, 0);
+                return html;
+            },
             toolbar: [
                 'bold', 'italic', 'heading', '|',
                 'quote', 'unordered-list', 'ordered-list', '|',
-                'link', 'image', 'code', 'table', '|',
+                'link', 'upload-image', 'code', 'table', '|',
                 'preview', '|',
                 'guide',
             ],
         });
         easyMDE.codemirror.on('change', function () {
             scheduleNoteSave();
+        });
+    }
+
+    function resizeImageFile(file, maxPx, quality, callback) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var img = new Image();
+            img.onload = function () {
+                var w = img.width, h = img.height;
+                if (w <= maxPx && h <= maxPx) {
+                    // No resize needed — convert to blob at original size
+                    callback(file);
+                    return;
+                }
+                if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+                else { w = Math.round(w * maxPx / h); h = maxPx; }
+                var canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                var mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                canvas.toBlob(function (blob) {
+                    callback(new File([blob], file.name, { type: mimeType }));
+                }, mimeType, quality);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function uploadNoteImage(file, onSuccess, onError) {
+        var prevStatus = noteSaveStatus.textContent;
+        noteSaveStatus.textContent = 'Enviando imagem…';
+        noteSaveStatus.classList.add('uploading');
+
+        resizeImageFile(file, 1920, 0.85, function (resizedFile) {
+            var formData = new FormData();
+            formData.append('file', resizedFile, resizedFile.name);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/notes/images');
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+            xhr.upload.onprogress = function (e) {
+                if (e.lengthComputable) {
+                    var pct = Math.round(e.loaded / e.total * 100);
+                    noteSaveStatus.textContent = 'Enviando… ' + pct + '%';
+                }
+            };
+
+            xhr.onload = function () {
+                noteSaveStatus.classList.remove('uploading');
+                if (xhr.status === 201) {
+                    var data = JSON.parse(xhr.responseText);
+                    noteSaveStatus.textContent = prevStatus;
+                    onSuccess(data.url);
+                } else {
+                    var msg = 'Erro ao enviar imagem';
+                    try { msg = JSON.parse(xhr.responseText).detail || msg; } catch (_) {}
+                    noteSaveStatus.textContent = msg;
+                    setTimeout(function () { noteSaveStatus.textContent = prevStatus; }, 3000);
+                    onError(msg);
+                }
+            };
+
+            xhr.onerror = function () {
+                noteSaveStatus.classList.remove('uploading');
+                noteSaveStatus.textContent = 'Erro de rede';
+                setTimeout(function () { noteSaveStatus.textContent = prevStatus; }, 3000);
+                onError('Erro de rede ao enviar imagem');
+            };
+
+            xhr.send(formData);
         });
     }
 
@@ -1365,10 +1510,12 @@
             }
             // Close sidebar on mobile after selecting
             closeSidebar();
+            updateHeaderNewBtn();
         } catch (err) {
             showToast('Erro ao abrir anotação');
             activeNoteId = null;
             activeNoteData = null;
+            updateHeaderNewBtn();
         }
     }
 
@@ -1386,6 +1533,7 @@
                 if (easyMDE) easyMDE.value('');
                 noteTitleDisplay.textContent = 'Nova anotação';
                 noteTagsEl.innerHTML = '';
+                updateHeaderNewBtn();
             }
             await loadNotes();
             refreshUserTags();
@@ -1397,6 +1545,115 @@
     editNoteBtn.addEventListener('click', function () {
         if (activeNoteId) enterEditMode();
     });
+
+    if (exportPdfBtn) {
+        exportPdfBtn.addEventListener('click', function () {
+            exportNotePdf();
+        });
+    }
+
+    function exportNotePdf() {
+        var title = (activeNoteData && activeNoteData.title) || 'Anotação';
+        var content = (activeNoteData && activeNoteData.content) || '';
+        var renderedHtml = content ? marked.parse(content) : '';
+        var htmlContent = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { margin: 2.4cm 2.8cm; }
+  body {
+    font-family: 'Georgia', serif;
+    font-size: 11.5pt;
+    line-height: 1.75;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  h1.note-pdf-title {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 22pt;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 0.35em;
+    padding-bottom: 0.35em;
+    border-bottom: 2px solid #1663DE;
+  }
+  .note-pdf-meta {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 9pt;
+    color: #6b7280;
+    margin-bottom: 2em;
+  }
+  .content h1, .content h2, .content h3,
+  .content h4, .content h5, .content h6 {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #111;
+    line-height: 1.3;
+    page-break-after: avoid;
+  }
+  .content h1 { font-size: 17pt; font-weight: 700; margin: 1.5em 0 0.6em; }
+  .content h2 { font-size: 14pt; font-weight: 700; margin: 1.4em 0 0.6em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.2em; }
+  .content h3 { font-size: 12pt; font-weight: 700; margin: 1.2em 0 0.5em; }
+  .content h4 { font-size: 11pt; font-weight: 600; margin: 1em 0 0.4em; color: #374151; }
+  .content h5, .content h6 { font-size: 10.5pt; font-weight: 600; margin: 1em 0 0.4em; color: #6b7280; }
+  .content p { margin: 0 0 0.9em; }
+  .content ul, .content ol { margin: 0 0 0.9em 1.6em; }
+  .content li { margin-bottom: 0.25em; }
+  .content blockquote {
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    border-left: 3px solid #1663DE;
+    color: #4b5563;
+    font-style: italic;
+  }
+  .content code {
+    font-family: 'Courier New', monospace;
+    font-size: 9.5pt;
+    background: #f3f4f6;
+    padding: 0.15em 0.35em;
+    border-radius: 3px;
+  }
+  .content pre {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 0.9em 1em;
+    overflow-x: auto;
+    margin: 0 0 1em;
+    page-break-inside: avoid;
+  }
+  .content pre code { background: none; padding: 0; font-size: 9pt; }
+  .content table { width: 100%; border-collapse: collapse; margin: 0 0 1em; font-size: 10.5pt; }
+  .content th, .content td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; }
+  .content th { background: #f9fafb; font-weight: 600; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .content hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+  .content a { color: #1663DE; text-decoration: underline; }
+  .content img { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<h1 class="note-pdf-title">${escapeHtml(title)}</h1>
+<p class="note-pdf-meta">Exportado em ${new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
+<div class="content">${renderedHtml}</div>
+</body>
+</html>`;
+
+        // Use a hidden iframe so the footer shows the app URL (not "about:blank")
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
+        document.body.appendChild(iframe);
+        var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+        iDoc.open();
+        iDoc.write(htmlContent);
+        iDoc.close();
+        iframe.contentWindow.focus();
+        setTimeout(function () {
+            iframe.contentWindow.print();
+            setTimeout(function () { document.body.removeChild(iframe); }, 1000);
+        }, 300);
+    }
 
     doneEditingBtn.addEventListener('click', async function () {
         if (!activeNoteId) return;
@@ -1589,30 +1846,264 @@
     var analysisOverlay = document.getElementById('health-analysis-overlay');
     var analysisLoadingEl = document.getElementById('health-analysis-loading');
     var analysisContentEl = document.getElementById('health-analysis-content');
+    var analysisChartWrap = document.getElementById('health-analysis-chart-wrap');
+    var analysisChartCanvas = document.getElementById('health-analysis-chart');
+    var analysisChartInstance = null;
+    var WEEKDAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+    var ANALYSIS_ICONS   = ['🏃', '🏋️', '🫀', '💪'];
+    var ANALYSIS_PHRASES = [
+        'Analisando seus nutrientes da semana...',
+        'Calculando balanço calórico...',
+        'Avaliando macronutrientes...',
+        'Comparando com suas metas...',
+        'Gerando recomendações personalizadas...',
+        'Quase lá! Finalizando análise...',
+    ];
+    var _analysisAnimInterval = null;
+    var _analysisAnimIdx = 0;
+
+    function startAnalysisLoadingAnim() {
+        var iconEl   = document.getElementById('analysis-loading-icon');
+        var phraseEl = document.getElementById('analysis-loading-phrase');
+        if (!iconEl || !phraseEl) return;
+        _analysisAnimIdx = 0;
+        iconEl.textContent   = ANALYSIS_ICONS[0];
+        phraseEl.textContent = ANALYSIS_PHRASES[0];
+        iconEl.classList.remove('swap');
+        phraseEl.classList.remove('swap');
+
+        _analysisAnimInterval = setInterval(function () {
+            _analysisAnimIdx = (_analysisAnimIdx + 1) % Math.max(ANALYSIS_ICONS.length, ANALYSIS_PHRASES.length);
+            var nextIcon   = ANALYSIS_ICONS[_analysisAnimIdx % ANALYSIS_ICONS.length];
+            var nextPhrase = ANALYSIS_PHRASES[_analysisAnimIdx % ANALYSIS_PHRASES.length];
+
+            // fade out
+            iconEl.classList.add('swap');
+            phraseEl.classList.add('swap');
+
+            setTimeout(function () {
+                iconEl.textContent   = nextIcon;
+                phraseEl.textContent = nextPhrase;
+                iconEl.classList.remove('swap');
+                // restart CSS animation on icon
+                void iconEl.offsetWidth;
+                iconEl.style.animation = 'none';
+                void iconEl.offsetWidth;
+                iconEl.style.animation = '';
+                phraseEl.classList.remove('swap');
+            }, 280);
+        }, 5000);
+    }
+
+    function stopAnalysisLoadingAnim() {
+        if (_analysisAnimInterval) {
+            clearInterval(_analysisAnimInterval);
+            _analysisAnimInterval = null;
+        }
+    }
+
+    function destroyAnalysisChart() {
+        if (analysisChartInstance) {
+            analysisChartInstance.destroy();
+            analysisChartInstance = null;
+        }
+        analysisChartWrap.classList.remove('visible');
+    }
+
+    function renderAnalysisChart(days, calorieGoal) {
+        destroyAnalysisChart();
+        if (!days || !days.length) return;
+
+        var labels = days.map(function (d) {
+            var dt = new Date(d.date + 'T12:00:00');
+            return WEEKDAY_SHORT[dt.getDay()];
+        });
+        var consumed = days.map(function (d) { return Math.round(d.calories_consumed || 0); });
+        var goalLine = days.map(function () { return calorieGoal; });
+
+        var ctx = analysisChartCanvas.getContext('2d');
+
+        // Gradient fill for the area
+        var gradient = ctx.createLinearGradient(0, 0, 0, analysisChartCanvas.parentElement.clientHeight || 200);
+        gradient.addColorStop(0, 'rgba(22, 99, 222, 0.25)');
+        gradient.addColorStop(1, 'rgba(22, 99, 222, 0.02)');
+
+        analysisChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Calorias consumidas',
+                        data: consumed,
+                        borderColor: '#1663DE',
+                        backgroundColor: gradient,
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#1663DE',
+                        pointBorderWidth: 2,
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: '#1663DE',
+                        pointHoverBorderColor: '#fff',
+                    },
+                    {
+                        label: 'Meta calórica',
+                        data: goalLine,
+                        borderColor: 'rgba(220, 38, 38, 0.5)',
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 900,
+                    easing: 'easeOutQuart',
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 16,
+                            font: { size: 11 },
+                            color: '#6B7280',
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: { size: 12, weight: '600' },
+                        bodyFont: { size: 11 },
+                        padding: 10,
+                        cornerRadius: 8,
+                        displayColors: true,
+                        callbacks: {
+                            label: function (context) {
+                                return context.dataset.label + ': ' + context.parsed.y + ' kcal';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            font: { size: 11 },
+                            color: '#6B7280',
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.04)',
+                            drawBorder: false,
+                        },
+                        ticks: {
+                            font: { size: 11 },
+                            color: '#6B7280',
+                            callback: function (val) { return val.toLocaleString(); }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Animate the chart wrapper in
+        requestAnimationFrame(function () {
+            analysisChartWrap.classList.add('visible');
+        });
+    }
+
+    var _analysisRunning = false;
 
     document.getElementById('btn-health-analysis').addEventListener('click', async function () {
+        if (_analysisRunning) return;
+        _analysisRunning = true;
+        var btn = this;
+        btn.disabled = true;
+
         analysisOverlay.classList.add('visible');
         analysisLoadingEl.classList.remove('hidden');
         analysisContentEl.classList.add('hidden');
         analysisContentEl.innerHTML = '';
+        destroyAnalysisChart();
+        startAnalysisLoadingAnim();
+
+        // Fetch chart data and LLM analysis in parallel, with 90s timeout on analysis
+        var dateStr = healthDateISO();
+        var chartPromise = apiGet('/api/health/weekly?end_date=' + dateStr).catch(function () { return null; });
+
+        var analysisController = new AbortController();
+        var analysisTimeout = setTimeout(function () { analysisController.abort(); }, 90000);
+        var analysisPromise = fetch('/api/health/analysis', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({}),
+            signal: analysisController.signal
+        }).then(function (res) {
+            clearTimeout(analysisTimeout);
+            if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) { return { error: d.detail || 'Erro no servidor' }; });
+            return res.json();
+        }).catch(function (err) {
+            clearTimeout(analysisTimeout);
+            return { error: err.name === 'AbortError' ? 'Tempo limite atingido. Tente novamente.' : err.message };
+        });
 
         try {
-            var data = await apiPost('/api/health/analysis', {});
-            var html = typeof marked !== 'undefined' ? marked.parse(data.analysis || '') : escapeHtml(data.analysis || '');
-            analysisContentEl.innerHTML = html;
-        } catch (err) {
-            analysisContentEl.innerHTML = '<p style="color:#DC2626">Erro ao gerar análise: ' + escapeHtml(err.message) + '</p>';
+            var results = await Promise.all([chartPromise, analysisPromise]);
+            var weeklyData = results[0];
+            var analysisData = results[1];
+
+            // Render chart
+            if (weeklyData && weeklyData.days) {
+                var goal = healthGoals.calorie_goal || 2400;
+                renderAnalysisChart(weeklyData.days, goal);
+            }
+
+            // Render LLM analysis text
+            if (analysisData && analysisData.error) {
+                analysisContentEl.innerHTML = '<p style="color:#DC2626">Erro ao gerar análise: ' + escapeHtml(analysisData.error) + '</p>';
+            } else {
+                var text = (analysisData && analysisData.analysis) || '';
+                var html = typeof marked !== 'undefined' ? marked.parse(text) : escapeHtml(text);
+                analysisContentEl.innerHTML = html;
+            }
         } finally {
+            stopAnalysisLoadingAnim();
             analysisLoadingEl.classList.add('hidden');
             analysisContentEl.classList.remove('hidden');
+            _analysisRunning = false;
+            btn.disabled = false;
         }
     });
 
     document.getElementById('health-analysis-close').addEventListener('click', function () {
         analysisOverlay.classList.remove('visible');
+        destroyAnalysisChart();
+        stopAnalysisLoadingAnim();
+        _analysisRunning = false;
+        document.getElementById('btn-health-analysis').disabled = false;
     });
     analysisOverlay.addEventListener('click', function (e) {
-        if (e.target === analysisOverlay) analysisOverlay.classList.remove('visible');
+        if (e.target === analysisOverlay) {
+            analysisOverlay.classList.remove('visible');
+            destroyAnalysisChart();
+        }
     });
 
     function formatHealthDate(d) {
@@ -1691,46 +2182,49 @@
 
         var consumed = data.totals.calories_consumed;
         var burned = data.totals.calories_burned;
-        var balance = data.totals.balance;
         var calorieGoal = healthGoals.calorie_goal || 2400;
 
-        healthCaloriesConsumed.textContent = Math.round(consumed) + ' / ' + calorieGoal + ' kcal consumidas';
-        healthCaloriesBurned.textContent = Math.round(burned) + ' kcal queimadas'
-            + (healthGoals.exercise_calorie_goal > 0 ? ' / ' + healthGoals.exercise_calorie_goal + ' meta' : '');
-        healthBalance.textContent = 'Saldo: ' + (balance >= 0 ? '+' : '') + Math.round(balance) + ' kcal';
+        healthCaloriesConsumed.textContent = Math.round(consumed);
+        healthCaloriesGoal.textContent = '/ ' + calorieGoal + ' kcal';
+
+        healthCaloriesBurned.textContent = Math.round(burned);
+        if (healthGoals.exercise_calorie_goal > 0) {
+            healthCaloriesBurnedSub.textContent = '/ ' + healthGoals.exercise_calorie_goal + ' kcal meta';
+        } else {
+            healthCaloriesBurnedSub.textContent = 'kcal';
+        }
+
+        var balance = consumed - (calorieGoal + burned);
+        var balanceSign = balance >= 0 ? '+' : '';
+        healthBalance.textContent = balanceSign + Math.round(balance) + ' kcal';
+        healthBalance.style.color = '';
 
         var pct = Math.min((consumed / calorieGoal) * 100, 100);
         healthProgressFill.style.width = pct + '%';
         healthProgressFill.title = Math.round(pct) + '%';
 
-        // Exercise time goal row
-        var timeRowEl = document.getElementById('health-exercise-time-row');
+        // Exercise time goal — add progress bar inside the burned tile
+        var burnedTile = document.getElementById('health-burned-tile');
+        var timeBarEl = document.getElementById('health-exercise-time-bar');
+        var timeSubEl = document.getElementById('health-exercise-time-sub');
         if (healthGoals.exercise_time_goal > 0) {
             var totalMin = (data.exercises || []).reduce(function (s, e) { return s + (parseInt(e.duration_minutes) || 0); }, 0);
             var timePct = Math.min((totalMin / healthGoals.exercise_time_goal) * 100, 100);
-            if (!timeRowEl) {
-                var summary = document.getElementById('health-summary');
-                var row = document.createElement('div');
-                row.id = 'health-exercise-time-row';
-                row.className = 'health-summary-row';
-                row.innerHTML = '<span class="health-summary-icon">⏱️</span>'
-                    + '<span class="health-summary-text" id="health-exercise-time-text"></span>';
-                summary.appendChild(row);
-                var pb = document.createElement('div');
-                pb.className = 'health-progress-bar';
-                pb.innerHTML = '<div class="health-progress-fill health-progress-fill--exercise-time" id="health-exercise-time-fill"></div>';
-                summary.appendChild(pb);
-                timeRowEl = row;
+            if (!timeBarEl && burnedTile) {
+                var timeSub = document.createElement('div');
+                timeSub.id = 'health-exercise-time-sub';
+                timeSub.className = 'health-stat-sub';
+                burnedTile.appendChild(timeSub);
+                var timePb = document.createElement('div');
+                timePb.className = 'health-progress-bar';
+                timePb.innerHTML = '<div class="health-progress-fill health-progress-fill--exercise-time" id="health-exercise-time-bar"></div>';
+                burnedTile.appendChild(timePb);
+                timeBarEl = document.getElementById('health-exercise-time-bar');
+                timeSubEl = timeSub;
             }
-            document.getElementById('health-exercise-time-text').textContent = totalMin + ' / ' + healthGoals.exercise_time_goal + ' min de exercício';
-            document.getElementById('health-exercise-time-fill').style.width = timePct + '%';
-            timeRowEl.style.display = '';
-            timeRowEl.nextElementSibling.style.display = '';
-        } else if (timeRowEl) {
-            timeRowEl.style.display = 'none';
-            timeRowEl.nextElementSibling.style.display = 'none';
+            if (timeSubEl) timeSubEl.textContent = totalMin + ' / ' + healthGoals.exercise_time_goal + ' min';
+            if (timeBarEl) timeBarEl.style.width = timePct + '%';
         }
-
         // Render meals grouped by type
         renderMealGroups(data.meals);
 
@@ -1747,13 +2241,172 @@
         'SUPLEMENTO': 'Suplemento'
     };
 
+    function buildMealGroupEl(type, items) {
+        var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
+
+        // Determine meal_group_id (use first item's if all share same group)
+        var groupId = null;
+        var firstGroup = items[0] && items[0].meal_group_id;
+        if (firstGroup && items.every(function (m) { return m.meal_group_id === firstGroup; })) {
+            groupId = firstGroup;
+        }
+
+        var groupEl = document.createElement('div');
+        groupEl.className = 'health-meal-group';
+
+        // Header
+        var headerEl = document.createElement('div');
+        headerEl.className = 'health-meal-group-header health-meal-group-title';
+        var titleSpan = document.createElement('span');
+        titleSpan.textContent = MEAL_TYPE_LABELS[type] || type;
+        headerEl.appendChild(titleSpan);
+        if (groupId) {
+            var groupDelBtn = document.createElement('button');
+            groupDelBtn.className = 'health-meal-group-delete';
+            groupDelBtn.textContent = '🗑 apagar tudo';
+            groupDelBtn.title = 'Apagar toda a refeição';
+            groupDelBtn.type = 'button';
+            groupDelBtn.addEventListener('click', async function () {
+                if (!confirm('Apagar toda a refeição de ' + (MEAL_TYPE_LABELS[type] || type) + '?')) return;
+                try {
+                    await apiDelete('/api/health/meals/group/' + encodeURIComponent(groupId));
+                    showToast('Refeição apagada ✓');
+                    loadHealthDashboard();
+                } catch (err) {
+                    showToast('Erro: ' + err.message);
+                }
+            });
+            headerEl.appendChild(groupDelBtn);
+        }
+        groupEl.appendChild(headerEl);
+
+        // Items
+        items.forEach(function (m) {
+            var itemEl = document.createElement('div');
+            itemEl.className = 'health-meal-item';
+            itemEl.dataset.mealId = m.id;
+
+            var foodSpan = document.createElement('span');
+            foodSpan.className = 'health-meal-food';
+            foodSpan.textContent = m.food || '';
+
+            var qtySpan = document.createElement('span');
+            qtySpan.className = 'health-meal-qty';
+            qtySpan.textContent = m.quantity || '';
+
+            var kcalSpan = document.createElement('span');
+            kcalSpan.className = 'health-meal-kcal';
+            kcalSpan.textContent = Math.round(parseFloat(m.calories) || 0) + ' kcal';
+
+            // Inline edit form (hidden by default)
+            var editWrap = document.createElement('div');
+            editWrap.className = 'meal-inline-edit';
+
+            var inFood = document.createElement('input');
+            inFood.className = 'meal-inline-input food';
+            inFood.value = m.food || '';
+            inFood.maxLength = 200;
+            attachFoodAutocomplete(inFood);
+
+            var inQty = document.createElement('input');
+            inQty.className = 'meal-inline-input qty';
+            inQty.value = m.quantity || '';
+            inQty.maxLength = 100;
+
+            var inKcal = document.createElement('input');
+            inKcal.type = 'number';
+            inKcal.className = 'meal-inline-input kcal';
+            inKcal.value = Math.round(parseFloat(m.calories) || 0);
+            inKcal.min = '0';
+
+            var saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.className = 'health-meal-action-btn';
+            saveBtn.textContent = '✓';
+            saveBtn.title = 'Salvar';
+            saveBtn.addEventListener('click', async function () {
+                try {
+                    await apiPatch('/api/health/meals/' + encodeURIComponent(m.id), {
+                        food: inFood.value.trim(),
+                        quantity: inQty.value.trim(),
+                        calories: parseFloat(inKcal.value) || 0,
+                    });
+                    showToast('Item atualizado ✓');
+                    loadHealthDashboard();
+                } catch (err) {
+                    showToast('Erro: ' + err.message);
+                }
+            });
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'health-meal-action-btn';
+            cancelBtn.textContent = '✕';
+            cancelBtn.title = 'Cancelar';
+            cancelBtn.addEventListener('click', function () {
+                itemEl.classList.remove('editing');
+            });
+
+            editWrap.appendChild(inFood);
+            editWrap.appendChild(inQty);
+            editWrap.appendChild(inKcal);
+            editWrap.appendChild(saveBtn);
+            editWrap.appendChild(cancelBtn);
+
+            // Action buttons
+            var actionsEl = document.createElement('div');
+            actionsEl.className = 'health-meal-actions';
+
+            var editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'health-meal-action-btn';
+            editBtn.textContent = '✏';
+            editBtn.title = 'Editar';
+            editBtn.addEventListener('click', function () {
+                itemEl.classList.toggle('editing');
+            });
+
+            var deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'health-meal-action-btn delete';
+            deleteBtn.textContent = '🗑';
+            deleteBtn.title = 'Remover item';
+            deleteBtn.addEventListener('click', async function () {
+                try {
+                    await apiDelete('/api/health/meals/' + encodeURIComponent(m.id));
+                    showToast('Item removido ✓');
+                    loadHealthDashboard();
+                } catch (err) {
+                    showToast('Erro: ' + err.message);
+                }
+            });
+
+            actionsEl.appendChild(editBtn);
+            actionsEl.appendChild(deleteBtn);
+
+            itemEl.appendChild(foodSpan);
+            itemEl.appendChild(qtySpan);
+            itemEl.appendChild(kcalSpan);
+            itemEl.appendChild(editWrap);
+            itemEl.appendChild(actionsEl);
+            groupEl.appendChild(itemEl);
+        });
+
+        var subtotalEl = document.createElement('div');
+        subtotalEl.className = 'health-meal-subtotal';
+        subtotalEl.textContent = Math.round(subtotal) + ' kcal';
+        groupEl.appendChild(subtotalEl);
+
+        return groupEl;
+    }
+
     function renderMealGroups(meals) {
+        healthMealsEl.innerHTML = '';
         if (!meals || meals.length === 0) {
             healthMealsEl.innerHTML = '<div class="health-empty-day">Nenhuma refeição registrada</div>';
             return;
         }
 
-        // Group by meal_type
         var groups = {};
         meals.forEach(function (m) {
             var mt = (m.meal_type || 'OUTRO').toUpperCase();
@@ -1761,43 +2414,15 @@
             groups[mt].push(m);
         });
 
-        var html = '';
         MEAL_TYPE_ORDER.forEach(function (type) {
             if (!groups[type]) return;
-            var items = groups[type];
-            var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
-            html += '<div class="health-meal-group">';
-            html += '<div class="health-meal-group-title">' + escapeHtml(MEAL_TYPE_LABELS[type] || type) + '</div>';
-            items.forEach(function (m) {
-                html += '<div class="health-meal-item">';
-                html += '<span class="health-meal-food">' + escapeHtml(m.food || '') + '</span>';
-                html += '<span class="health-meal-qty">' + escapeHtml(m.quantity || '') + '</span>';
-                html += '<span class="health-meal-kcal">' + Math.round(parseFloat(m.calories) || 0) + ' kcal</span>';
-                html += '</div>';
-            });
-            html += '<div class="health-meal-subtotal">' + Math.round(subtotal) + ' kcal</div>';
-            html += '</div>';
+            healthMealsEl.appendChild(buildMealGroupEl(type, groups[type]));
         });
 
-        // Remaining types not in order
         Object.keys(groups).forEach(function (type) {
             if (MEAL_TYPE_ORDER.indexOf(type) >= 0) return;
-            var items = groups[type];
-            var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
-            html += '<div class="health-meal-group">';
-            html += '<div class="health-meal-group-title">' + escapeHtml(type) + '</div>';
-            items.forEach(function (m) {
-                html += '<div class="health-meal-item">';
-                html += '<span class="health-meal-food">' + escapeHtml(m.food || '') + '</span>';
-                html += '<span class="health-meal-qty">' + escapeHtml(m.quantity || '') + '</span>';
-                html += '<span class="health-meal-kcal">' + Math.round(parseFloat(m.calories) || 0) + ' kcal</span>';
-                html += '</div>';
-            });
-            html += '<div class="health-meal-subtotal">' + Math.round(subtotal) + ' kcal</div>';
-            html += '</div>';
+            healthMealsEl.appendChild(buildMealGroupEl(type, groups[type]));
         });
-
-        healthMealsEl.innerHTML = html;
     }
 
     function renderExercises(exercises) {
@@ -1877,11 +2502,145 @@
     var mealCloseBtn = document.getElementById('health-meal-close');
     var mealSubmitBtn = document.getElementById('meal-submit-btn');
     var mealChipGroup = document.getElementById('meal-type-chips');
+    var mealItemsList = document.getElementById('meal-items-list');
     var selectedMealType = 'ALMOÇO';
 
+    // Shared floating autocomplete dropdown for food inputs
+    var foodAcDropdown = (function () {
+        var el = document.createElement('div');
+        el.className = 'food-autocomplete-dropdown hidden';
+        document.body.appendChild(el);
+        return el;
+    }());
+    var _foodAcActiveInput = null;
+
+    async function loadMealFoods() {
+        try {
+            var data = await apiGet('/api/health/meals/foods');
+            allMealFoods = data.foods || [];
+        } catch (_) {
+            allMealFoods = [];
+        }
+    }
+
+    function showFoodAutocomplete(inputEl) {
+        var val = inputEl.value.toLowerCase();
+        var matches = allMealFoods.filter(function (f) {
+            return f.toLowerCase().indexOf(val) >= 0;
+        });
+        foodAcDropdown.innerHTML = '';
+        if (matches.length === 0) {
+            foodAcDropdown.classList.add('hidden');
+            return;
+        }
+        matches.slice(0, 10).forEach(function (food) {
+            var div = document.createElement('div');
+            div.className = 'food-autocomplete-item';
+            div.textContent = food;
+            div.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                inputEl.value = food;
+                foodAcDropdown.classList.add('hidden');
+                _foodAcActiveInput = null;
+                inputEl.dispatchEvent(new Event('input'));
+            });
+            foodAcDropdown.appendChild(div);
+        });
+        var rect = inputEl.getBoundingClientRect();
+        foodAcDropdown.style.left = (rect.left + window.scrollX) + 'px';
+        foodAcDropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+        foodAcDropdown.style.width = rect.width + 'px';
+        foodAcDropdown.classList.remove('hidden');
+        _foodAcActiveInput = inputEl;
+    }
+
+    function hideFoodAutocomplete() {
+        foodAcDropdown.classList.add('hidden');
+        _foodAcActiveInput = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        if (_foodAcActiveInput && e.target !== _foodAcActiveInput && !foodAcDropdown.contains(e.target)) {
+            hideFoodAutocomplete();
+        }
+    });
+
+    function attachFoodAutocomplete(inputEl) {
+        inputEl.addEventListener('input', function () { showFoodAutocomplete(inputEl); });
+        inputEl.addEventListener('focus', function () { showFoodAutocomplete(inputEl); });
+        inputEl.addEventListener('blur', function () {
+            setTimeout(hideFoodAutocomplete, 150);
+        });
+        inputEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') hideFoodAutocomplete();
+        });
+    }
+
+    function createMealItemRow() {
+        var row = document.createElement('div');
+        row.className = 'meal-item-row';
+
+        var foodInput = document.createElement('input');
+        foodInput.type = 'text';
+        foodInput.placeholder = 'Alimento';
+        foodInput.maxLength = 200;
+        foodInput.className = 'meal-food-input';
+        foodInput.required = true;
+        attachFoodAutocomplete(foodInput);
+
+        var qtyInput = document.createElement('input');
+        qtyInput.type = 'text';
+        qtyInput.placeholder = 'Qtd (ex: 150g)';
+        qtyInput.maxLength = 100;
+        qtyInput.className = 'meal-qty-input';
+        qtyInput.required = true;
+
+        var calInput = document.createElement('input');
+        calInput.type = 'number';
+        calInput.placeholder = 'kcal';
+        calInput.min = '0';
+        calInput.max = '50000';
+        calInput.step = 'any';
+        calInput.className = 'meal-cal-input';
+        calInput.title = 'Deixe vazio para estimar';
+
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'meal-item-remove';
+        removeBtn.textContent = '✕';
+        removeBtn.title = 'Remover';
+        removeBtn.addEventListener('click', function () {
+            if (mealItemsList.children.length > 1) {
+                row.remove();
+            }
+        });
+
+        row.appendChild(foodInput);
+        row.appendChild(qtyInput);
+        row.appendChild(calInput);
+        row.appendChild(removeBtn);
+        return row;
+    }
+
+    function resetMealModal() {
+        mealItemsList.innerHTML = '';
+        mealItemsList.appendChild(createMealItemRow());
+        mealChipGroup.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
+        mealChipGroup.querySelector('[data-value="ALMOÇO"]').classList.add('active');
+        selectedMealType = 'ALMOÇO';
+    }
+
     document.getElementById('btn-add-meal').addEventListener('click', function () {
+        resetMealModal();
+        loadMealFoods();
         mealOverlay.classList.add('visible');
-        document.getElementById('meal-food').focus();
+        mealItemsList.querySelector('.meal-food-input').focus();
+    });
+
+    document.getElementById('meal-add-item-btn').addEventListener('click', function () {
+        var newRow = createMealItemRow();
+        mealItemsList.appendChild(newRow);
+        newRow.querySelector('.meal-food-input').focus();
     });
 
     mealCloseBtn.addEventListener('click', function () {
@@ -1903,22 +2662,31 @@
     mealForm.addEventListener('submit', async function (e) {
         e.preventDefault();
         if (mealSubmitBtn.disabled) return;
+
+        var rows = mealItemsList.querySelectorAll('.meal-item-row');
+        var items = [];
+        var valid = true;
+        rows.forEach(function (row) {
+            var food = row.querySelector('.meal-food-input').value.trim();
+            var qty  = row.querySelector('.meal-qty-input').value.trim();
+            var kcal = parseFloat(row.querySelector('.meal-cal-input').value) || undefined;
+            if (!food || !qty) { valid = false; return; }
+            items.push({ food: food, quantity: qty, estimated_calories: kcal });
+        });
+        if (!valid || items.length === 0) {
+            showToast('Preencha alimento e quantidade em todos os itens.');
+            return;
+        }
+
         mealSubmitBtn.disabled = true;
         mealSubmitBtn.textContent = 'Registrando…';
 
         try {
             await apiPost('/api/health/meals', {
-                food: document.getElementById('meal-food').value.trim(),
                 meal_type: selectedMealType,
-                quantity: document.getElementById('meal-quantity').value.trim(),
-                estimated_calories: parseFloat(document.getElementById('meal-calories').value)
+                items: items,
             });
             mealOverlay.classList.remove('visible');
-            mealForm.reset();
-            // Re-select default chip
-            mealChipGroup.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
-            mealChipGroup.querySelector('[data-value="ALMOÇO"]').classList.add('active');
-            selectedMealType = 'ALMOÇO';
             showToast('Refeição registrada ✓');
             loadHealthDashboard();
         } catch (err) {
@@ -2212,7 +2980,11 @@
     var billCloseBtn = document.getElementById('finance-bill-close');
 
     document.getElementById('btn-add-expense').addEventListener('click', function () {
-        expenseDateInput.value = new Date().toISOString().slice(0, 10);
+        if (expenseDatePicker) {
+            expenseDatePicker.setValue(new Date().toISOString().slice(0, 10));
+        } else {
+            expenseDateInput.value = new Date().toISOString().slice(0, 10);
+        }
         expenseOverlay.classList.add('visible');
     });
 
@@ -2352,8 +3124,27 @@
         if (!contentEl) return;
         contentEl.innerHTML = '';
 
-        var pending = tasksData.filter(function (t) { return !t.done; });
-        var done = tasksData.filter(function (t) { return t.done; });
+        // Always ON card
+        var alwaysOnCard = document.getElementById('always-on-card');
+        var alwaysOnList = document.getElementById('always-on-list');
+        var alwaysOnTasks = tasksData.filter(function (t) { return t.always_on; });
+        if (alwaysOnCard && alwaysOnList) {
+            if (alwaysOnTasks.length > 0) {
+                alwaysOnCard.classList.remove('hidden');
+                alwaysOnList.innerHTML = '';
+                alwaysOnTasks.forEach(function (t) {
+                    alwaysOnList.appendChild(buildAlwaysOnItem(t));
+                });
+            } else {
+                alwaysOnCard.classList.add('hidden');
+            }
+        }
+
+        var alwaysOnIds = {};
+        alwaysOnTasks.forEach(function (t) { alwaysOnIds[t.id] = true; });
+
+        var pending = tasksData.filter(function (t) { return !t.done && !alwaysOnIds[t.id]; });
+        var done = tasksData.filter(function (t) { return t.done && !alwaysOnIds[t.id]; });
 
         var groups = [
             { key: 'overdue', label: 'Atrasadas', accent: 'red', tasks: [] },
@@ -2385,9 +3176,49 @@
         }
     }
 
+    function buildAlwaysOnItem(task) {
+        var el = document.createElement('div');
+        el.className = 'always-on-item';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'always-on-item-name';
+        nameSpan.textContent = task.name;
+
+        var removeBtn = document.createElement('button');
+        removeBtn.className = 'always-on-remove-btn';
+        removeBtn.title = 'Remover do Always ON';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            toggleAlwaysOn(task.id, false);
+        });
+
+        el.appendChild(nameSpan);
+        if (task.project) {
+            var proj = document.createElement('span');
+            proj.className = 'task-project-badge';
+            proj.textContent = task.project;
+            el.appendChild(proj);
+        }
+        el.appendChild(removeBtn);
+        return el;
+    }
+
+    async function toggleAlwaysOn(taskId, value) {
+        try {
+            await apiPatch('/api/tasks/' + taskId, { always_on: value });
+            var idx = tasksData.findIndex(function (t) { return t.id === taskId; });
+            if (idx !== -1) tasksData[idx].always_on = value;
+            renderTaskGroups();
+        } catch (err) {
+            showToast(err.message || 'Erro ao atualizar tarefa');
+        }
+    }
+
     function buildTaskGroup(group) {
         var el = document.createElement('div');
-        el.className = 'task-group' + (group.collapsed ? ' collapsed' : '');
+        var isCollapsed = group.collapsed || taskGroupCollapsed[group.key] === true;
+        el.className = 'task-group' + (isCollapsed ? ' collapsed' : '');
         el.dataset.key = group.key;
 
         var header = document.createElement('div');
@@ -2402,20 +3233,23 @@
         badge.className = 'task-group-count';
         badge.textContent = group.tasks.length;
 
+        var arrow = document.createElement('span');
+        arrow.className = 'task-group-arrow';
+        arrow.textContent = '▾';
+
         header.appendChild(labelSpan);
         header.appendChild(badge);
-
-        if (group.collapsed) {
-            var arrow = document.createElement('span');
-            arrow.className = 'task-group-arrow';
-            arrow.textContent = '▸';
-            header.appendChild(arrow);
-        }
+        header.appendChild(arrow);
 
         header.addEventListener('click', function () {
             el.classList.toggle('collapsed');
-            if (arrow) arrow.textContent = el.classList.contains('collapsed') ? '▸' : '▾';
+            var collapsed = el.classList.contains('collapsed');
+            taskGroupCollapsed[group.key] = collapsed;
+            try { localStorage.setItem('pa_task_groups', JSON.stringify(taskGroupCollapsed)); } catch(e) {}
         });
+
+        var listWrapper = document.createElement('div');
+        listWrapper.className = 'task-group-list-wrapper';
 
         var list = document.createElement('div');
         list.className = 'task-group-list';
@@ -2424,8 +3258,9 @@
             list.appendChild(buildTaskItem(task));
         });
 
+        listWrapper.appendChild(list);
         el.appendChild(header);
-        el.appendChild(list);
+        el.appendChild(listWrapper);
         return el;
     }
 
@@ -2440,7 +3275,14 @@
         cb.className = 'task-checkbox';
         cb.checked = task.done;
         cb.addEventListener('change', function () {
-            toggleTaskDone(task.id, cb.checked);
+            if (cb.checked) {
+                cb.classList.add('task-checking');
+                setTimeout(function () { cb.classList.remove('task-checking'); }, 300);
+                nameSpan.classList.add('task-striking');
+                setTimeout(function () { toggleTaskDone(task.id, true); }, 580);
+            } else {
+                toggleTaskDone(task.id, false);
+            }
         });
 
         // Name
@@ -2448,36 +3290,13 @@
         nameSpan.className = 'task-item-name';
         nameSpan.textContent = task.name;
         nameSpan.addEventListener('click', function () {
-            openTaskEditInline(el, task);
+            openTaskDetailModal(task);
         });
 
         el.appendChild(cb);
         el.appendChild(nameSpan);
 
-        // Project badge
-        if (task.project) {
-            var proj = document.createElement('span');
-            proj.className = 'task-project-badge';
-            proj.textContent = task.project;
-            el.appendChild(proj);
-        }
-
-        // Tag pills
-        if (task.tags && task.tags.length > 0) {
-            task.tags.forEach(function (tag) {
-                var pill = document.createElement('span');
-                pill.className = 'task-tag-pill';
-                pill.textContent = tag;
-                el.appendChild(pill);
-            });
-        }
-
-        // Deadline badge
-        if (task.deadline) {
-            el.appendChild(buildDeadlineBadge(task.deadline));
-        }
-
-        // Delete button
+        // Delete button (before meta so it stays on line 1 with flex-wrap)
         var delBtn = document.createElement('button');
         delBtn.className = 'task-delete-btn';
         delBtn.title = 'Excluir tarefa';
@@ -2487,6 +3306,35 @@
             deleteTask(task.id);
         });
         el.appendChild(delBtn);
+
+        // Meta container (project, tags, deadline)
+        var meta = document.createElement('div');
+        meta.className = 'task-item-meta';
+
+        // Project badge
+        if (task.project) {
+            var proj = document.createElement('span');
+            proj.className = 'task-project-badge';
+            proj.textContent = task.project;
+            meta.appendChild(proj);
+        }
+
+        // Tag pills
+        if (task.tags && task.tags.length > 0) {
+            task.tags.forEach(function (tag) {
+                var pill = document.createElement('span');
+                pill.className = 'task-tag-pill';
+                pill.textContent = tag;
+                meta.appendChild(pill);
+            });
+        }
+
+        // Deadline badge
+        if (task.deadline) {
+            meta.appendChild(buildDeadlineBadge(task.deadline));
+        }
+
+        el.appendChild(meta);
 
         return el;
     }
@@ -2520,11 +3368,13 @@
         return parts[2] + '/' + parts[1];
     }
 
-    async function createTask(name, deadline, project, tags) {
+    async function createTask(name, deadline, project, tags, alwaysOn, observations) {
         var body = { name: name };
         if (deadline) body.deadline = deadline;
         if (project) body.project = project;
         if (tags && tags.length > 0) body.tags = tags;
+        if (alwaysOn) body.always_on = true;
+        if (observations) body.observations = observations;
         try {
             await apiPost('/api/tasks', body);
             await loadTasks();
@@ -2563,42 +3413,133 @@
         }
     }
 
-    function openTaskEditInline(taskEl, task) {
-        // Prevent double-edit
-        if (taskEl.querySelector('.task-edit-input')) return;
+    // ---- Task detail / edit modal ----
+    var taskDetailOverlay = document.getElementById('task-detail-overlay');
+    var taskDetailModal = document.getElementById('task-detail-modal');
+    var taskDetailCurrentId = null;
+    var taskEditDeadlinePicker = null;
 
-        var nameSpan = taskEl.querySelector('.task-item-name');
-        var originalName = task.name;
-
-        var input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'task-edit-input';
-        input.value = originalName;
-        input.maxLength = 200;
-
-        nameSpan.replaceWith(input);
-        input.focus();
-        input.select();
-
-        function save() {
-            var newName = input.value.trim();
-            if (!newName) {
-                cancel();
-                return;
-            }
-            saveTaskEdit(task.id, { name: newName });
-        }
-
-        function cancel() {
-            input.replaceWith(nameSpan);
-        }
-
-        input.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); save(); }
-            if (e.key === 'Escape') cancel();
-        });
-        input.addEventListener('blur', function () { save(); });
+    function formatTaskDate(isoStr) {
+        if (!isoStr) return null;
+        var d = new Date(isoStr);
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
+
+    function openTaskDetailModal(task) {
+        taskDetailCurrentId = task.id;
+        showTaskDetailView(task);
+        taskDetailOverlay.classList.add('visible');
+    }
+
+    function closeTaskDetailModal() {
+        taskDetailOverlay.classList.remove('visible');
+        taskDetailCurrentId = null;
+    }
+
+    function showTaskDetailView(task) {
+        document.getElementById('task-detail-view').classList.remove('hidden');
+        document.getElementById('task-edit-view').classList.add('hidden');
+
+        document.getElementById('task-detail-title').textContent = task.name;
+
+        var badge = document.getElementById('task-detail-status-badge');
+        if (task.done) {
+            badge.textContent = '✓ Concluída';
+            badge.className = 'task-detail-status-badge badge-done';
+        } else {
+            var cls = classifyTask(task);
+            if (cls === 'overdue') { badge.textContent = '⚠ Atrasada'; badge.className = 'task-detail-status-badge badge-overdue'; }
+            else if (cls === 'today') { badge.textContent = '📅 Hoje'; badge.className = 'task-detail-status-badge badge-today'; }
+            else { badge.textContent = '⏳ Pendente'; badge.className = 'task-detail-status-badge badge-pending'; }
+        }
+
+        var grid = document.getElementById('task-detail-meta-grid');
+        grid.innerHTML = '';
+        function addMeta(label, value) {
+            var item = document.createElement('div');
+            item.className = 'task-detail-meta-item';
+            item.innerHTML = '<span class="task-detail-meta-label">' + label + '</span><span class="task-detail-meta-value">' + value + '</span>';
+            grid.appendChild(item);
+        }
+        if (task.deadline) addMeta('Prazo', formatTaskDate(task.deadline));
+        if (task.project) addMeta('Projeto', task.project);
+        if (task.tags && task.tags.length > 0) addMeta('Tags', task.tags.join(', '));
+        if (task.always_on) addMeta('Always ON', '📌 Sim');
+
+        var obsBlock = document.getElementById('task-detail-observations-block');
+        if (task.observations) {
+            document.getElementById('task-detail-obs-text').textContent = task.observations;
+            obsBlock.classList.remove('hidden');
+        } else {
+            obsBlock.classList.add('hidden');
+        }
+
+        var createdFmt = task.created_at ? new Date(task.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        document.getElementById('task-detail-created').textContent = createdFmt ? 'Criada em ' + createdFmt : '';
+    }
+
+    function showTaskEditView(task) {
+        document.getElementById('task-detail-view').classList.add('hidden');
+        document.getElementById('task-edit-view').classList.remove('hidden');
+
+        document.getElementById('task-edit-name').value = task.name;
+        document.getElementById('task-edit-project').value = task.project || '';
+        document.getElementById('task-edit-tags').value = (task.tags || []).join(', ');
+        document.getElementById('task-edit-observations').value = task.observations || '';
+        document.getElementById('task-edit-always-on').checked = !!task.always_on;
+
+        var deadlineInput = document.getElementById('task-edit-deadline');
+        var deadlineText = document.getElementById('task-edit-deadline-text');
+        var deadlineBtn = document.getElementById('task-edit-deadline-btn');
+        deadlineInput.value = task.deadline || '';
+        deadlineText.textContent = task.deadline ? formatTaskDate(task.deadline) : 'Selecionar';
+
+        // Re-instantiate picker each time to pick up fresh DOM state
+        taskEditDeadlinePicker = new IOSDatePicker(deadlineInput, deadlineBtn);
+        if (task.deadline) taskEditDeadlinePicker.setValue(task.deadline);
+    }
+
+    document.getElementById('task-detail-close').addEventListener('click', closeTaskDetailModal);
+    taskDetailOverlay.addEventListener('click', function (e) {
+        if (e.target === taskDetailOverlay) closeTaskDetailModal();
+    });
+
+    document.getElementById('task-detail-edit-btn').addEventListener('click', function () {
+        var task = tasksData.find(function (t) { return t.id === taskDetailCurrentId; });
+        if (task) showTaskEditView(task);
+    });
+
+    document.getElementById('task-edit-cancel-btn').addEventListener('click', function () {
+        var task = tasksData.find(function (t) { return t.id === taskDetailCurrentId; });
+        if (task) showTaskDetailView(task);
+    });
+
+    document.getElementById('task-edit-save-btn').addEventListener('click', async function () {
+        var name = document.getElementById('task-edit-name').value.trim();
+        if (!name) { document.getElementById('task-edit-name').focus(); return; }
+        var deadline = document.getElementById('task-edit-deadline').value || null;
+        var project = document.getElementById('task-edit-project').value.trim() || null;
+        var rawTags = document.getElementById('task-edit-tags').value.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+        var observations = document.getElementById('task-edit-observations').value.trim() || null;
+        var alwaysOn = document.getElementById('task-edit-always-on').checked;
+
+        var patchData = {
+            name: name,
+            deadline: deadline,
+            project: project,
+            tags: rawTags,
+            observations: observations,
+            always_on: alwaysOn,
+        };
+        try {
+            await apiPatch('/api/tasks/' + taskDetailCurrentId, patchData);
+            await loadTasks();
+            var updated = tasksData.find(function (t) { return t.id === taskDetailCurrentId; });
+            if (updated) showTaskDetailView(updated);
+        } catch (err) {
+            showToast(err.message || 'Erro ao salvar tarefa');
+        }
+    });
 
     // Autocomplete helper
     function setupTaskAutocomplete(inputEl, acEl, getItems, onSelect) {
@@ -2628,6 +3569,191 @@
         });
     }
 
+    // ---- iOS-style Date Picker component ----
+    var IOS_DP_MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    var IOS_DP_MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    var IOS_DP_WDAYS = ['D','S','T','Q','Q','S','S'];
+
+    function IOSDatePicker(hiddenInput, triggerBtn) {
+        var self = this;
+        self.input = hiddenInput;
+        self.trigger = triggerBtn;
+        self.labelEl = triggerBtn.querySelector('.ios-dp-text');
+        self.popup = null;
+        self.isOpen = false;
+        self.viewYear = new Date().getFullYear();
+        self.viewMonth = new Date().getMonth();
+        self.selectedDate = null;
+
+        self.trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (self.isOpen) self.close(); else self.open();
+        });
+
+        if (self.input.value) self.setValue(self.input.value);
+    }
+
+    IOSDatePicker.prototype.setValue = function (dateStr) {
+        if (!dateStr) { this.clear(); return; }
+        var p = dateStr.split('-');
+        this.selectedDate = { year: parseInt(p[0]), month: parseInt(p[1]) - 1, day: parseInt(p[2]) };
+        this.viewYear = this.selectedDate.year;
+        this.viewMonth = this.selectedDate.month;
+        this.input.value = dateStr;
+        this.labelEl.textContent = this.selectedDate.day + ' ' + IOS_DP_MONTHS_SHORT[this.selectedDate.month] + ' ' + this.selectedDate.year;
+        this.labelEl.classList.add('has-value');
+    };
+
+    IOSDatePicker.prototype.clear = function () {
+        this.selectedDate = null;
+        this.input.value = '';
+        this.labelEl.textContent = 'Selecionar';
+        this.labelEl.classList.remove('has-value');
+        if (this.isOpen) this._render();
+    };
+
+    IOSDatePicker.prototype.open = function () {
+        if (this.isOpen) return;
+        this.isOpen = true;
+        if (!this.popup) this._createPopup();
+        this._render();
+        this.popup.style.left = '0';
+        this.popup.style.right = 'auto';
+        this.popup.classList.add('visible');
+        var self = this;
+        // Clamp popup within viewport
+        requestAnimationFrame(function () {
+            var rect = self.popup.getBoundingClientRect();
+            if (rect.left < 4) {
+                self.popup.style.left = (-rect.left + 4) + 'px';
+            } else if (rect.right > window.innerWidth - 4) {
+                self.popup.style.left = 'auto';
+                self.popup.style.right = '0';
+            }
+        });
+        setTimeout(function () {
+            self._outsideHandler = function (e) {
+                if (!self.popup.contains(e.target) && !self.trigger.contains(e.target)) self.close();
+            };
+            document.addEventListener('click', self._outsideHandler);
+        }, 0);
+    };
+
+    IOSDatePicker.prototype.close = function () {
+        if (!this.isOpen) return;
+        this.isOpen = false;
+        if (this.popup) this.popup.classList.remove('visible');
+        if (this._outsideHandler) {
+            document.removeEventListener('click', this._outsideHandler);
+            this._outsideHandler = null;
+        }
+    };
+
+    IOSDatePicker.prototype._createPopup = function () {
+        var self = this;
+        self.popup = document.createElement('div');
+        self.popup.className = 'ios-dp-popup';
+        self.trigger.parentElement.appendChild(self.popup);
+
+        self.popup.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var btn = e.target.closest('button');
+            if (!btn) return;
+
+            if (btn.classList.contains('ios-dp-nav')) {
+                var dir = parseInt(btn.dataset.dir);
+                self.viewMonth += dir;
+                if (self.viewMonth < 0) { self.viewMonth = 11; self.viewYear--; }
+                if (self.viewMonth > 11) { self.viewMonth = 0; self.viewYear++; }
+                self._render();
+                return;
+            }
+            if (btn.dataset.day) {
+                var mm = String(self.viewMonth + 1).padStart(2, '0');
+                var dd = String(parseInt(btn.dataset.day)).padStart(2, '0');
+                self.setValue(self.viewYear + '-' + mm + '-' + dd);
+                self.close();
+                return;
+            }
+            if (btn.classList.contains('ios-dp-today')) {
+                var now = new Date();
+                var mm = String(now.getMonth() + 1).padStart(2, '0');
+                var dd = String(now.getDate()).padStart(2, '0');
+                self.setValue(now.getFullYear() + '-' + mm + '-' + dd);
+                self.close();
+                return;
+            }
+            if (btn.classList.contains('ios-dp-clear')) {
+                self.clear();
+                self.close();
+                return;
+            }
+        });
+    };
+
+    IOSDatePicker.prototype._render = function () {
+        var self = this;
+        var now = new Date();
+        var tY = now.getFullYear(), tM = now.getMonth(), tD = now.getDate();
+        var y = self.viewYear, m = self.viewMonth;
+        var firstDay = new Date(y, m, 1).getDay();
+        var daysInMonth = new Date(y, m + 1, 0).getDate();
+        var daysInPrev = new Date(y, m, 0).getDate();
+
+        var h = '<div class="ios-dp-header">' +
+            '<button type="button" class="ios-dp-nav" data-dir="-1"><svg width="8" height="14" viewBox="0 0 8 14"><path d="M7 1L1 7l6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+            '<span class="ios-dp-month-label">' + IOS_DP_MONTHS[m] + ' ' + y + '</span>' +
+            '<button type="button" class="ios-dp-nav" data-dir="1"><svg width="8" height="14" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+            '</div>';
+
+        h += '<div class="ios-dp-weekdays">';
+        for (var w = 0; w < 7; w++) h += '<span>' + IOS_DP_WDAYS[w] + '</span>';
+        h += '</div><div class="ios-dp-days">';
+
+        for (var p = firstDay - 1; p >= 0; p--) h += '<span class="ios-dp-day other">' + (daysInPrev - p) + '</span>';
+
+        for (var d = 1; d <= daysInMonth; d++) {
+            var cls = 'ios-dp-day';
+            if (d === tD && m === tM && y === tY) cls += ' today';
+            if (self.selectedDate && d === self.selectedDate.day && m === self.selectedDate.month && y === self.selectedDate.year) cls += ' selected';
+            h += '<button type="button" class="' + cls + '" data-day="' + d + '">' + d + '</button>';
+        }
+
+        var total = firstDay + daysInMonth;
+        var rem = total % 7;
+        if (rem > 0) for (var n = 1; n <= 7 - rem; n++) h += '<span class="ios-dp-day other">' + n + '</span>';
+        h += '</div>';
+
+        h += '<div class="ios-dp-footer">' +
+            '<button type="button" class="ios-dp-action ios-dp-today">Hoje</button>' +
+            '<button type="button" class="ios-dp-action ios-dp-clear">Limpar</button>' +
+            '</div>';
+
+        self.popup.innerHTML = h;
+    };
+
+    // Instantiate date pickers
+    var taskDeadlinePicker = null;
+    var taskDeadlineBtn = document.getElementById('task-form-deadline-btn');
+    var taskDeadlineInput = document.getElementById('task-form-deadline');
+    if (taskDeadlineBtn && taskDeadlineInput) {
+        taskDeadlinePicker = new IOSDatePicker(taskDeadlineInput, taskDeadlineBtn);
+    }
+
+    var expenseDatePicker = null;
+    var expenseDateBtn = document.getElementById('expense-date-btn');
+    var expenseDateHidden = document.getElementById('expense-date');
+    if (expenseDateBtn && expenseDateHidden) {
+        expenseDatePicker = new IOSDatePicker(expenseDateHidden, expenseDateBtn);
+    }
+
+    var billDueDatePicker = null;
+    var billDueDateBtn = document.getElementById('bill-due-date-btn');
+    var billDueDateHidden = document.getElementById('bill-due-date');
+    if (billDueDateBtn && billDueDateHidden) {
+        billDueDatePicker = new IOSDatePicker(billDueDateHidden, billDueDateBtn);
+    }
+
     // Wire up add-task form
     var btnNewTask = document.getElementById('btn-new-task');
     var tasksAddForm = document.getElementById('tasks-add-form');
@@ -2653,8 +3779,13 @@
     function clearTaskForm() {
         taskFormName.value = '';
         taskFormDeadline.value = '';
+        if (taskDeadlinePicker) taskDeadlinePicker.clear();
         taskFormProject.value = '';
         taskFormTags.value = '';
+        var alwaysOnCb = document.getElementById('task-form-always-on');
+        if (alwaysOnCb) alwaysOnCb.checked = false;
+        var obsEl = document.getElementById('task-form-observations');
+        if (obsEl) obsEl.value = '';
         tasksAddForm.classList.add('hidden');
     }
 
@@ -2665,8 +3796,12 @@
             var deadline = taskFormDeadline.value || null;
             var project = taskFormProject.value.trim() || null;
             var rawTags = taskFormTags.value.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+            var alwaysOnCb = document.getElementById('task-form-always-on');
+            var alwaysOn = alwaysOnCb ? alwaysOnCb.checked : false;
+            var obsEl = document.getElementById('task-form-observations');
+            var observations = obsEl ? obsEl.value.trim() || null : null;
             clearTaskForm();
-            await createTask(name, deadline, project, rawTags);
+            await createTask(name, deadline, project, rawTags, alwaysOn, observations);
         });
     }
 
