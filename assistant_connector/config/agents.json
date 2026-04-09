@@ -131,6 +131,25 @@
       }
     },
     {
+      "name": "delete_task",
+      "description": "Exclui permanentemente uma tarefa pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_task",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa a ser excluída"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
       "name": "list_scheduled_tasks",
       "description": "Lista tarefas agendadas persistidas no SQLite do assistente.",
       "handler": "assistant_connector.tools.scheduled_task_tools:list_scheduled_tasks",
@@ -161,7 +180,7 @@
     },
     {
       "name": "create_scheduled_task",
-      "description": "Cria uma nova tarefa agendada no SQLite para execução futura via scheduler. O resultado é entregue sempre por DM no Discord e opcionalmente por email.",
+      "description": "Cria uma nova tarefa agendada no SQLite para execução futura via scheduler. O resultado é entregue por mensagem direta e opcionalmente por email.",
       "prompt_guidance": "Ao criar tarefas de lembrete sobre refeições, alimentação, exercícios ou atividade física, use task_type='logging_reminder'. Para todas as outras tarefas, use task_type='general' (padrão).",
       "handler": "assistant_connector.tools.scheduled_task_tools:create_scheduled_task",
       "write_operation": true,
@@ -182,7 +201,7 @@
           },
           "notify_email_to": {
             "type": "string",
-            "description": "Email opcional para receber também o resultado da tarefa (além da DM no Discord)."
+            "description": "Email opcional para receber também o resultado da tarefa por email."
           },
           "recurrence": {
             "type": "string",
@@ -258,7 +277,7 @@
           },
           "notify_email_to": {
             "type": "string",
-            "description": "Email opcional complementar para entrega do resultado (DM no Discord continua obrigatória)."
+            "description": "Email opcional complementar para entrega do resultado da tarefa."
           },
           "recurrence": {
             "type": "string",
@@ -334,6 +353,21 @@
       }
     },
     {
+      "name": "list_expenses",
+      "description": "Lista despesas de um mês específico (padrão: mês atual).",
+      "handler": "assistant_connector.tools.finance_tools:list_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM (padrão: mês atual)"
+          }
+        }
+      }
+    },
+    {
       "name": "register_expense",
       "description": "Registra um gasto no banco local de despesas com categoria consistente para análises futuras.",
       "prompt_guidance": "Quando registrar gastos, priorize categorias consistentes e úteis para análises futuras. Se houver ambiguidade de categoria, escolha a mais estável para relatórios mensais.",
@@ -369,6 +403,60 @@
           "amount"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_expense",
+      "description": "Edita uma despesa existente pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_expense",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expense_id": {
+            "type": "string",
+            "description": "ID da despesa a ser editada"
+          },
+          "description": {
+            "type": "string",
+            "description": "Nova descrição da despesa"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Novo valor"
+          },
+          "category": {
+            "type": "string",
+            "description": "Nova categoria"
+          },
+          "expense_date": {
+            "type": "string",
+            "description": "Nova data (YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "expense_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_expense",
+      "description": "Exclui permanentemente uma despesa pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_expense",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expense_id": {
+            "type": "string",
+            "description": "ID da despesa a ser excluída"
+          }
+        },
+        "required": [
+          "expense_id"
+        ]
       }
     },
     {
@@ -778,6 +866,42 @@
       }
     },
     {
+      "name": "register_bill",
+      "description": "Registra uma nova conta fixa mensal (ex: aluguel, internet, energia).",
+      "handler": "assistant_connector.tools.finance_tools:register_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_name": {
+            "type": "string",
+            "description": "Nome da conta (ex: Aluguel, Internet)"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Valor previsto da conta"
+          },
+          "category": {
+            "type": "string",
+            "description": "Categoria (Moradia, Saúde, etc.)"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Data de vencimento (YYYY-MM-DD)"
+          },
+          "reference_month": {
+            "type": "string",
+            "description": "Mês de referência (YYYY-MM, padrão: mês atual)"
+          }
+        },
+        "required": [
+          "bill_name",
+          "budget"
+        ]
+      }
+    },
+    {
       "name": "pay_bill",
       "description": "Marca uma conta fixa mensal como paga no banco local, com valor pago opcional.",
       "prompt_guidance": "Use esta tool para registrar pagamento de conta fixa mensal somente após confirmação explícita do usuário.",
@@ -811,6 +935,68 @@
       }
     },
     {
+      "name": "edit_bill",
+      "description": "Edita uma conta fixa existente pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_id": {
+            "type": "string",
+            "description": "ID da conta a ser editada"
+          },
+          "bill_name": {
+            "type": "string",
+            "description": "Novo nome da conta"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Novo valor previsto"
+          },
+          "category": {
+            "type": "string",
+            "description": "Nova categoria"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Nova data de vencimento (YYYY-MM-DD)"
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "Status de pagamento"
+          },
+          "paid_amount": {
+            "type": "number",
+            "description": "Valor efetivamente pago"
+          }
+        },
+        "required": [
+          "bill_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_bill",
+      "description": "Exclui permanentemente uma conta fixa pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_id": {
+            "type": "string",
+            "description": "ID da conta a ser excluída"
+          }
+        },
+        "required": [
+          "bill_id"
+        ]
+      }
+    },
+    {
       "name": "analyze_bills",
       "description": "Analisa contas fixas mensais no banco local, com totais, pendências e breakdown por categoria.",
       "prompt_guidance": "Use esta tool para análises de contas fixas mensais (totais, pendências e categorias) e para orientar priorização de pagamentos.",
@@ -829,9 +1015,30 @@
       }
     },
     {
+      "name": "list_meals",
+      "description": "Lista refeições registradas nos últimos N dias.",
+      "handler": "assistant_connector.tools.health_tools:list_meals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "n_days": {
+            "type": "integer",
+            "description": "Número de dias para listar (padrão: 1 = hoje)",
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (padrão: 50)",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
       "name": "register_meal",
-      "description": "Registra alimento consumido no banco local de refeições usando calorias estimadas pela LLM e quantidade na unidade informada pelo usuário.",
-      "prompt_guidance": "Ao registrar refeição, use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas, pré-treinos e similares. Informe a quantidade na unidade original do usuário (ex.: '250 ml', '2 unidades', '150 g'). Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte as memórias de saúde (health.md) para obter a quantidade rotineira daquele suplemento específico e use-a sem perguntar; (2) para calorias_estimadas, consulte health.md — cada suplemento tem seu valor de kcal registrado; use exatamente esse valor. Se o suplemento não tiver kcal definido em health.md, pergunte ao usuário antes de registrar. Para refeições normais, estime as calorias com base no alimento e na quantidade. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
+      "description": "Registra uma refeição com um ou mais alimentos no banco local, usando calorias estimadas pela LLM para itens sem valor informado.",
+      "prompt_guidance": "Use esta tool para registrar qualquer refeição. Passe todos os alimentos da refeição de uma só vez no campo 'alimentos' — nunca chame a tool repetidas vezes para a mesma refeição. Para cada item sem 'calorias_estimadas', o sistema chamará a LLM automaticamente para inferir. Use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas e pré-treinos. Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte health.md para obter a quantidade rotineira; (2) para calorias, consulte health.md — use exatamente o valor registrado. Se não houver kcal em health.md, pergunte antes de registrar. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
       "guidance_priority": 30,
       "handler": "assistant_connector.tools.health_tools:register_meal",
       "write_operation": true,
@@ -839,10 +1046,6 @@
       "input_schema": {
         "type": "object",
         "properties": {
-          "alimento": {
-            "type": "string",
-            "description": "Nome do alimento consumido."
-          },
           "refeicao": {
             "type": "string",
             "description": "Categoria da refeição. Use exatamente um dos valores permitidos.",
@@ -854,25 +1057,143 @@
               "SUPLEMENTO"
             ]
           },
-          "quantidade": {
+          "data": {
             "type": "string",
-            "description": "Quantidade informada pelo usuário com unidade (ex.: '150 g', '2 unidades', '250 ml', '1 litro', '1 xícara'). Aceita gramas, kg, ml, litros, unidades, porções, xícaras e colheres."
+            "description": "Data da refeição no formato YYYY-MM-DD. Padrão: hoje."
           },
-          "confirmed": {
-            "type": "boolean",
-            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
-          },
-          "calorias_estimadas": {
-            "type": "number",
-            "description": "Estimativa de calorias para a porção informada. Se omitida, o sistema usa LLM para inferir automaticamente."
+          "alimentos": {
+            "type": "array",
+            "description": "Lista de alimentos da refeição. Inclua todos os itens em uma única chamada.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "alimento": {
+                  "type": "string",
+                  "description": "Nome do alimento consumido."
+                },
+                "quantidade": {
+                  "type": "string",
+                  "description": "Quantidade com unidade (ex.: '150 g', '2 unidades', '250 ml')."
+                },
+                "calorias_estimadas": {
+                  "type": "number",
+                  "description": "Estimativa de calorias para a porção. Se omitida, o sistema infere via LLM automaticamente."
+                }
+              },
+              "required": ["alimento", "quantidade"],
+              "additionalProperties": false
+            },
+            "minItems": 1
           }
         },
         "required": [
-          "alimento",
           "refeicao",
-          "quantidade"
+          "alimentos"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_meal_group",
+      "description": "Edita a categoria (tipo) e/ou a data de todos os alimentos de uma refeição identificada pelo meal_group_id.",
+      "handler": "assistant_connector.tools.health_tools:edit_meal_group",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_group_id": {
+            "type": "string",
+            "description": "ID do grupo de refeição a ser editado."
+          },
+          "refeicao": {
+            "type": "string",
+            "description": "Novo tipo de refeição (ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ, SUPLEMENTO).",
+            "enum": ["ALMOÇO", "JANTAR", "LANCHE", "CAFÉ DA MANHÃ", "SUPLEMENTO"]
+          },
+          "data": {
+            "type": "string",
+            "description": "Nova data no formato YYYY-MM-DD."
+          }
+        },
+        "required": ["meal_group_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_meal_group",
+      "description": "Exclui permanentemente todos os alimentos de uma refeição identificada pelo meal_group_id.",
+      "handler": "assistant_connector.tools.health_tools:delete_meal_group",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_group_id": {
+            "type": "string",
+            "description": "ID do grupo de refeição a ser excluído."
+          }
+        },
+        "required": ["meal_group_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_meal",
+      "description": "Edita um alimento individual de uma refeição pelo seu ID. Use para corrigir nome, quantidade, calorias ou data de um item específico.",
+      "handler": "assistant_connector.tools.health_tools:edit_meal",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string",
+            "description": "ID da refeição a ser editada"
+          },
+          "alimento": {
+            "type": "string",
+            "description": "Novo nome do alimento"
+          },
+          "refeicao": {
+            "type": "string",
+            "description": "Novo tipo de refeição (ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ, SUPLEMENTO)"
+          },
+          "quantidade": {
+            "type": "string",
+            "description": "Nova quantidade"
+          },
+          "calorias_estimadas": {
+            "type": "number",
+            "description": "Novas calorias estimadas"
+          },
+          "data": {
+            "type": "string",
+            "description": "Nova data (YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "meal_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_meal",
+      "description": "Exclui permanentemente uma refeição pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_meal",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string",
+            "description": "ID da refeição a ser excluída"
+          }
+        },
+        "required": [
+          "meal_id"
+        ]
       }
     },
     {
@@ -950,6 +1271,27 @@
       }
     },
     {
+      "name": "list_exercises",
+      "description": "Lista exercícios registrados nos últimos N dias.",
+      "handler": "assistant_connector.tools.health_tools:list_exercises",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "n_days": {
+            "type": "integer",
+            "description": "Número de dias para listar (padrão: 1 = hoje)",
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (padrão: 50)",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
       "name": "edit_exercise",
       "description": "Edita um registro de atividade física no banco local, incluindo o campo de conclusão (Done).",
       "prompt_guidance": "Use edit_exercise para atualizar exercícios já existentes. O exercise_id pode ser obtido via analyze_exercises ou pela resposta de duplicate_exercise_found de register_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true. Não peça confirmação ao usuário — execute diretamente e informe o que foi atualizado.",
@@ -993,6 +1335,25 @@
           "exercise_id"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_exercise",
+      "description": "Exclui permanentemente um exercício pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_exercise",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "description": "ID do exercício a ser excluído"
+          }
+        },
+        "required": [
+          "exercise_id"
+        ]
       }
     },
     {
@@ -1371,7 +1732,7 @@
     },
     {
       "name": "generate_nutrition_chart",
-      "description": "Gera um gráfico visual (PNG) com o resumo de nutrição e/ou exercícios do usuário e envia automaticamente para o Telegram junto com a resposta de texto. Use após coletar os dados de refeições (analyze_meals) e/ou exercícios (analyze_exercises). Informe as metas salvas nas memórias do usuário quando disponíveis.",
+      "description": "Gera um gráfico visual (PNG) com o resumo de nutrição e/ou exercícios do usuário e retorna como anexo na resposta. Use após coletar os dados de refeições (analyze_meals) e/ou exercícios (analyze_exercises). Informe as metas salvas nas memórias do usuário quando disponíveis.",
       "handler": "assistant_connector.tools.chart_tools:generate_nutrition_chart",
       "write_operation": false,
       "input_schema": {
@@ -1465,7 +1826,9 @@
             "description": "ID da anotação a ser lida."
           }
         },
-        "required": ["note_id"],
+        "required": [
+          "note_id"
+        ],
         "additionalProperties": false
       }
     },
@@ -1487,7 +1850,9 @@
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Tags para categorizar a anotação (ex: ['trabalho', 'projeto-x'])."
           },
           "confirmed": {
@@ -1495,7 +1860,9 @@
             "description": "Use true apenas quando o usuário confirmar explicitamente a criação."
           }
         },
-        "required": ["title"],
+        "required": [
+          "title"
+        ],
         "additionalProperties": false
       }
     },
@@ -1521,7 +1888,9 @@
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Novas tags (omitir para manter as atuais)."
           },
           "confirmed": {
@@ -1529,7 +1898,9 @@
             "description": "Use true apenas quando o usuário confirmar explicitamente a edição."
           }
         },
-        "required": ["note_id"],
+        "required": [
+          "note_id"
+        ],
         "additionalProperties": false
       }
     },
@@ -1550,7 +1921,9 @@
             "description": "Use true apenas quando o usuário confirmar explicitamente a exclusão."
           }
         },
-        "required": ["note_id"],
+        "required": [
+          "note_id"
+        ],
         "additionalProperties": false
       }
     },
@@ -1571,7 +1944,9 @@
             "description": "Número máximo de resultados (1-50, padrão 20)."
           }
         },
-        "required": ["query"],
+        "required": [
+          "query"
+        ],
         "additionalProperties": false
       }
     }
@@ -1579,11 +1954,11 @@
   "agents": [
     {
       "id": "personal_assistant",
-      "description": "Assistente pessoal principal para Discord com foco em produtividade pessoal.",
+      "description": "Assistente pessoal principal com foco em produtividade e saúde pessoal.",
       "model": "gpt-4.1-mini",
       "max_tool_rounds": 6,
       "memory_window": 10,
-      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, notas, refeições, exercícios, despesas e contas fixas: armazenados localmente no banco de dados, sempre disponíveis sem configuração.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando, o que ela permite fazer e quais credenciais são necessárias. Sugira que o usuário envie /setup para ver o painel de configuração.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve usar /google_auth, clicar no link gerado e autenticar no navegador. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas ou dados financeiros sensíveis em memórias.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
+      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, notas, refeições, exercícios, despesas e contas fixas: armazenados localmente no banco de dados, sempre disponíveis sem configuração.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Gmail (leitura e busca de emails via search_emails/read_email): usa a mesma autenticação Google do Calendar, sem credenciais adicionais.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando e o que ela permite fazer. Para credenciais de email, use manage_user_credentials. Para autorizar o Google (Gmail e Calendar), o usuário deve usar o botão de conexão Google na interface.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve clicar no botão de conexão Google disponível nas configurações da interface. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nContexto financeiro:\n- Ao registrar despesas, sugira uma categoria consistente e útil para análises futuras (ex.: Alimentação, Transporte, Lazer, Saúde, Moradia, Educação, Assinatura).\n- Quando o usuário pedir análise de gastos, identifique: total por categoria, categoria com maior gasto, e se alguma categoria subiu significativamente em relação ao que foi mencionado antes.\n- Se perceber que uma despesa tem características de recorrência (ex.: \"mensalidade\", \"plano\", \"assinatura\"), pergunte ao usuário se quer registrar como conta fixa.\n- Nunca armazene valores financeiros absolutos (saldos, dívidas, renda) em memórias — apenas preferências de categorização e padrões de comportamento financeiro.\n\nContexto de saúde e nutrição:\n- Ao discutir refeições ou pedir análise nutricional, consulte health.md para verificar restrições alimentares, alergias ou preferências conhecidas antes de fazer recomendações.\n- Quando o usuário tiver meta calórica configurada, mencione o progresso em relação à meta ao fazer análises nutricionais — não apenas a média absoluta.\n- Ao registrar exercícios, se houver dados da semana disponíveis, mencione o acumulado de calorias gastas quando relevante.\n- Ao identificar mudanças de peso, metas ou restrições alimentares na conversa, salve em health.md imediatamente.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Informações de saúde (peso, alergias, metas calóricas, restrições alimentares): sempre salvar em health.md especificamente.\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas, valores financeiros absolutos (saldos, dívidas, renda) ou dados sensíveis em memórias — apenas preferências, padrões e fatos comportamentais.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
       "tools": [
         "list_available_tools",
         "list_available_agents",
@@ -1633,7 +2008,21 @@
         "create_note",
         "edit_note",
         "delete_note",
-        "search_notes"
+        "search_notes",
+        "delete_task",
+        "list_meals",
+        "edit_meal",
+        "edit_meal_group",
+        "delete_meal",
+        "delete_meal_group",
+        "list_exercises",
+        "delete_exercise",
+        "list_expenses",
+        "edit_expense",
+        "delete_expense",
+        "register_bill",
+        "edit_bill",
+        "delete_bill"
       ]
     }
   ]

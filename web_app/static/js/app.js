@@ -44,6 +44,7 @@
     const notesListSection = document.getElementById('notes-list-section');
     const notesListEl = document.getElementById('notes-list');
     const newNoteBtn = document.getElementById('btn-new-note');
+    const newFolderBtn = document.getElementById('btn-new-folder');
     const notesEditorEl = document.getElementById('notes-editor');
     const notesEmptyEl = document.getElementById('notes-empty');
     const chatEmptyEl = document.getElementById('chat-empty');
@@ -75,6 +76,10 @@
     let easyMDE = null;
     let noteSaveTimer = null;
     let noteMetadataTimer = null;
+    let allFolders = [];
+    let folderCollapsed = (function() {
+        try { return JSON.parse(localStorage.getItem('pa_folder_collapsed') || '{}'); } catch(e) { return {}; }
+    })();
 
     // Health refs
     const healthViewEl = document.getElementById('health-view');
@@ -775,7 +780,14 @@
 
     // ---- Google OAuth ----
     var googleBtn = document.getElementById('btn-google-connect');
-    var googleLabel = document.getElementById('google-connect-label');
+    var googleModalOverlay = document.getElementById('google-modal-overlay');
+    var googleModalStatus = document.getElementById('google-modal-status');
+    var googleModalDisconnect = document.getElementById('google-modal-disconnect');
+    var googleModalConnect = document.getElementById('google-modal-connect');
+    var googleModalBack = document.getElementById('google-modal-back');
+
+    var googleIsConnected = false;
+    var googleIsConfigured = false;
 
     async function checkGoogleStatus() {
         try {
@@ -784,49 +796,67 @@
             var data = await resp.json();
             if (!data.configured) {
                 googleBtn.style.display = 'none';
+                googleIsConfigured = false;
                 return;
             }
-            if (data.connected) {
-                googleLabel.textContent = 'Google: conectado ✓';
-                googleBtn.classList.remove('disconnected');
-                googleBtn.classList.add('connected');
-                googleBtn.title = 'Clique para desconectar';
-            } else {
-                googleLabel.textContent = 'Conectar Google';
-                googleBtn.classList.remove('connected');
-                googleBtn.classList.add('disconnected');
-                googleBtn.title = 'Clique para autorizar Google';
-            }
+            googleIsConfigured = true;
+            googleIsConnected = !!data.connected;
         } catch (_) {
             googleBtn.style.display = 'none';
+            googleIsConfigured = false;
         }
     }
 
-    googleBtn.addEventListener('click', async function () {
-        if (googleBtn.classList.contains('connected')) {
-            if (!confirm('Desconectar conta Google?')) return;
-            try {
-                await fetch('/api/google/disconnect', { method: 'DELETE', headers: authHeaders() });
-                showToast('Google desconectado');
-            } catch (_) {
-                showToast('Erro ao desconectar');
-            }
-            checkGoogleStatus();
-            return;
+    function openGoogleModal() {
+        googleModalStatus.textContent = googleIsConnected ? 'Conta Google conectada ✓' : 'Google não conectado';
+        googleModalDisconnect.style.display = googleIsConnected ? '' : 'none';
+        googleModalConnect.style.display = googleIsConnected ? 'none' : '';
+        googleModalOverlay.classList.add('visible');
+    }
+
+    function closeGoogleModal() {
+        googleModalOverlay.classList.remove('visible');
+    }
+
+    googleBtn.addEventListener('click', function () {
+        if (!googleIsConfigured) return;
+        openGoogleModal();
+    });
+
+    googleModalBack.addEventListener('click', closeGoogleModal);
+
+    googleModalOverlay.addEventListener('click', function (e) {
+        if (e.target === googleModalOverlay) closeGoogleModal();
+    });
+
+    googleModalDisconnect.addEventListener('click', async function () {
+        try {
+            await fetch('/api/google/disconnect', { method: 'DELETE', headers: authHeaders() });
+            showToast('Google desconectado');
+        } catch (_) {
+            showToast('Erro ao desconectar');
         }
+        closeGoogleModal();
+        await checkGoogleStatus();
+    });
+
+    googleModalConnect.addEventListener('click', async function () {
         try {
             var resp = await fetch('/api/google/auth-url', { headers: authHeaders() });
             if (!resp.ok) {
                 var err = await resp.json().catch(function () { return {}; });
                 showToast(err.detail || 'Erro ao iniciar autenticação Google');
+                closeGoogleModal();
                 return;
             }
             var data = await resp.json();
             window.open(data.auth_url, '_blank');
             showToast('Complete a autorização na nova aba');
+            closeGoogleModal();
             setTimeout(checkGoogleStatus, 15000);
         } catch (_) {
             showToast('Erro ao iniciar autenticação Google');
+            closeGoogleModal();
         }
     });
 
@@ -1394,51 +1424,184 @@
         try {
             var url = '/api/notes';
             if (activeTagFilter) url += '?tag=' + encodeURIComponent(activeTagFilter);
-            var data = await apiGet(url);
-            renderNotesList(data.notes || []);
+            var [foldersData, notesData] = await Promise.all([
+                apiGet('/api/notes/folders'),
+                apiGet(url),
+            ]);
+            allFolders = foldersData.folders || [];
+            renderNotesSidebar(allFolders, notesData.notes || []);
         } catch (err) {
             showToast('Erro ao carregar anotações');
         }
     }
 
-    function renderNotesList(notes) {
-        notesListEl.innerHTML = '';
-        notes.forEach(function (note) {
-            var div = document.createElement('div');
-            div.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
-            div.dataset.id = note.id;
+    function buildNoteItemEl(note) {
+        var div = document.createElement('div');
+        div.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
+        div.dataset.id = note.id;
+        div.draggable = true;
 
-            var contentDiv = document.createElement('div');
-            contentDiv.className = 'note-item-content';
+        var contentDiv = document.createElement('div');
+        contentDiv.className = 'note-item-content';
 
-            var titleSpan = document.createElement('span');
-            titleSpan.className = 'note-item-title';
-            titleSpan.textContent = note.title;
-            contentDiv.appendChild(titleSpan);
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'note-item-title';
+        titleSpan.textContent = note.title;
+        contentDiv.appendChild(titleSpan);
 
-            var tagsDiv = document.createElement('div');
-            tagsDiv.className = 'note-item-tags';
-            renderSidebarNoteTags(tagsDiv, note.tags || []);
-            contentDiv.appendChild(tagsDiv);
+        var tagsDiv = document.createElement('div');
+        tagsDiv.className = 'note-item-tags';
+        renderSidebarNoteTags(tagsDiv, note.tags || []);
+        contentDiv.appendChild(tagsDiv);
 
-            div.appendChild(contentDiv);
+        div.appendChild(contentDiv);
 
-            var delBtn = document.createElement('button');
-            delBtn.className = 'note-item-delete';
-            delBtn.textContent = '✕';
-            delBtn.title = 'Excluir';
-            delBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                deleteNote(note.id);
-            });
-            div.appendChild(delBtn);
-
-            div.addEventListener('click', function () {
-                selectNote(note.id);
-            });
-
-            notesListEl.appendChild(div);
+        var delBtn = document.createElement('button');
+        delBtn.className = 'note-item-delete';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Excluir';
+        delBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            deleteNote(note.id);
         });
+        div.appendChild(delBtn);
+
+        div.addEventListener('click', function () {
+            selectNote(note.id);
+        });
+
+        // HTML5 drag events
+        div.addEventListener('dragstart', function (e) {
+            e.dataTransfer.setData('text/plain', note.id);
+            e.dataTransfer.effectAllowed = 'move';
+            div.classList.add('dragging');
+        });
+        div.addEventListener('dragend', function () {
+            div.classList.remove('dragging');
+        });
+
+        return div;
+    }
+
+    function renderNotesSidebar(folders, notes) {
+        notesListEl.innerHTML = '';
+
+        if (activeTagFilter) {
+            // When filtering by tag, flat list (no folders)
+            notes.forEach(function(note) {
+                notesListEl.appendChild(buildNoteItemEl(note));
+            });
+        } else {
+            // Group by folder
+            var byFolder = {};
+            var unfiled = [];
+            notes.forEach(function(note) {
+                if (note.folder_id) {
+                    if (!byFolder[note.folder_id]) byFolder[note.folder_id] = [];
+                    byFolder[note.folder_id].push(note);
+                } else {
+                    unfiled.push(note);
+                }
+            });
+
+            // Render folders
+            folders.forEach(function(folder) {
+                var folderNotes = byFolder[folder.id] || [];
+                var isExpanded = !folderCollapsed[folder.id];
+                var folderEl = document.createElement('div');
+                folderEl.className = 'folder-item' + (isExpanded ? ' expanded' : '');
+                folderEl.dataset.folderId = folder.id;
+
+                // Folder header
+                var header = document.createElement('div');
+                header.className = 'folder-item-header';
+
+                var chevron = document.createElement('span');
+                chevron.className = 'folder-chevron';
+                chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+                var icon = document.createElement('span');
+                icon.className = 'folder-icon';
+                icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+
+                var nameSpan = document.createElement('span');
+                nameSpan.className = 'folder-name';
+                nameSpan.textContent = folder.name;
+
+                var actions = document.createElement('div');
+                actions.className = 'folder-actions';
+
+                var renameBtn = document.createElement('button');
+                renameBtn.className = 'folder-action-btn rename';
+                renameBtn.title = 'Renomear';
+                renameBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+                renameBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    startRenameFolder(folder.id, nameSpan, header);
+                });
+
+                var delFolderBtn = document.createElement('button');
+                delFolderBtn.className = 'folder-action-btn delete';
+                delFolderBtn.title = 'Excluir pasta';
+                delFolderBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+                delFolderBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    deleteFolderConfirm(folder.id, folder.name);
+                });
+
+                actions.appendChild(renameBtn);
+                actions.appendChild(delFolderBtn);
+                header.appendChild(chevron);
+                header.appendChild(icon);
+                header.appendChild(nameSpan);
+                header.appendChild(actions);
+
+                // Toggle expand on header click
+                header.addEventListener('click', function() {
+                    toggleFolderExpand(folder.id, folderEl);
+                });
+
+                // Drag-over and drop onto folder
+                folderEl.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    folderEl.classList.add('drag-over');
+                });
+                folderEl.addEventListener('dragleave', function(e) {
+                    if (!folderEl.contains(e.relatedTarget)) {
+                        folderEl.classList.remove('drag-over');
+                    }
+                });
+                folderEl.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    folderEl.classList.remove('drag-over');
+                    var noteId = e.dataTransfer.getData('text/plain');
+                    if (noteId) moveNoteToFolder(noteId, folder.id);
+                });
+
+                // Folder notes container
+                var notesContainer = document.createElement('div');
+                notesContainer.className = 'folder-notes';
+                folderNotes.forEach(function(note) {
+                    notesContainer.appendChild(buildNoteItemEl(note));
+                });
+
+                folderEl.appendChild(header);
+                folderEl.appendChild(notesContainer);
+                notesListEl.appendChild(folderEl);
+            });
+
+            // Render unfiled notes
+            if (unfiled.length > 0 && folders.length > 0) {
+                var label = document.createElement('span');
+                label.className = 'notes-unfiled-label';
+                label.textContent = 'Sem pasta';
+                notesListEl.appendChild(label);
+            }
+            unfiled.forEach(function(note) {
+                notesListEl.appendChild(buildNoteItemEl(note));
+            });
+        }
 
         if (!activeNoteId) {
             notesEditorEl.classList.add('hidden');
@@ -1446,8 +1609,83 @@
         } else if (activeTab === 'notes') {
             notesEmptyEl.classList.add('hidden');
             notesEditorEl.classList.remove('hidden');
-            // Refresh CodeMirror layout only when in edit mode
             if (easyMDE && noteIsEditing) setTimeout(function () { easyMDE.codemirror.refresh(); }, 0);
+        }
+    }
+
+    // Keep backward-compatible alias used by other code paths
+    function renderNotesList(notes) {
+        renderNotesSidebar(allFolders, notes);
+    }
+
+    function toggleFolderExpand(folderId, folderEl) {
+        var isExpanded = folderEl.classList.contains('expanded');
+        if (isExpanded) {
+            folderEl.classList.remove('expanded');
+            folderCollapsed[folderId] = true;
+        } else {
+            folderEl.classList.add('expanded');
+            delete folderCollapsed[folderId];
+        }
+        try { localStorage.setItem('pa_folder_collapsed', JSON.stringify(folderCollapsed)); } catch(e) {}
+    }
+
+    function startRenameFolder(folderId, nameSpan, header) {
+        var input = document.createElement('input');
+        input.className = 'folder-name-input';
+        input.value = nameSpan.textContent;
+        nameSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        async function commit() {
+            var newName = input.value.trim();
+            if (!newName) { input.replaceWith(nameSpan); return; }
+            try {
+                await apiPatch('/api/notes/folders/' + folderId, { name: newName });
+                nameSpan.textContent = newName;
+                var folder = allFolders.find(function(f) { return f.id === folderId; });
+                if (folder) folder.name = newName;
+            } catch (_) {
+                showToast('Erro ao renomear pasta');
+            }
+            input.replaceWith(nameSpan);
+        }
+
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { input.replaceWith(nameSpan); }
+        });
+    }
+
+    async function deleteFolderConfirm(folderId, folderName) {
+        if (!confirm('Excluir pasta "' + folderName + '"? As anotações dentro serão movidas para sem pasta.')) return;
+        try {
+            await apiDelete('/api/notes/folders/' + folderId);
+            await loadNotes();
+        } catch (_) {
+            showToast('Erro ao excluir pasta');
+        }
+    }
+
+    async function moveNoteToFolder(noteId, folderId) {
+        try {
+            await apiPatch('/api/notes/' + noteId, { folder_id: folderId });
+            await loadNotes();
+        } catch (_) {
+            showToast('Erro ao mover anotação');
+        }
+    }
+
+    async function createFolder() {
+        var name = prompt('Nome da nova pasta:');
+        if (!name || !name.trim()) return;
+        try {
+            await apiPost('/api/notes/folders', { name: name.trim() });
+            await loadNotes();
+        } catch (_) {
+            showToast('Erro ao criar pasta');
         }
     }
 
@@ -1673,6 +1911,7 @@
     });
 
     newNoteBtn.addEventListener('click', createNote);
+    newFolderBtn.addEventListener('click', createFolder);
     deleteNoteBtn.addEventListener('click', function () {
         if (activeNoteId) deleteNote(activeNoteId);
     });

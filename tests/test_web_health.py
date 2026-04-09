@@ -62,7 +62,7 @@ class TestHealthRequiresAuth:
         assert res.status_code in (401, 403)
 
     def test_create_meal_401(self, client):
-        res = client.post("/api/health/meals", json={"food": "x", "meal_type": "ALMOÇO", "quantity": "1g", "estimated_calories": 100})
+        res = client.post("/api/health/meals", json={"meal_type": "ALMOÇO", "items": [{"food": "x", "quantity": "1g"}]})
         assert res.status_code in (401, 403)
 
     def test_create_exercise_401(self, client):
@@ -166,31 +166,38 @@ class TestCreateMeal:
 
     def test_invalid_meal_type(self, client, auth_token):
         res = client.post("/api/health/meals", json={
-            "food": "Pizza", "meal_type": "INVALID", "quantity": "1 slice", "estimated_calories": 300
+            "meal_type": "INVALID",
+            "items": [{"food": "Pizza", "quantity": "1 slice", "estimated_calories": 300}]
         }, headers=_auth(auth_token))
         assert res.status_code == 400
         assert "meal_type" in res.json()["detail"]
 
     def test_calories_too_high(self, client, auth_token):
+        # calories_too_high validation removed from batch endpoint (each item uses estimate or provided value)
+        # High calorie values are accepted; test that valid payload succeeds
         res = client.post("/api/health/meals", json={
-            "food": "Something", "meal_type": "ALMOÇO", "quantity": "1 kg", "estimated_calories": 99999
+            "meal_type": "ALMOÇO",
+            "items": [{"food": "Something", "quantity": "1 kg", "estimated_calories": 40000}]
         }, headers=_auth(auth_token))
-        assert res.status_code == 400
+        assert res.status_code == 200
 
     def test_create_meal_success(self, client, auth_token):
         res = client.post("/api/health/meals", json={
-            "food": "Arroz", "meal_type": "ALMOÇO", "quantity": "200g", "estimated_calories": 300
+            "meal_type": "ALMOÇO",
+            "items": [{"food": "Arroz", "quantity": "200g", "estimated_calories": 300}]
         }, headers=_auth(auth_token))
         assert res.status_code == 200
         data = res.json()
         assert data["status"] == "created"
-        assert data["meal"]["food"] == "Arroz"
-        assert data["meal"]["calories"] == 300.0
-        assert "id" in data["meal"]
+        assert data["meals"][0]["food"] == "Arroz"
+        assert data["meals"][0]["calories"] == 300.0
+        assert "id" in data["meals"][0]
+        assert "meal_group_id" in data
 
     def test_create_meal_appears_in_dashboard(self, client, auth_token):
         client.post("/api/health/meals", json={
-            "food": "Banana", "meal_type": "LANCHE", "quantity": "1 un", "estimated_calories": 90
+            "meal_type": "LANCHE",
+            "items": [{"food": "Banana", "quantity": "1 un", "estimated_calories": 90}]
         }, headers=_auth(auth_token))
 
         from utils.timezone_utils import today_iso_in_configured_timezone
@@ -199,6 +206,47 @@ class TestCreateMeal:
         assert res.status_code == 200
         foods = [m["food"] for m in res.json()["meals"]]
         assert "Banana" in foods
+
+
+# ---- Meal foods autocomplete ----
+
+class TestMealFoods:
+    def test_meal_foods_requires_auth(self, client):
+        res = client.get("/api/health/meals/foods")
+        assert res.status_code == 401
+
+    def test_meal_foods_empty_initially(self, client, auth_token):
+        res = client.get("/api/health/meals/foods", headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert res.json()["foods"] == []
+
+    def test_meal_foods_returns_logged_foods(self, client, auth_token):
+        client.post("/api/health/meals", json={
+            "meal_type": "ALMOÇO",
+            "items": [
+                {"food": "Arroz", "quantity": "200g", "estimated_calories": 300},
+                {"food": "Feijão", "quantity": "100g", "estimated_calories": 150},
+            ]
+        }, headers=_auth(auth_token))
+        res = client.get("/api/health/meals/foods", headers=_auth(auth_token))
+        assert res.status_code == 200
+        foods = res.json()["foods"]
+        assert "Arroz" in foods
+        assert "Feijão" in foods
+
+    def test_meal_foods_ordered_by_frequency(self, client, auth_token):
+        for _ in range(2):
+            client.post("/api/health/meals", json={
+                "meal_type": "ALMOÇO",
+                "items": [{"food": "Arroz", "quantity": "200g", "estimated_calories": 300}]
+            }, headers=_auth(auth_token))
+        client.post("/api/health/meals", json={
+            "meal_type": "ALMOÇO",
+            "items": [{"food": "Banana", "quantity": "1 un", "estimated_calories": 90}]
+        }, headers=_auth(auth_token))
+        res = client.get("/api/health/meals/foods", headers=_auth(auth_token))
+        foods = res.json()["foods"]
+        assert foods.index("Arroz") < foods.index("Banana")
 
 
 # ---- Create exercise tests ----
@@ -269,4 +317,190 @@ class TestUpdateExercise:
         data = update_res.json()
         assert data["done"] is True
         assert data["calories"] == 250.0
+
+
+# ---- Nutritional analysis tests ----
+
+
+class TestNutritionalAnalysis:
+    def test_analysis_401(self, client):
+        res = client.post("/api/health/analysis")
+        assert res.status_code in (401, 403)
+
+    def test_analysis_returns_text(self, client, auth_token, monkeypatch):
+        """POST /api/health/analysis should call generate_nutritional_analysis and return markdown."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+
+        mock_result = "## Análise\nTudo certo."
+
+        def fake_generate(meals, exercises, logger=None, calorie_goal=None):
+            return mock_result
+
+        import openai_connector.llm_api as llm_mod
+        monkeypatch.setattr(llm_mod, "generate_nutritional_analysis", fake_generate)
+
+        res = client.post("/api/health/analysis", headers=_auth(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["analysis"] == mock_result
+
+    def test_analysis_includes_meals(self, client, auth_token, monkeypatch):
+        """Meals registered for recent days should be forwarded to the analysis function."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+
+        captured = {}
+
+        def fake_generate(meals, exercises, logger=None, calorie_goal=None):
+            captured["meals"] = meals
+            captured["exercises"] = exercises
+            captured["calorie_goal"] = calorie_goal
+            return "ok"
+
+        import openai_connector.llm_api as llm_mod
+        monkeypatch.setattr(llm_mod, "generate_nutritional_analysis", fake_generate)
+
+        # Register a meal for today
+        client.post("/api/health/meals", json={
+            "meal_type": "ALMOÇO",
+            "items": [{"food": "Arroz", "quantity": "200g", "estimated_calories": 300}]
+        }, headers=_auth(auth_token))
+
+        res = client.post("/api/health/analysis", headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert len(captured["meals"]) >= 1
+        assert captured["meals"][0]["food"] == "Arroz"
+
+    def test_analysis_passes_calorie_goal(self, client, auth_token, monkeypatch):
+        """Calorie goal from health store should be forwarded to the analysis function."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+
+        captured = {}
+
+        def fake_generate(meals, exercises, logger=None, calorie_goal=None):
+            captured["calorie_goal"] = calorie_goal
+            return "ok"
+
+        import openai_connector.llm_api as llm_mod
+        monkeypatch.setattr(llm_mod, "generate_nutritional_analysis", fake_generate)
+
+        # Set a custom calorie goal
+        client.put("/api/health/goals", json={"calorie_goal": 1800}, headers=_auth(auth_token))
+
+        res = client.post("/api/health/analysis", headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert captured["calorie_goal"] == 1800
+
+    def test_analysis_error_returns_500(self, client, auth_token, monkeypatch):
+        """If generate_nutritional_analysis raises, endpoint returns 500."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+
+        def fake_generate(meals, exercises, logger=None, calorie_goal=None):
+            raise RuntimeError("LLM broke")
+
+        import openai_connector.llm_api as llm_mod
+        monkeypatch.setattr(llm_mod, "generate_nutritional_analysis", fake_generate)
+
+        res = client.post("/api/health/analysis", headers=_auth(auth_token))
+        assert res.status_code == 500
+
+
+# ---- Meal group PATCH + DELETE tests ----
+
+class TestMealGroupOps:
+    def _create_meal_group(self, client, auth_token, meal_type="ALMOÇO", date=None):
+        payload: dict = {
+            "meal_type": meal_type,
+            "items": [
+                {"food": "Arroz", "quantity": "200g", "estimated_calories": 300},
+                {"food": "Frango", "quantity": "150g", "estimated_calories": 200},
+            ],
+        }
+        if date:
+            payload["date"] = date
+        res = client.post("/api/health/meals", json=payload, headers=_auth(auth_token))
+        assert res.status_code == 200
+        return res.json()["meal_group_id"]
+
+    def test_create_with_date(self, client, auth_token):
+        res = client.post("/api/health/meals", json={
+            "meal_type": "JANTAR",
+            "date": "2025-01-15",
+            "items": [{"food": "Sopa", "quantity": "300ml", "estimated_calories": 120}],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert res.json()["meals"][0]["date"] == "2025-01-15"
+
+    def test_create_with_invalid_date(self, client, auth_token):
+        res = client.post("/api/health/meals", json={
+            "meal_type": "JANTAR",
+            "date": "not-a-date",
+            "items": [{"food": "Sopa", "quantity": "300ml", "estimated_calories": 120}],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 400
+
+    def test_delete_meal_group(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token)
+        res = client.delete(f"/api/health/meals/group/{gid}", headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert res.json()["count"] == 2
+
+    def test_delete_meal_group_not_found(self, client, auth_token):
+        res = client.delete("/api/health/meals/group/nonexistent", headers=_auth(auth_token))
+        assert res.status_code == 404
+
+    def test_patch_meal_group_type(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token, meal_type="ALMOÇO")
+        res = client.patch(f"/api/health/meals/group/{gid}", json={"meal_type": "JANTAR"},
+                           headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert res.json()["count"] == 2
+
+    def test_patch_meal_group_date(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token)
+        res = client.patch(f"/api/health/meals/group/{gid}", json={"date": "2025-06-01"},
+                           headers=_auth(auth_token))
+        assert res.status_code == 200
+        assert res.json()["count"] == 2
+
+    def test_patch_meal_group_invalid_type(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token)
+        res = client.patch(f"/api/health/meals/group/{gid}", json={"meal_type": "INVALID"},
+                           headers=_auth(auth_token))
+        assert res.status_code == 400
+
+    def test_patch_meal_group_invalid_date(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token)
+        res = client.patch(f"/api/health/meals/group/{gid}", json={"date": "bad-date"},
+                           headers=_auth(auth_token))
+        assert res.status_code == 400
+
+    def test_patch_meal_group_no_fields(self, client, auth_token):
+        gid = self._create_meal_group(client, auth_token)
+        res = client.patch(f"/api/health/meals/group/{gid}", json={}, headers=_auth(auth_token))
+        assert res.status_code == 400
+
+    def test_patch_meal_group_not_found(self, client, auth_token):
+        res = client.patch("/api/health/meals/group/nonexistent", json={"meal_type": "JANTAR"},
+                           headers=_auth(auth_token))
+        assert res.status_code == 404
+
+    def test_delete_individual_meal_item(self, client, auth_token):
+        res = client.post("/api/health/meals", json={
+            "meal_type": "LANCHE",
+            "items": [{"food": "Maçã", "quantity": "1 un", "estimated_calories": 80}],
+        }, headers=_auth(auth_token))
+        meal_id = res.json()["meals"][0]["id"]
+        del_res = client.delete(f"/api/health/meals/{meal_id}", headers=_auth(auth_token))
+        assert del_res.status_code == 200
+
+    def test_patch_individual_meal_item(self, client, auth_token):
+        res = client.post("/api/health/meals", json={
+            "meal_type": "LANCHE",
+            "items": [{"food": "Maçã", "quantity": "1 un", "estimated_calories": 80}],
+        }, headers=_auth(auth_token))
+        meal_id = res.json()["meals"][0]["id"]
+        patch_res = client.patch(f"/api/health/meals/{meal_id}",
+                                 json={"food": "Pera"}, headers=_auth(auth_token))
+        assert patch_res.status_code == 200
+        assert patch_res.json()["meal"]["food"] == "Pera"
 

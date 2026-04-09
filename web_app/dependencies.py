@@ -104,6 +104,45 @@ def get_health_store():
     return _health_store
 
 
+async def get_current_user_flexible(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> dict[str, str]:
+    """Like get_current_user but also accepts JWT via ?token= query param.
+
+    Used for endpoints that must be fetchable by <img src> tags, which cannot
+    send Authorization headers.
+    """
+    token_str: Optional[str] = None
+
+    if credentials is not None:
+        token_str = credentials.credentials
+    else:
+        token_str = request.query_params.get("token") or None
+
+    if not token_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token_data = verify_token(token_str)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    store = get_user_store()
+    user = store.get_user_by_id(token_data["user_id"])
+    if not user or not user.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+    return user
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> dict[str, str]:
@@ -128,3 +167,4 @@ async def get_current_user(
             detail="User not found or inactive",
         )
     return user
+

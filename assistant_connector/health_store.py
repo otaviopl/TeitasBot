@@ -155,6 +155,14 @@ class HealthStore:
                 CREATE INDEX IF NOT EXISTS idx_health_meals_user_date
                     ON health_meals (user_id, date)
             """)
+            # Migration: add meal_group_id if not present
+            existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(health_meals)").fetchall()}
+            if "meal_group_id" not in existing_cols:
+                conn.execute("ALTER TABLE health_meals ADD COLUMN meal_group_id TEXT")
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_health_meals_group
+                    ON health_meals (meal_group_id)
+            """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS health_exercises (
                     id TEXT PRIMARY KEY,
@@ -349,6 +357,14 @@ class HealthStore:
             "done": bool(r.get("done", 0)),
         }
 
+    def delete_task(self, user_id: str, task_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM health_tasks WHERE id = ? AND user_id = ?",
+                (task_id, user_id),
+            )
+        return cursor.rowcount > 0
+
     # ---- Meals ----
 
     def create_meal(
@@ -361,6 +377,7 @@ class HealthStore:
         date: Optional[str] = None,
         normalized_amount: Optional[float] = None,
         normalized_unit: Optional[str] = None,
+        meal_group_id: Optional[str] = None,
     ) -> dict:
         meal_id = uuid.uuid4().hex
         now = _utc_now_iso()
@@ -369,11 +386,11 @@ class HealthStore:
             conn.execute(
                 """
                 INSERT INTO health_meals
-                  (id, user_id, food, meal_type, quantity, normalized_amount, normalized_unit, calories, date, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, user_id, food, meal_type, quantity, normalized_amount, normalized_unit, calories, date, created_at, meal_group_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (meal_id, user_id, food.strip(), meal_type, quantity, normalized_amount,
-                 normalized_unit, calories, meal_date, now),
+                 normalized_unit, calories, meal_date, now, meal_group_id),
             )
         return {
             "id": meal_id,
@@ -384,6 +401,7 @@ class HealthStore:
             "normalized_unit": normalized_unit,
             "calories": calories,
             "date": meal_date,
+            "meal_group_id": meal_group_id,
         }
 
     def list_meals_by_date_range(
@@ -417,10 +435,86 @@ class HealthStore:
             "normalized_unit": r.get("normalized_unit"),
             "calories": float(r["calories"]),
             "date": r["date"],
+            "meal_group_id": r.get("meal_group_id"),
         }
 
-    # ---- Exercises ----
+    def update_meal(self, user_id: str, meal_id: str, **kwargs) -> dict:
+        updates = []
+        params: list = []
+        for col in ("food", "meal_type", "quantity", "date"):
+            if col in kwargs:
+                val = str(kwargs[col]).strip()
+                if col in ("food", "meal_type", "quantity") and not val:
+                    raise ValueError(f"{col} cannot be empty")
+                updates.append(f"{col} = ?")
+                params.append(val)
+        if "calories" in kwargs:
+            updates.append("calories = ?")
+            params.append(float(kwargs["calories"]))
+        if not updates:
+            raise ValueError("At least one field to update is required")
+        params.extend([meal_id, user_id])
+        sql = f"UPDATE health_meals SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+            if cursor.rowcount == 0:
+                raise ValueError(f"Meal {meal_id!r} not found")
+            row = conn.execute("SELECT * FROM health_meals WHERE id = ?", (meal_id,)).fetchone()
+        return self._meal_row_to_dict(row)
 
+    def delete_meal(self, user_id: str, meal_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM health_meals WHERE id = ? AND user_id = ?",
+                (meal_id, user_id),
+            )
+        return cursor.rowcount > 0
+
+    def delete_meal_group(self, user_id: str, meal_group_id: str) -> int:
+        """Delete all meal items belonging to a group. Returns count of deleted rows."""
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM health_meals WHERE meal_group_id = ? AND user_id = ?",
+                (meal_group_id, user_id),
+            )
+        return cursor.rowcount
+
+    def update_meal_group(self, user_id: str, meal_group_id: str, **kwargs) -> int:
+        """Update meal_type and/or date for all items in a group. Returns count of updated rows."""
+        updates = []
+        params: list = []
+        for col in ("meal_type", "date"):
+            if col in kwargs:
+                val = str(kwargs[col]).strip()
+                if not val:
+                    raise ValueError(f"{col} cannot be empty")
+                updates.append(f"{col} = ?")
+                params.append(val)
+        if not updates:
+            raise ValueError("At least one field to update is required (meal_type or date)")
+        params.extend([meal_group_id, user_id])
+        sql = f"UPDATE health_meals SET {', '.join(updates)} WHERE meal_group_id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+        return cursor.rowcount
+
+    def get_distinct_foods(self, user_id: str, limit: int = 200) -> list[str]:
+        """Return distinct food names for a user, ordered by frequency (most used first)."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT food, COUNT(*) AS cnt
+                FROM health_meals
+                WHERE user_id = ?
+                GROUP BY food
+                ORDER BY cnt DESC, food ASC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+        return [r["food"] for r in rows]
+
+    # ---- Exercises ----
     def create_exercise(
         self,
         user_id: str,
@@ -540,6 +634,14 @@ class HealthStore:
             "duration_minutes": r.get("duration_minutes"),
         }
 
+    def delete_exercise(self, user_id: str, exercise_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM health_exercises WHERE id = ? AND user_id = ?",
+                (exercise_id, user_id),
+            )
+        return cursor.rowcount > 0
+
     def get_health_goals(self, user_id: str) -> dict:
         with self._lock, self._connect() as conn:
             row = conn.execute(
@@ -645,6 +747,65 @@ class HealthStore:
             "description": r.get("description", ""),
             "date": r["date"],
         }
+
+    def update_expense(self, user_id: str, expense_id: str, **kwargs) -> dict:
+        updates = []
+        params: list = []
+        for col in ("name", "category", "description", "date"):
+            if col in kwargs:
+                val = str(kwargs[col]).strip()
+                if col == "name" and not val:
+                    raise ValueError("name cannot be empty")
+                updates.append(f"{col} = ?")
+                params.append(val)
+        if "amount" in kwargs:
+            amt = float(kwargs["amount"])
+            if amt <= 0:
+                raise ValueError("amount must be greater than zero")
+            updates.append("amount = ?")
+            params.append(amt)
+        if not updates:
+            raise ValueError("At least one field to update is required")
+        params.extend([expense_id, user_id])
+        sql = f"UPDATE financial_expenses SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+            if cursor.rowcount == 0:
+                raise ValueError(f"Expense {expense_id!r} not found")
+            row = conn.execute("SELECT * FROM financial_expenses WHERE id = ?", (expense_id,)).fetchone()
+        return self._expense_row_to_dict(row)
+
+    def update_bill(self, user_id: str, bill_id: str, **kwargs) -> dict:
+        now = _utc_now_iso()
+        updates = ["updated_at = ?"]
+        params: list = [now]
+        for col in ("bill_name", "category", "due_date", "reference_month"):
+            if col in kwargs:
+                val = str(kwargs[col]).strip() if kwargs[col] is not None else None
+                if col == "bill_name" and not val:
+                    raise ValueError("bill_name cannot be empty")
+                updates.append(f"{col} = ?")
+                params.append(val)
+        if "budget" in kwargs:
+            b = float(kwargs["budget"])
+            if b <= 0:
+                raise ValueError("budget must be greater than zero")
+            updates.append("budget = ?")
+            params.append(b)
+        if "paid" in kwargs:
+            updates.append("paid = ?")
+            params.append(1 if kwargs["paid"] else 0)
+        if "paid_amount" in kwargs:
+            updates.append("paid_amount = ?")
+            params.append(float(kwargs["paid_amount"]))
+        params.extend([bill_id, user_id])
+        sql = f"UPDATE financial_bills SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(sql, params)
+            if cursor.rowcount == 0:
+                raise ValueError(f"Bill {bill_id!r} not found")
+            row = conn.execute("SELECT * FROM financial_bills WHERE id = ?", (bill_id,)).fetchone()
+        return self._bill_row_to_dict(row)
 
     # ---- Bills ----
 

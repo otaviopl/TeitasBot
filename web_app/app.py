@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from web_app.auth import create_access_token
-from web_app.dependencies import get_assistant_service, get_credential_store, get_current_user, get_google_oauth, get_health_store, get_user_store
+from web_app.dependencies import get_assistant_service, get_credential_store, get_current_user, get_current_user_flexible, get_google_oauth, get_health_store, get_user_store
 from web_app.user_store import WebUserStore
 
 load_dotenv()
@@ -51,12 +51,22 @@ class ConversationRename(BaseModel):
 class NoteCreate(BaseModel):
     title: str = "Nova anotação"
     content: str = ""
+    folder_id: str | None = None
 
 
 class NoteUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     tags: list[str] | None = None
+    folder_id: str | None = "__unset__"
+
+
+class FolderCreate(BaseModel):
+    name: str
+
+
+class FolderRename(BaseModel):
+    name: str
 
 
 class TaskCreate(BaseModel):
@@ -64,6 +74,8 @@ class TaskCreate(BaseModel):
     deadline: str | None = None
     project: str | None = None
     tags: list[str] = []
+    always_on: bool = False
+    observations: str | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -71,7 +83,9 @@ class TaskUpdate(BaseModel):
     deadline: str | None = "__unset__"
     project: str | None = "__unset__"
     done: bool | None = None
+    always_on: bool | None = None
     tags: list[str] | None = None
+    observations: str | None = "__unset__"
 
 
 # ---- Helpers ----
@@ -412,6 +426,86 @@ async def get_chat_image(filename: str, user: dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Image not found")
 
 
+# ---- Note image endpoints ----
+
+_NOTE_IMAGES_DIR = os.path.abspath(
+    os.getenv(
+        "NOTES_IMAGES_DIR",
+        os.path.join(os.path.dirname(__file__), "..", "note_images"),
+    )
+)
+_NOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+_NOTE_IMAGE_ACCEPTED_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_NOTE_IMAGE_ACCEPTED_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+def _get_user_note_images_dir(username: str) -> str:
+    safe = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
+    return os.path.realpath(os.path.join(_NOTE_IMAGES_DIR, safe))
+
+
+@app.post("/api/notes/images", status_code=201)
+async def upload_note_image(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    import uuid as _uuid
+
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in _NOTE_IMAGE_ACCEPTED_MIMES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Tipo de arquivo não suportado. Use: {', '.join(sorted(_NOTE_IMAGE_ACCEPTED_MIMES))}",
+        )
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in _NOTE_IMAGE_ACCEPTED_EXTS:
+        ext = "." + content_type.split("/")[-1].replace("jpeg", "jpg")
+
+    data = await file.read()
+    if len(data) > _NOTE_IMAGE_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Imagem excede o tamanho máximo ({_NOTE_IMAGE_MAX_BYTES // (1024 * 1024)} MB).",
+        )
+
+    user_dir = _get_user_note_images_dir(user["username"])
+    os.makedirs(user_dir, exist_ok=True)
+
+    filename = f"{_uuid.uuid4().hex}{ext}"
+    dest = os.path.join(user_dir, filename)
+    # Path traversal guard
+    if not os.path.realpath(dest).startswith(user_dir + os.sep) and os.path.realpath(dest) != user_dir:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    with open(dest, "wb") as f:
+        f.write(data)
+
+    return {"url": f"/api/notes/images/{filename}"}
+
+
+@app.get("/api/notes/images/{filename}")
+async def serve_note_image(
+    filename: str,
+    user: dict = Depends(get_current_user_flexible),
+):
+    safe_filename = os.path.basename(filename)
+    user_dir = _get_user_note_images_dir(user["username"])
+    candidate = os.path.join(user_dir, safe_filename)
+    real = os.path.realpath(candidate)
+
+    if not real.startswith(user_dir + os.sep) and real != user_dir:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if not os.path.isfile(real):
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    ext = os.path.splitext(safe_filename)[1].lower()
+    media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+                   ".gif": "image/gif", ".webp": "image/webp"}
+    media_type = media_types.get(ext, "application/octet-stream")
+    return FileResponse(real, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
+
+
 # ---- Note endpoints ----
 
 @app.get("/api/notes/tags")
@@ -421,6 +515,56 @@ async def list_note_tags(
 ):
     tags = store.list_user_tags(user["id"])
     return {"tags": tags}
+
+
+@app.get("/api/notes/folders")
+async def list_folders(
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    folders = store.list_folders(user["id"])
+    return {"folders": folders}
+
+
+@app.post("/api/notes/folders", status_code=201)
+async def create_folder(
+    body: FolderCreate,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    try:
+        folder = store.create_folder(user["id"], body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return folder
+
+
+@app.patch("/api/notes/folders/{folder_id}")
+async def rename_folder(
+    folder_id: str,
+    body: FolderRename,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    try:
+        updated = store.rename_folder(folder_id, user["id"], body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"status": "ok"}
+
+
+@app.delete("/api/notes/folders/{folder_id}")
+async def delete_folder(
+    folder_id: str,
+    user: dict = Depends(get_current_user),
+    store: WebUserStore = Depends(get_user_store),
+):
+    deleted = store.delete_folder(folder_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"status": "ok"}
 
 
 @app.get("/api/notes")
@@ -440,7 +584,7 @@ async def create_note(
     store: WebUserStore = Depends(get_user_store),
 ):
     try:
-        note = store.create_note(user["id"], body.title, body.content)
+        note = store.create_note(user["id"], body.title, body.content, folder_id=body.folder_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return note
@@ -467,8 +611,9 @@ async def update_note(
 ):
     if body.title is not None and not body.title.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title cannot be empty")
+    folder_id_arg = ... if body.folder_id == "__unset__" else body.folder_id
     try:
-        updated = store.update_note(note_id, user["id"], title=body.title, content=body.content, tags=body.tags)
+        updated = store.update_note(note_id, user["id"], title=body.title, content=body.content, tags=body.tags, folder_id=folder_id_arg)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if not updated:
@@ -849,6 +994,9 @@ async def health_nutritional_analysis(
 
     from assistant_connector.health_store import HealthStore
     from openai_connector.llm_api import OpenAICallError, generate_nutritional_analysis
+    from utils import create_logger
+
+    logger = create_logger.create_logger()
 
     end = _dt.date.today()
     start = end - _dt.timedelta(days=6)
@@ -877,21 +1025,46 @@ async def health_nutritional_analysis(
         except Exception:
             return []
 
-    meals, exercises = await asyncio.gather(fetch_meals(), fetch_exercises())
+    async def fetch_goals():
+        try:
+            goals = await asyncio.to_thread(store.get_health_goals, user_id)
+            return goals.get("calorie_goal")
+        except Exception:
+            return None
+
+    meals, exercises, calorie_goal = await asyncio.gather(fetch_meals(), fetch_exercises(), fetch_goals())
 
     try:
-        analysis = await asyncio.to_thread(generate_nutritional_analysis, meals, exercises, logger)
+        analysis = await asyncio.to_thread(
+            generate_nutritional_analysis, meals, exercises, logger, calorie_goal
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar análise: {exc}")
 
     return {"analysis": analysis}
 
 
-class CreateMealRequest(BaseModel):
+class MealItemRequest(BaseModel):
     food: str
-    meal_type: str
     quantity: str
-    estimated_calories: float
+    estimated_calories: float | None = None
+
+
+class CreateMealRequest(BaseModel):
+    meal_type: str
+    date: str | None = None
+    items: list[MealItemRequest]
+
+
+class UpdateMealItemRequest(BaseModel):
+    food: str | None = None
+    quantity: str | None = None
+    calories: float | None = None
+
+
+class UpdateMealGroupRequest(BaseModel):
+    meal_type: str | None = None
+    date: str | None = None
 
 
 @app.post("/api/health/meals")
@@ -899,48 +1072,176 @@ async def create_health_meal(
     body: CreateMealRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Register a meal in the local SQLite health database."""
-    from assistant_connector.health_store import HealthStore
-    from assistant_connector.health_store import parse_quantity_details, normalize_quantity
+    """Register a meal with multiple food items in the local SQLite health database."""
+    from assistant_connector.health_store import HealthStore, parse_quantity_details, normalize_quantity
+    from openai_connector.llm_api import estimate_calories
+    from utils.timezone_utils import today_iso_in_configured_timezone
 
-    food = body.food.strip()
-    if not food or len(food) > _MAX_FOOD_LEN:
-        raise HTTPException(status_code=400, detail=f"food must be 1-{_MAX_FOOD_LEN} characters")
     meal_type = body.meal_type.strip().upper()
     if meal_type not in _VALID_MEAL_TYPES:
         raise HTTPException(status_code=400, detail=f"meal_type must be one of: {', '.join(sorted(_VALID_MEAL_TYPES))}")
-    quantity = body.quantity.strip()
-    if not quantity or len(quantity) > _MAX_QUANTITY_LEN:
-        raise HTTPException(status_code=400, detail=f"quantity must be 1-{_MAX_QUANTITY_LEN} characters")
-    if body.estimated_calories <= 0 or body.estimated_calories > _MAX_CALORIES:
-        raise HTTPException(status_code=400, detail=f"estimated_calories must be between 0 and {_MAX_CALORIES}")
+    if not body.items:
+        raise HTTPException(status_code=400, detail="items must not be empty")
 
-    from utils.timezone_utils import today_iso_in_configured_timezone
+    # Validate items
+    for item in body.items:
+        food = item.food.strip()
+        if not food or len(food) > _MAX_FOOD_LEN:
+            raise HTTPException(status_code=400, detail=f"food must be 1-{_MAX_FOOD_LEN} characters")
+        quantity = item.quantity.strip()
+        if not quantity or len(quantity) > _MAX_QUANTITY_LEN:
+            raise HTTPException(status_code=400, detail=f"quantity must be 1-{_MAX_QUANTITY_LEN} characters")
 
-    normalized_amount = None
-    normalized_unit = None
-    try:
-        qty_details = parse_quantity_details(quantity)
-        qty_normalized = normalize_quantity(qty_details)
-        normalized_amount = qty_normalized["amount"]
-        normalized_unit = qty_normalized["unit"]
-    except (ValueError, Exception):
-        pass
+    # Estimate calories in parallel for items without value
+    async def resolve_calories(item: MealItemRequest) -> float:
+        if item.estimated_calories is not None:
+            return float(item.estimated_calories)
+        cal = await asyncio.to_thread(estimate_calories, f"{item.food.strip()}, {item.quantity.strip()}", "meal")
+        return float(cal) if cal is not None else 0.0
 
+    calories_list = await asyncio.gather(*[resolve_calories(i) for i in body.items])
+
+    meal_group_id = __import__("uuid").uuid4().hex
+    import datetime as _dt
+    meal_date = today_iso_in_configured_timezone()
+    if body.date:
+        try:
+            _dt.date.fromisoformat(body.date)
+            meal_date = body.date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be a valid ISO date (YYYY-MM-DD)")
     user_id = f"web:{user['username']}"
     store: HealthStore = get_health_store()
-    result = await asyncio.to_thread(
-        store.create_meal,
-        user_id=user_id,
-        food=food,
-        meal_type=meal_type,
-        quantity=quantity,
-        calories=body.estimated_calories,
-        date=today_iso_in_configured_timezone(),
-        normalized_amount=normalized_amount,
-        normalized_unit=normalized_unit,
-    )
-    return {"status": "created", "meal": result}
+    results = []
+    for item, calories in zip(body.items, calories_list):
+        food = item.food.strip()
+        quantity = item.quantity.strip()
+        normalized_amount = None
+        normalized_unit = None
+        try:
+            qty_details = parse_quantity_details(quantity)
+            qty_normalized = normalize_quantity(qty_details)
+            normalized_amount = qty_normalized["amount"]
+            normalized_unit = qty_normalized["unit"]
+        except Exception:
+            pass
+        result = await asyncio.to_thread(
+            store.create_meal,
+            user_id=user_id,
+            food=food,
+            meal_type=meal_type,
+            quantity=quantity,
+            calories=calories,
+            date=meal_date,
+            normalized_amount=normalized_amount,
+            normalized_unit=normalized_unit,
+            meal_group_id=meal_group_id,
+        )
+        results.append(result)
+    return {"status": "created", "meals": results, "meal_group_id": meal_group_id}
+
+
+@app.get("/api/health/meals/foods")
+async def list_meal_foods(
+    user: dict = Depends(get_current_user),
+):
+    """Return distinct food names previously logged by the user, most frequent first."""
+    from assistant_connector.health_store import HealthStore
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    foods = await asyncio.to_thread(store.get_distinct_foods, user_id=user_id)
+    return {"foods": foods}
+
+
+@app.delete("/api/health/meals/group/{meal_group_id}")
+async def delete_health_meal_group(
+    meal_group_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete all food items belonging to a meal group."""
+    from assistant_connector.health_store import HealthStore
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    count = await asyncio.to_thread(store.delete_meal_group, user_id=user_id, meal_group_id=meal_group_id)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Meal group not found")
+    return {"status": "deleted", "count": count}
+
+
+@app.patch("/api/health/meals/group/{meal_group_id}")
+async def update_health_meal_group(
+    meal_group_id: str,
+    body: UpdateMealGroupRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update meal_type and/or date for all food items in a meal group."""
+    import datetime as _dt
+    from assistant_connector.health_store import HealthStore
+    kwargs: dict = {}
+    if body.meal_type is not None:
+        mt = body.meal_type.strip().upper()
+        if mt not in _VALID_MEAL_TYPES:
+            raise HTTPException(status_code=400, detail=f"meal_type must be one of: {', '.join(sorted(_VALID_MEAL_TYPES))}")
+        kwargs["meal_type"] = mt
+    if body.date is not None:
+        try:
+            _dt.date.fromisoformat(body.date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be a valid ISO date (YYYY-MM-DD)")
+        kwargs["date"] = body.date
+    if not kwargs:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    try:
+        count = await asyncio.to_thread(store.update_meal_group, user_id=user_id, meal_group_id=meal_group_id, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Meal group not found")
+    return {"status": "updated", "count": count}
+
+
+@app.delete("/api/health/meals/{meal_id}")
+async def delete_health_meal(
+    meal_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a single food item from a meal."""
+    from assistant_connector.health_store import HealthStore
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    deleted = await asyncio.to_thread(store.delete_meal, user_id=user_id, meal_id=meal_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Meal item not found")
+    return {"status": "deleted"}
+
+
+@app.patch("/api/health/meals/{meal_id}")
+async def update_health_meal(
+    meal_id: str,
+    body: UpdateMealItemRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update a single food item."""
+    from assistant_connector.health_store import HealthStore
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    kwargs = {}
+    if body.food is not None:
+        kwargs["food"] = body.food.strip()
+    if body.quantity is not None:
+        kwargs["quantity"] = body.quantity.strip()
+    if body.calories is not None:
+        kwargs["calories"] = body.calories
+    if not kwargs:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    try:
+        result = await asyncio.to_thread(store.update_meal, user_id=user_id, meal_id=meal_id, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"status": "updated", "meal": result}
+
 
 
 class CreateExerciseRequest(BaseModel):
@@ -1363,7 +1664,21 @@ async def create_task(
     if body.project is not None:
         clean_project = body.project.strip()[:100] or None
     clean_tags = [t.strip().lower()[:50] for t in (body.tags or []) if t.strip()][:10]
-    task = store.create_task(user["id"], clean_name, deadline=body.deadline, project=clean_project, tags=clean_tags)
+    clean_observations = None
+    if body.observations is not None:
+        clean_observations = body.observations.strip()[:2000] or None
+    if body.always_on:
+        current_count = store.count_always_on_tasks(user["id"])
+        if current_count >= 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Limite de 5 tarefas Always ON atingido",
+            )
+    task = store.create_task(
+        user["id"], clean_name, deadline=body.deadline,
+        project=clean_project, tags=clean_tags, always_on=body.always_on,
+        observations=clean_observations,
+    )
     return task
 
 
@@ -1390,13 +1705,28 @@ async def update_task(
     tags = None
     if body.tags is not None:
         tags = [t.strip().lower()[:50] for t in body.tags if t.strip()][:10]
+    observations = body.observations
+    if observations != "__unset__" and observations is not None:
+        observations = observations.strip()[:2000] or None
+    always_on = body.always_on
+    if always_on is True:
+        current_count = store.count_always_on_tasks(user["id"])
+        existing = store.get_task(task_id, user["id"])
+        already_on = existing and existing.get("always_on", False)
+        if not already_on and current_count >= 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Limite de 5 tarefas Always ON atingido",
+            )
     updated = store.update_task(
         task_id, user["id"],
         name=name,
         deadline=deadline,
         project=project,
         done=body.done,
+        always_on=always_on,
         tags=tags,
+        observations=observations,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Task not found")

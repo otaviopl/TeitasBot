@@ -85,6 +85,13 @@
                                 <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                             </svg>
                         </button>
+                        <button class="btn-new-folder" id="btn-new-folder" title="Nova pasta">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                <line x1="12" y1="11" x2="12" y2="17"/>
+                                <line x1="9" y1="14" x2="15" y2="14"/>
+                            </svg>
+                        </button>
                         <button class="btn btn-primary btn-new-note" id="btn-new-note">+ Nova</button>
                     </div>
                 </div>
@@ -98,17 +105,13 @@
                     </div>
                 </div>
                 <div class="sidebar-notes-list" id="notes-list">
-                    <!-- Dynamically populated -->
+                    <!-- Dynamically populated: folders + unfoldered notes -->
                 </div>
             </div>
             <div class="sidebar-footer">
                 <div class="sidebar-footer-icons">
                     <button class="sidebar-footer-icon btn-google-connect" id="btn-google-connect" title="Google">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-                            <path d="M12 8v4l3 3"/>
-                        </svg>
-                        <span class="sidebar-footer-icon-label" id="google-connect-label"></span>
+                        <img src="/static/icons/google-logo.png" width="20" height="20" alt="Google" style="display:block;">
                     </button>
                     <button class="sidebar-footer-icon btn-memories" id="btn-memories" title="Memórias">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -116,13 +119,7 @@
                             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                         </svg>
                     </button>
-                    <button class="sidebar-footer-icon btn-logout" id="btn-logout-sidebar" title="Sair">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                            <polyline points="16 17 21 12 16 7"/>
-                            <line x1="21" y1="12" x2="9" y2="12"/>
-                        </svg>
-                    </button>
+
                 </div>
             </div>
         </aside>
@@ -147,8 +144,35 @@
                     </button>
                 </div>
                 <div class="chat-header-actions">
+                    <div class="health-date-nav-header hidden" id="health-date-nav-header">
+                        <button class="health-date-btn" id="health-prev-day" title="Dia anterior">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <span class="health-date-label" id="health-date-label">Hoje</span>
+                        <button class="health-date-btn" id="health-next-day" title="Próximo dia">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="health-date-nav-header hidden" id="finance-month-nav-header">
+                        <button class="health-date-btn" id="finance-prev-month" title="Mês anterior">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <span class="health-date-label" id="finance-month-label">Abril 2026</span>
+                        <button class="health-date-btn" id="finance-next-month" title="Próximo mês">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="chat-header-right">
+                    <button class="btn btn-primary btn-header-new hidden" id="btn-header-new">+ Nova</button>
                     <button class="btn btn-ghost" id="btn-reset" title="Limpar conversa">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="3 6 5 6 21 6"/>
@@ -260,6 +284,14 @@
                     </div>
                     <div class="notes-editor-actions">
                         <span class="note-save-status" id="note-save-status"></span>
+                        <button class="btn btn-ghost btn-icon-only" id="btn-export-pdf" title="Exportar como PDF">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="12" y1="18" x2="12" y2="12"/>
+                                <line x1="9" y1="15" x2="15" y2="15"/>
+                            </svg>
+                        </button>
                         <button class="btn btn-edit-note" id="btn-edit-note" title="Editar anotação">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -311,19 +343,8 @@
 
             <!-- Health view (hidden by default) -->
             <div class="health-view hidden" id="health-view">
-                <!-- Date navigator -->
+                <!-- Action buttons bar -->
                 <div class="health-date-nav">
-                    <button class="health-date-btn" id="health-prev-day" title="Dia anterior">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="15 18 9 12 15 6"/>
-                        </svg>
-                    </button>
-                    <span class="health-date-label" id="health-date-label">Hoje</span>
-                    <button class="health-date-btn" id="health-next-day" title="Próximo dia">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="9 18 15 12 9 6"/>
-                        </svg>
-                    </button>
                     <div class="health-actions">
                         <button class="btn btn-ghost btn-health-add" id="btn-health-goals" title="Editar metas">🎯 Metas</button>
                         <button class="btn btn-ghost btn-health-add" id="btn-health-analysis" title="Análise nutricional semanal">📊 Análise</button>
@@ -341,20 +362,24 @@
                 <div class="health-content hidden" id="health-content">
                     <!-- Summary card -->
                     <div class="health-summary" id="health-summary">
-                        <div class="health-summary-row">
-                            <span class="health-summary-icon">🔥</span>
-                            <span class="health-summary-text" id="health-calories-consumed">0 kcal consumidas</span>
+                        <div class="health-stats-grid">
+                            <div class="health-stat-tile">
+                                <div class="health-stat-label">🔥 Consumidas</div>
+                                <div class="health-stat-value" id="health-calories-consumed">0</div>
+                                <div class="health-stat-sub" id="health-calories-goal">/ 2400 kcal</div>
+                                <div class="health-progress-bar">
+                                    <div class="health-progress-fill" id="health-progress-fill"></div>
+                                </div>
+                            </div>
+                            <div class="health-stat-tile" id="health-burned-tile">
+                                <div class="health-stat-label">💪 Queimadas</div>
+                                <div class="health-stat-value" id="health-calories-burned">0</div>
+                                <div class="health-stat-sub" id="health-calories-burned-sub">kcal</div>
+                            </div>
                         </div>
-                        <div class="health-progress-bar">
-                            <div class="health-progress-fill" id="health-progress-fill"></div>
-                        </div>
-                        <div class="health-summary-row">
-                            <span class="health-summary-icon">💪</span>
-                            <span class="health-summary-text" id="health-calories-burned">0 kcal queimadas</span>
-                        </div>
-                        <div class="health-summary-row health-balance-row">
-                            <span class="health-summary-icon">📊</span>
-                            <span class="health-summary-text" id="health-balance">Saldo: 0 kcal</span>
+                        <div class="health-balance-row">
+                            <span class="health-balance-label">Saldo do dia</span>
+                            <span class="health-balance-value" id="health-balance">0 kcal</span>
                         </div>
                     </div>
 
@@ -380,19 +405,8 @@
 
             <!-- Finance view -->
             <div class="finance-view hidden" id="finance-view">
-                <!-- Month navigator -->
+                <!-- Month navigator actions bar -->
                 <div class="finance-month-nav">
-                    <button class="finance-month-btn" id="finance-prev-month" title="Mês anterior">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="15 18 9 12 15 6"/>
-                        </svg>
-                    </button>
-                    <span class="finance-month-label" id="finance-month-label">Abril 2026</span>
-                    <button class="finance-month-btn" id="finance-next-month" title="Próximo mês">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="9 18 15 12 9 6"/>
-                        </svg>
-                    </button>
                     <div class="finance-actions">
                         <button class="btn btn-primary btn-finance-add" id="btn-add-expense" title="Registrar despesa">+ Despesa</button>
                         <button class="btn btn-outline btn-finance-add" id="btn-add-bill" title="Registrar conta">+ Conta</button>
@@ -453,7 +467,13 @@
                     <div class="tasks-form-row tasks-form-meta">
                         <div class="tasks-form-field">
                             <label class="tasks-form-label">Prazo</label>
-                            <input type="date" class="tasks-form-date" id="task-form-deadline">
+                            <div class="ios-dp-wrap">
+                                <button type="button" class="ios-dp-trigger tasks-form-date" id="task-form-deadline-btn">
+                                    <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                                    <span class="ios-dp-text">Selecionar</span>
+                                </button>
+                                <input type="hidden" id="task-form-deadline">
+                            </div>
                         </div>
                         <div class="tasks-form-field tasks-form-ac-wrap">
                             <label class="tasks-form-label">Projeto</label>
@@ -466,10 +486,28 @@
                             <div class="tasks-autocomplete hidden" id="task-form-tags-ac"></div>
                         </div>
                     </div>
-                    <div class="tasks-form-actions">
-                        <button class="btn btn-primary" id="task-form-save">Salvar</button>
-                        <button class="btn btn-ghost" id="task-form-cancel">Cancelar</button>
+                    <div class="tasks-form-row">
+                        <textarea class="tasks-form-observations" id="task-form-observations" placeholder="Observações (opcional)…" rows="3" maxlength="2000"></textarea>
                     </div>
+                    <div class="tasks-form-actions">
+                        <label class="tasks-always-on-toggle" title="Tarefas fixas sempre visíveis (máx. 5)">
+                            <input type="checkbox" id="task-form-always-on">
+                            <span class="tasks-always-on-label">📌 Always ON</span>
+                        </label>
+                        <div class="tasks-form-buttons">
+                            <button class="btn btn-primary" id="task-form-save">Salvar</button>
+                            <button class="btn btn-ghost" id="task-form-cancel">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Always ON tasks card -->
+                <div class="always-on-card hidden" id="always-on-card">
+                    <div class="always-on-header">
+                        <span class="always-on-icon">📌</span>
+                        <span class="always-on-title">Always ON</span>
+                    </div>
+                    <div class="always-on-list" id="always-on-list"></div>
                 </div>
 
                 <!-- Task groups content -->
@@ -488,6 +526,83 @@
     </div>
     <div class="toast" id="toast"></div>
 
+    <!-- Task detail/edit modal (bottom-sheet on mobile, centered on desktop) -->
+    <div class="health-modal-overlay" id="task-detail-overlay">
+        <div class="health-modal task-detail-modal" id="task-detail-modal">
+            <!-- View mode -->
+            <div id="task-detail-view">
+                <div class="task-detail-header">
+                    <h3 id="task-detail-title"></h3>
+                    <span class="task-detail-status-badge" id="task-detail-status-badge"></span>
+                </div>
+                <div class="task-detail-meta-grid" id="task-detail-meta-grid"></div>
+                <div class="task-detail-observations-block hidden" id="task-detail-observations-block">
+                    <div class="task-detail-obs-label">Observações</div>
+                    <div class="task-detail-obs-text" id="task-detail-obs-text"></div>
+                </div>
+                <div class="task-detail-created" id="task-detail-created"></div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="task-detail-edit-btn">✏ Editar</button>
+                    <button class="modal-close-btn" id="task-detail-close">Fechar</button>
+                </div>
+            </div>
+            <!-- Edit mode -->
+            <div id="task-edit-view" class="hidden">
+                <h3>Editar Tarefa</h3>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-name">Nome</label>
+                    <input type="text" class="health-form-input" id="task-edit-name" maxlength="200" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label">Prazo</label>
+                    <div class="ios-dp-wrap">
+                        <button type="button" class="ios-dp-trigger tasks-form-date" id="task-edit-deadline-btn">
+                            <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                            <span class="ios-dp-text" id="task-edit-deadline-text">Selecionar</span>
+                        </button>
+                        <input type="hidden" id="task-edit-deadline">
+                    </div>
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-project">Projeto</label>
+                    <input type="text" class="health-form-input" id="task-edit-project" placeholder="Projeto…" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-tags">Tags</label>
+                    <input type="text" class="health-form-input" id="task-edit-tags" placeholder="tag1, tag2…" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-observations">Observações</label>
+                    <textarea class="health-form-input task-edit-observations" id="task-edit-observations" rows="4" maxlength="2000" placeholder="Observações…"></textarea>
+                </div>
+                <div class="health-form-group">
+                    <label class="tasks-always-on-toggle">
+                        <input type="checkbox" id="task-edit-always-on">
+                        <span class="tasks-always-on-label">📌 Always ON</span>
+                    </label>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="task-edit-save-btn">Salvar</button>
+                    <button class="btn btn-ghost" id="task-edit-cancel-btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google status modal -->
+    <div class="google-modal-overlay" id="google-modal-overlay">
+        <div class="google-modal">
+            <div class="google-modal-header">
+                <img src="/static/icons/google-logo.png" width="24" height="24" alt="Google">
+                <h3>Google</h3>
+            </div>
+            <p class="google-modal-status" id="google-modal-status">Verificando...</p>
+            <button class="google-modal-btn google-modal-btn--disconnect" id="google-modal-disconnect" style="display:none;">Desconectar</button>
+            <button class="google-modal-btn google-modal-btn--connect" id="google-modal-connect" style="display:none;">Conectar</button>
+            <button class="google-modal-btn google-modal-btn--back" id="google-modal-back">Voltar</button>
+        </div>
+    </div>
+
     <!-- Memories modal -->
     <div class="memories-modal-overlay" id="memories-modal-overlay">
         <div class="memories-modal">
@@ -502,11 +617,8 @@
     <!-- Health: Add meal modal (bottom-sheet on mobile) -->
     <div class="health-modal-overlay" id="health-meal-overlay">
         <div class="health-modal" id="health-meal-modal">
-            <h3>Registrar Refeição</h3>
+            <h3 id="meal-modal-title">Registrar Refeição</h3>
             <form id="health-meal-form" autocomplete="off">
-                <label class="health-form-label" for="meal-food">Alimento</label>
-                <input type="text" id="meal-food" class="health-form-input" placeholder="Ex: Arroz integral" maxlength="200" required>
-
                 <label class="health-form-label">Tipo de refeição</label>
                 <div class="health-chip-group" id="meal-type-chips">
                     <button type="button" class="health-chip" data-value="CAFÉ DA MANHÃ">Café</button>
@@ -516,15 +628,12 @@
                     <button type="button" class="health-chip" data-value="SUPLEMENTO">Suplemento</button>
                 </div>
 
-                <div class="health-form-row">
-                    <div class="health-form-col">
-                        <label class="health-form-label" for="meal-quantity">Quantidade</label>
-                        <input type="text" id="meal-quantity" class="health-form-input" placeholder="150 g" maxlength="100" required>
-                    </div>
-                    <div class="health-form-col">
-                        <label class="health-form-label" for="meal-calories">Calorias (est.)</label>
-                        <input type="number" id="meal-calories" class="health-form-input" placeholder="250" min="1" max="50000" step="any" required>
-                    </div>
+                <div class="meal-items-header">
+                    <span class="health-form-label" style="margin:0">Alimentos</span>
+                    <button type="button" class="meal-add-item-btn" id="meal-add-item-btn">&#43;</button>
+                </div>
+                <div class="meal-items-list" id="meal-items-list">
+                    <!-- rows injected by JS -->
                 </div>
 
                 <button type="submit" class="btn btn-primary health-form-submit" id="meal-submit-btn">Registrar Refeição</button>
@@ -585,9 +694,12 @@
     <div class="health-modal-overlay" id="health-analysis-overlay">
         <div class="health-modal health-analysis-modal" id="health-analysis-modal">
             <h3>📊 Análise Nutricional — 7 dias</h3>
+            <div class="health-analysis-chart-wrap" id="health-analysis-chart-wrap">
+                <canvas id="health-analysis-chart"></canvas>
+            </div>
             <div class="health-analysis-loading" id="health-analysis-loading">
-                <div class="loading-spinner"></div>
-                <p>Criando análise nutricional...</p>
+                <div class="analysis-loading-icon" id="analysis-loading-icon">🏃</div>
+                <p class="analysis-loading-phrase" id="analysis-loading-phrase">Analisando seus nutrientes da semana...</p>
             </div>
             <div class="health-analysis-content hidden" id="health-analysis-content"></div>
             <button class="modal-close-btn" id="health-analysis-close">Fechar</button>
@@ -615,8 +727,14 @@
                     <button type="button" class="health-chip active" data-value="Outros">Outros</button>
                 </div>
 
-                <label class="health-form-label" for="expense-date">Data</label>
-                <input type="date" id="expense-date" class="health-form-input">
+                <label class="health-form-label">Data</label>
+                <div class="ios-dp-wrap">
+                    <button type="button" class="ios-dp-trigger health-form-input" id="expense-date-btn">
+                        <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                        <span class="ios-dp-text">Selecionar</span>
+                    </button>
+                    <input type="hidden" id="expense-date">
+                </div>
 
                 <button type="submit" class="btn btn-primary health-form-submit" id="expense-submit-btn">Registrar Despesa</button>
             </form>
@@ -645,8 +763,14 @@
                     <button type="button" class="health-chip active" data-value="Outros">Outros</button>
                 </div>
 
-                <label class="health-form-label" for="bill-due-date">Vencimento</label>
-                <input type="date" id="bill-due-date" class="health-form-input">
+                <label class="health-form-label">Vencimento</label>
+                <div class="ios-dp-wrap">
+                    <button type="button" class="ios-dp-trigger health-form-input" id="bill-due-date-btn">
+                        <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                        <span class="ios-dp-text">Selecionar</span>
+                    </button>
+                    <input type="hidden" id="bill-due-date">
+                </div>
 
                 <button type="submit" class="btn btn-primary health-form-submit" id="bill-submit-btn">Registrar Conta</button>
             </form>
@@ -657,6 +781,7 @@
     <!-- Markdown renderer (lightweight) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/audio.js"></script>
     <script src="/static/js/app.js"></script>
 

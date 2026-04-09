@@ -41,8 +41,10 @@ DEFAULT_PROMPT = (
     "\n- Não responder em JSON."
     "\n- Seja breve e direto."
     "\n- Se não houver tarefa, escreva exatamente: \"Sem tarefas para priorizar hoje.\""
-    "\n- Considere o campo Tags (ex.: TAKES TIME, FAST, FUP) para ajustar a priorização por esforço/contexto."
+    "\n- Considere o campo Tags (ex.: TAKES TIME, FAST, FUP, CRITICAL) para ajustar a priorização por esforço/urgência."
     "\n- Use o campo projeto para equilibrar prioridades entre contextos (ex.: Pessoal, Draiven, Monks)."
+    "\n- Tarefas com mais de 3 dias de atraso são automaticamente CRÍTICAS, independente de outros fatores."
+    "\n- Se a lista tiver mais de 12 tarefas, agrupe por projeto e destaque as 2-3 mais urgentes de cada um."
     "\n- Na lista final, para cada tarefa, mostre explicitamente o projeto e uma label de prazo: [ATRASADA] ou [NO PRAZO]."
     "\n\nTarefas:"
 )
@@ -50,38 +52,44 @@ TASK_PARSER_PROMPT = (
     "Você recebe uma frase para criar uma tarefa e deve retornar somente JSON válido."
     "\nExtraia os campos: task_name, project, due_date, tags."
     "\nRegras:"
+    "\n- task_name deve ter a primeira letra maiúscula e as demais em caixa normal (não ALL CAPS)."
     "\n- due_date deve estar em formato YYYY-MM-DD."
-    "\n- tags deve ser uma lista de strings."
-    "\n- tags deve representar tipo/complexidade/contexto da tarefa (ex.: FAST, TAKES TIME, FOLLOWUP, DEEP WORK, ADMIN)."
+    "\n- tags deve ser uma lista de strings em UPPERCASE."
+    "\n- tags deve representar tipo/complexidade/contexto da tarefa (ex.: FAST, TAKES TIME, FOLLOWUP, DEEP WORK, ADMIN, CRITICAL)."
     "\n- tags NÃO deve representar data/período/horário (ex.: amanhã, hoje, manhã, tarde, noite, segunda, urgente amanhã)."
+    "\n- Se a frase contiver palavras como \"urgente\", \"urgentemente\" ou \"crítico\", adicione a tag CRITICAL."
     "\n- Se data não for informada, use a data de hoje."
     "\n- Se projeto não for informado, use \"Pessoal\"."
     "\n- Não inclua texto fora do JSON."
-    "\nExemplo de formato:"
-    "\n{\"task_name\":\"...\",\"project\":\"Pessoal\",\"due_date\":\"2026-03-01\",\"tags\":[\"FAST\"]}"
+    "\nExemplo:"
+    "\n{\"task_name\":\"Revisar proposta comercial\",\"project\":\"Trabalho\",\"due_date\":\"2026-03-01\",\"tags\":[\"DEEP WORK\",\"FOLLOWUP\"]}"
 )
 EVENT_PARSER_PROMPT = (
     "Você recebe uma frase para criar um evento no Google Calendar e deve retornar somente JSON válido."
-    "\nExtraia os campos: summary, start_datetime, end_datetime, description, timezone."
+    "\nExtraia os campos: summary, start_datetime, end_datetime, description, location, timezone."
     "\nRegras:"
     "\n- Corrija erros gramaticais e normalize o texto do usuário antes de preencher summary/description."
     "\n- O summary deve ser curto, claro e bem escrito."
-    "\n- A description deve ser reescrita com gramática correta quando houver texto livre do usuário."
+    "\n- A description deve ser reescrita com gramática correta quando houver texto livre do usuário; use string vazia se não houver."
     "\n- start_datetime e end_datetime devem estar em formato YYYY-MM-DDTHH:MM."
+    "\n- Se o usuário mencionar duração (ex.: \"reunião de 1h\", \"30 minutos\"), calcule end_datetime a partir de start_datetime."
+    "\n- Se end_datetime não puder ser determinado, assuma duração padrão de 1 hora."
+    "\n- location deve conter o local do evento (endereço, link, sala); use string vazia se não informado."
     "\n- timezone deve ser um timezone IANA (ex.: America/Sao_Paulo)."
-    "\n- Se descrição não for informada, use string vazia."
     "\n- Se timezone não for informado, use \"America/Sao_Paulo\"."
     "\n- Não inclua texto fora do JSON."
     "\nExemplo:"
-    "\n{\"summary\":\"Reunião\",\"start_datetime\":\"2026-03-03T10:00\",\"end_datetime\":\"2026-03-03T11:00\",\"description\":\"Kickoff\",\"timezone\":\"America/Sao_Paulo\"}"
+    "\n{\"summary\":\"Reunião de kickoff\",\"start_datetime\":\"2026-03-03T10:00\",\"end_datetime\":\"2026-03-03T11:00\","
+    "\"description\":\"Kickoff do projeto X com o cliente.\",\"location\":\"Sala de reuniões 2\",\"timezone\":\"America/Sao_Paulo\"}"
 )
 NOTE_PARSER_PROMPT = (
     "Você recebe uma frase para criar uma anotação e deve retornar somente JSON válido."
     "\nExtraia os campos: note_name, tag, observations, url."
     "\nRegras:"
-    "\n- note_name deve ser curto e claro."
-    "\n- tag deve ser coerente com o tema principal da anotação e conter uma única categoria."
-    "\n- observations deve conter o conteúdo principal da anotação."
+    "\n- note_name deve ser curto, claro e com a primeira letra maiúscula."
+    "\n- tag deve ser em UPPERCASE, coerente com o tema principal e uma única palavra ou sigla."
+    "\n- Vocabulário preferido de tags: IDEA, REFERENCE, MEETING, LEARNING, FINANCE, HEALTH, PERSONAL, WORK, TASK, TECH."
+    "\n- observations deve conter o conteúdo principal da anotação, bem escrito e corrigido gramaticalmente."
     "\n- url deve conter link válido (http/https) quando houver; caso contrário, string vazia."
     "\n- Não inclua texto fora do JSON."
     "\nExemplo:"
@@ -92,7 +100,7 @@ NOTE_METADATA_PROMPT = (
     "\nGere dois campos: title e tags."
     "\nRegras:"
     "\n- title: um título curto e descritivo (máx. 60 caracteres) que resuma o conteúdo."
-    "\n- tags: lista de 1 a 3 tags relevantes em minúsculas. Tags são palavras-chave curtas (1-2 palavras)."
+    "\n- tags: lista de 1 a 5 tags relevantes em minúsculas. Tags são palavras-chave curtas (1-2 palavras)."
     "\n- Use o mesmo idioma do conteúdo para título e tags."
     "\n- Se o conteúdo estiver vazio ou for muito curto, use title \"Nova anotação\" e tags []."
     "\n- Não inclua texto fora do JSON."
@@ -100,14 +108,17 @@ NOTE_METADATA_PROMPT = (
     "\n{\"title\":\"Planejamento sprint Q2\",\"tags\":[\"trabalho\",\"sprint\",\"planejamento\"]}"
 )
 CALENDAR_SUMMARY_PROMPT = (
-    "Você é um assistente e deve resumir eventos da agenda da semana para o assistente pessoal em português."
+    "Você é um assistente pessoal e deve resumir eventos da agenda da semana em português."
     "\nFormato obrigatório em Markdown:"
     "\n## Agenda da semana"
-    "\n- **DD/MM HH:MM** — Evento (contexto curto)"
+    "\n- **DD/MM HH:MM** — Evento (contexto curto) [local se disponível]"
     "\n## Destaques"
-    "\n- Linha com conflitos, blocos longos ou janela livre."
+    "\n- Bullet por cada ponto relevante: conflito de horário, bloco longo, janela livre, evento em <24h."
     "\nRegras:"
     "\n- Seja breve e útil."
+    "\n- Eventos que ocorrem em menos de 24 horas a partir de agora: prefixar com ⚡."
+    "\n- Se dois eventos se sobrepõem no horário, sinalize com ⚠️ conflito."
+    "\n- Eventos recorrentes: adicionar `(recorrente)` ao final da linha."
     "\n- Ao listar eventos, não inclua links automaticamente; mostre apenas nome, dia e horário."
     "\n- Só inclua links ou detalhes extras de um evento quando o usuário pedir explicitamente."
     "\n- Se não houver eventos, responda exatamente: \"Sem eventos na agenda para os próximos 7 dias.\""
@@ -117,14 +128,16 @@ DAY_SUMMARY_PROMPT = (
     "\nFormato obrigatório em Markdown:"
     "\n## Resumo do dia"
     "\n### Tarefas de hoje"
-    "\n- **HH:MM ou Dia inteiro** — Tarefa (Projeto) [Tags]"
+    "\n- **[ATRASADA] ou [NO PRAZO]** — Tarefa (Projeto) [Tags]"
     "\n### Agenda de hoje"
-    "\n- **HH:MM ou Dia inteiro** — Evento (local opcional)"
+    "\n- **HH:MM** — Evento (local opcional)"
     "\n### Foco recomendado"
-    "\n- 1 a 3 bullets curtos com prioridade e próximo passo."
+    "\n- Mencione explicitamente a tarefa mais importante do dia."
+    "\n- Até 2 bullets adicionais com próximos passos concretos."
     "\nRegras:"
     "\n- Seja objetivo, claro e organizado."
     "\n- Não responder em JSON."
+    "\n- Tarefas com prazo anterior a hoje devem ser marcadas [ATRASADA]; demais, [NO PRAZO]."
     "\n- Se não houver tarefas e nem eventos hoje, responda exatamente:"
     "\n\"## Resumo do dia\\n\\nSem tarefas e sem eventos para hoje.\""
 )
@@ -302,17 +315,18 @@ def generate_note_metadata(content: str, project_logger) -> dict:
     raw_tags = data.get("tags", [])
     if not isinstance(raw_tags, list):
         raw_tags = []
-    tags = [str(t).strip().lower() for t in raw_tags[:3] if str(t).strip()]
+    tags = [str(t).strip().lower() for t in raw_tags[:5] if str(t).strip()]
 
     return {"title": title, "tags": tags}
 
 
-def estimate_calories(description: str, category: str = "meal", logger=None) -> float | None:
+def estimate_calories(description: str, category: str = "meal", user_weight_kg: float = 75.0, logger=None) -> float | None:
     """Use LLM to estimate calories for a meal or exercise.
 
     Args:
         description: Human-readable description (e.g. "200g arroz branco" or "corrida 30 min").
         category: "meal" for food calories, "exercise" for calories burned.
+        user_weight_kg: Body weight in kg used for exercise calorie estimation (default: 75).
         logger: Optional logger instance.
 
     Returns:
@@ -325,10 +339,12 @@ def estimate_calories(description: str, category: str = "meal", logger=None) -> 
     openai_client = _create_openai_client()
     llm_model = _get_llm_model()
 
+    weight = max(30.0, min(300.0, float(user_weight_kg or 75.0)))
+
     if category == "exercise":
         prompt = (
-            "Estime as calorias gastas na seguinte atividade física. "
-            "Considere uma pessoa adulta de ~75 kg. "
+            f"Estime as calorias gastas na seguinte atividade física. "
+            f"Considere uma pessoa adulta de {weight:.0f} kg. "
             "Responda APENAS com um número inteiro representando as kcal gastas. "
             "Sem texto adicional, sem unidade — apenas o número.\n\n"
             f"Atividade: {description}"
@@ -336,6 +352,8 @@ def estimate_calories(description: str, category: str = "meal", logger=None) -> 
     else:
         prompt = (
             "Estime as calorias (kcal) da seguinte refeição/alimento na quantidade indicada. "
+            "Se a quantidade não for especificada, assuma uma porção padrão típica brasileira. "
+            "Considere o método de preparo quando mencionado (grelhado, frito, cozido, etc.). "
             "Responda APENAS com um número inteiro representando as kcal. "
             "Sem texto adicional, sem unidade — apenas o número.\n\n"
             f"Alimento: {description}"
@@ -361,30 +379,31 @@ def estimate_calories(description: str, category: str = "meal", logger=None) -> 
 
 
 _NUTRITIONAL_ANALYSIS_PROMPT = (
-    "Você é um nutricionista esportivo profissional. Analise os dados de alimentação e exercícios "
-    "dos últimos 7 dias fornecidos abaixo e produza uma análise nutricional completa e detalhada em português.\n\n"
-    "A análise deve conter:\n"
-    "1. **Resumo calórico** — média diária consumida vs. queimada, tendência da semana\n"
-    "2. **Macronutrientes estimados** — estimativa de proteínas, carboidratos e gorduras com base nos alimentos listados\n"
-    "3. **Micronutrientes relevantes** — análise de cálcio, ferro, vitaminas A, C, D, B12, magnésio, zinco, etc. "
-    "baseado nos alimentos consumidos\n"
-    "4. **Fibras e hidratação** — estimativa de fibras com base nos alimentos\n"
-    "5. **Equilíbrio dos exercícios** — calorias gastas, frequência, variedade, adequação ao consumo calórico\n"
-    "6. **Pontos positivos** — o que está indo bem\n"
-    "7. **Pontos de atenção** — deficiências prováveis, excessos, desequilíbrios\n"
-    "8. **Recomendações** — sugestões práticas para melhorar a dieta e os exercícios\n\n"
-    "Use formatação Markdown (títulos, listas, negrito). Seja específico e baseado nos dados reais fornecidos. "
-    "Se não houver dados suficientes para uma seção, indique isso claramente."
+    "Você é um nutricionista esportivo. Analise os dados de alimentação e exercícios "
+    "dos últimos 7 dias e produza uma análise concisa em português com Markdown.\n\n"
+    "Inclua:\n"
+    "1. **Resumo calórico** — média diária de consumo, total gasto em exercícios e saldo líquido. "
+    "Se a meta calórica do usuário estiver disponível, compare diretamente com ela.\n"
+    "2. **Macronutrientes estimados** — proteínas, carboidratos, gorduras (estimativa baseada nos alimentos listados)\n"
+    "3. **Pontos positivos** e **Pontos de atenção**\n"
+    "4. **Recomendações práticas** — 3 a 5 sugestões objetivas baseadas nos dados reais\n\n"
+    "Seja direto e baseado nos dados fornecidos. Máximo 500 palavras."
 )
 
 
-def generate_nutritional_analysis(meals: list[dict], exercises: list[dict], logger=None) -> str:
-    """Call LLM to produce a detailed 7-day nutritional analysis.
+def generate_nutritional_analysis(
+    meals: list[dict],
+    exercises: list[dict],
+    logger=None,
+    calorie_goal: int | None = None,
+) -> str:
+    """Call LLM to produce a 7-day nutritional analysis.
 
     Args:
         meals: List of meal dicts with keys: food, meal_type, quantity, calories, date.
         exercises: List of exercise dicts with keys: activity, calories, duration_minutes, date.
         logger: Optional logger instance.
+        calorie_goal: User's daily calorie goal in kcal; injected into the prompt when provided.
 
     Returns:
         Markdown-formatted analysis string.
@@ -394,6 +413,8 @@ def generate_nutritional_analysis(meals: list[dict], exercises: list[dict], logg
 
     # Build data summary for the prompt
     lines = []
+    if calorie_goal:
+        lines.append(f"## Meta calórica diária do usuário: {calorie_goal} kcal\n")
     lines.append("## Refeições dos últimos 7 dias\n")
     if meals:
         for m in meals:
@@ -419,28 +440,29 @@ def generate_nutritional_analysis(meals: list[dict], exercises: list[dict], logg
         lines.append("_Nenhum exercício registrado._")
 
     data_text = "\n".join(lines)
-    # Limit to avoid excessive tokens
-    if len(data_text) > 8000:
-        data_text = data_text[:8000] + "\n... (dados truncados)"
+    if len(data_text) > 4000:
+        data_text = data_text[:4000] + "\n... (dados truncados)"
 
     openai_client = _create_openai_client()
     llm_model = _get_llm_model()
-
-    full_prompt = f"{_NUTRITIONAL_ANALYSIS_PROMPT}\n\n---\n\n{data_text}"
 
     if logger:
         logger.info("Calling LLM for nutritional analysis (%d meals, %d exercises)...", len(meals), len(exercises))
 
     try:
         completion = _safe_openai_call(
-            lambda: openai_client.responses.create(model=llm_model, input=full_prompt),
+            lambda: openai_client.responses.create(
+                model=llm_model,
+                instructions=_NUTRITIONAL_ANALYSIS_PROMPT,
+                input=data_text,
+            ),
             description="generate_nutritional_analysis",
         )
         return completion.output_text.strip()
     except OpenAICallError as exc:
         if logger:
             logger.error("Nutritional analysis LLM call failed: %s", exc)
-        return f"Erro ao gerar análise nutricional: {exc}"
+        raise  # let the caller (endpoint) handle it and return proper error to the frontend
 
 
 def transcribe_audio_input(audio_bytes, filename, mime_type, project_logger):
@@ -681,6 +703,7 @@ def build_period_summary_prompt(period_label, tasks, events):
             "\n- Seja objetivo, claro e organizado."
             "\n- Não responder em JSON."
             "\n- Não liste todas as tarefas ou eventos individualmente; sintetize os principais pontos."
+            "\n- Tarefas com prazo anterior a hoje são CRÍTICAS e devem ser mencionadas primeiro."
             f"\n- Se não houver tarefas e nem eventos para {empty_target}, responda exatamente:"
             f"\n\"{empty_message.replace(chr(10), '\\\\n')}\""
             f"\n\n{temporal_context}"
@@ -691,14 +714,16 @@ def build_period_summary_prompt(period_label, tasks, events):
             "\nFormato obrigatório em Markdown:"
             f"\n## Resumo {summary_title}"
             f"\n### {section_tasks}"
-            "\n- **HH:MM ou Dia inteiro** — Tarefa (Projeto) [Tags]"
+            "\n- **[ATRASADA] ou [NO PRAZO]** — Tarefa (Projeto) [Tags]"
             f"\n### {section_events}"
             "\n- **HH:MM ou Dia inteiro** — Evento (local opcional)"
             "\n### Foco recomendado"
-            "\n- 1 a 3 bullets curtos com prioridade e próximo passo."
+            "\n- Mencione a tarefa mais importante do período."
+            "\n- Até 2 bullets adicionais com próximos passos concretos."
             "\nRegras:"
             "\n- Seja objetivo, claro e organizado."
             "\n- Não responder em JSON."
+            "\n- Tarefas com prazo anterior a hoje devem ser marcadas [ATRASADA]; demais, [NO PRAZO]."
             f"\n- Se não houver tarefas e nem eventos para {empty_target}, responda exatamente:"
             f"\n\"{empty_message.replace(chr(10), '\\\\n')}\""
             f"\n\n{temporal_context}"

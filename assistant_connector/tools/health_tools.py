@@ -13,6 +13,28 @@ _default_db_path = os.path.abspath(
 )
 _health_store = HealthStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
 
+
+def _resolve_web_task_user_id(context_user_id: str) -> tuple[str, bool]:
+    """Return (resolved_user_uuid, is_web) for web users, or (original_user_id, False) for others.
+
+    Web users have context.user_id = "web:<username>". Their tasks are stored in web_tasks
+    keyed by the UUID from web_users table, not by the session user_id string.
+    """
+    if not context_user_id.startswith("web:"):
+        return context_user_id, False
+    username = context_user_id[len("web:"):]
+    # Strip optional conversation suffix: "web:carlos:conv-id" → "carlos"
+    username = username.split(":")[0]
+    try:
+        from web_app.user_store import WebUserStore
+        _user_store = WebUserStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
+        user = _user_store.get_user_by_username(username)
+        if user:
+            return user["id"], True
+    except Exception:
+        pass
+    return context_user_id, False
+
 _ALLOWED_MEAL_CATEGORIES = ("ALMOÇO", "JANTAR", "LANCHE", "CAFÉ DA MANHÃ", "SUPLEMENTO")
 _MEAL_CATEGORY_ALIASES = {
     "almoco": "ALMOÇO", "almoço": "ALMOÇO",
@@ -128,7 +150,28 @@ def _build_meal_insights(meals: list, meal_breakdown: list, average_calories_per
 
 def list_tasks(arguments, context):
     n_days = max(int(arguments.get("n_days", 0)), 0)
-    limit = min(max(int(arguments.get("limit", 10)), 1), 50)
+    limit = min(max(int(arguments.get("limit", 20)), 1), 50)
+
+    web_user_id, is_web = _resolve_web_task_user_id(context.user_id)
+    if is_web:
+        from web_app.user_store import WebUserStore
+        _user_store = WebUserStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
+        import datetime as _dt
+        all_tasks = _user_store.list_tasks(user_id=web_user_id, include_done=False)
+        today = _dt.date.today()
+        if n_days == 0:
+            # tasks due today or overdue
+            tasks = [t for t in all_tasks if t.get("deadline") and t["deadline"] <= today.isoformat()]
+        else:
+            cutoff = (today + _dt.timedelta(days=n_days)).isoformat()
+            tasks = [t for t in all_tasks if not t.get("deadline") or t["deadline"] <= cutoff]
+        # Normalize field names to match what the LLM expects
+        normalized = [{"id": t["id"], "task_name": t["name"], "due_date": t.get("deadline"),
+                       "project": t.get("project"), "done": t.get("done", False),
+                       "always_on": t.get("always_on", False), "tags": t.get("tags", [])}
+                      for t in tasks[:limit]]
+        return {"total": len(normalized), "returned": len(normalized), "tasks": normalized}
+
     tasks = _health_store.list_tasks(user_id=context.user_id, n_days=n_days, limit=limit)
     return {"total": len(tasks), "returned": len(tasks), "tasks": tasks}
 
@@ -147,12 +190,19 @@ def create_task(arguments, context):
     if not isinstance(tags, list):
         raise ValueError("tags must be a list")
     clean_tags = [str(t).strip() for t in tags if str(t).strip()]
+
+    web_user_id, is_web = _resolve_web_task_user_id(context.user_id)
+    if is_web:
+        from web_app.user_store import WebUserStore
+        _user_store = WebUserStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
+        task = _user_store.create_task(user_id=web_user_id, name=task_name,
+                                       deadline=due_date, project=project, tags=clean_tags)
+        return {"id": task["id"], "task_name": task["name"], "due_date": task.get("deadline"),
+                "project": task.get("project"), "done": False, "tags": task.get("tags", [])}
+
     return _health_store.create_task(
-        user_id=context.user_id,
-        task_name=task_name,
-        project=project,
-        due_date=due_date,
-        tags=clean_tags,
+        user_id=context.user_id, task_name=task_name,
+        project=project, due_date=due_date, tags=clean_tags,
     )
 
 
@@ -160,6 +210,31 @@ def edit_task(arguments, context):
     task_id = str(arguments.get("task_id", "")).strip()
     if not task_id:
         raise ValueError("task_id is required")
+
+    web_user_id, is_web = _resolve_web_task_user_id(context.user_id)
+    if is_web:
+        from web_app.user_store import WebUserStore
+        _user_store = WebUserStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
+        kwargs = {}
+        if "task_name" in arguments:
+            kwargs["name"] = str(arguments["task_name"]).strip()
+        if "project" in arguments:
+            kwargs["project"] = str(arguments["project"]).strip() or "Pessoal"
+        if "due_date" in arguments:
+            kwargs["deadline"] = str(arguments["due_date"]).strip()
+        if "done" in arguments:
+            kwargs["done"] = bool(arguments["done"])
+        if "tags" in arguments:
+            kwargs["tags"] = [str(t).strip() for t in arguments["tags"] if str(t).strip()]
+        if not kwargs:
+            raise ValueError("At least one task field is required")
+        updated = _user_store.update_task(task_id=task_id, user_id=web_user_id, **kwargs)
+        if not updated:
+            raise ValueError(f"Task {task_id!r} not found")
+        task = _user_store.get_task(task_id=task_id, user_id=web_user_id)
+        return {"id": task["id"], "task_name": task["name"], "due_date": task.get("deadline"),
+                "project": task.get("project"), "done": task.get("done", False)}
+
     kwargs = {}
     if "task_name" in arguments:
         name = str(arguments.get("task_name", "")).strip()
@@ -188,65 +263,140 @@ def edit_task(arguments, context):
     return _health_store.update_task(user_id=context.user_id, task_id=task_id, **kwargs)
 
 
+def delete_task(arguments, context):
+    task_id = str(arguments.get("task_id", "")).strip()
+    if not task_id:
+        raise ValueError("task_id is required")
+
+    web_user_id, is_web = _resolve_web_task_user_id(context.user_id)
+    if is_web:
+        from web_app.user_store import WebUserStore
+        _user_store = WebUserStore(db_path=os.getenv("ASSISTANT_MEMORY_PATH", _default_db_path))
+        deleted = _user_store.delete_task(task_id=task_id, user_id=web_user_id)
+        if not deleted:
+            raise ValueError(f"Task {task_id!r} not found")
+        return {"status": "deleted", "task_id": task_id}
+
+    deleted = _health_store.delete_task(user_id=context.user_id, task_id=task_id)
+    if not deleted:
+        raise ValueError(f"Task {task_id!r} not found")
+    return {"status": "deleted", "task_id": task_id}
+
+
 # ---------------------------------------------------------------------------
 # Meal tools
 # ---------------------------------------------------------------------------
 
-def register_meal(arguments, context):
-    food = str(arguments.get("alimento", arguments.get("food", ""))).strip()
-    meal_type = _normalize_meal_category(arguments.get("refeicao", arguments.get("meal_type", "")))
-    quantity = str(arguments.get("quantidade", arguments.get("quantity", ""))).strip()
-    meal_date = str(arguments.get("data", arguments.get("date", today_iso_in_configured_timezone()))).strip()
-    estimated_calories = arguments.get("calorias_estimadas", arguments.get("estimated_calories"))
+def _resolve_item_calories(food: str, quantity: str, estimated_calories, logger) -> tuple[float, str]:
+    """Return (calories, estimation_method) for a food item. Calls LLM if calories not provided."""
+    if estimated_calories is not None:
+        try:
+            cal = float(str(estimated_calories).replace(",", "."))
+        except ValueError:
+            raise ValueError(f"calorias_estimadas must be a valid number for '{food}'")
+        if cal <= 0:
+            raise ValueError(f"calorias_estimadas must be greater than zero for '{food}'")
+        return cal, "provided"
+    inferred = estimate_calories(f"{food}, {quantity}", category="meal", logger=logger)
+    if inferred is None:
+        raise ValueError(f"calorias_estimadas is required for '{food}' (LLM estimation also failed)")
+    return float(inferred), "llm_inferred"
 
-    if not food:
-        raise ValueError("alimento is required")
-    if not quantity:
-        raise ValueError("quantidade is required")
+
+def _normalize_quantity_str(quantity: str) -> tuple[str, float | None, str | None]:
+    """Return (normalized_str, normalized_amount, normalized_unit)."""
+    try:
+        qty_details = parse_quantity_details(quantity)
+        qty_normalized = normalize_quantity(qty_details)
+        return f"{qty_details['amount']} {qty_details['unit']}", qty_normalized["amount"], qty_normalized["unit"]
+    except Exception:
+        return quantity, None, None
+
+
+def register_meal(arguments, context):
+    meal_type = _normalize_meal_category(arguments.get("refeicao", arguments.get("meal_type", "")))
+    meal_date = str(arguments.get("data", arguments.get("date", today_iso_in_configured_timezone()))).strip()
     try:
         datetime.date.fromisoformat(meal_date)
     except ValueError:
         raise ValueError("date must be a valid ISO date (YYYY-MM-DD)")
 
-    calorie_estimation_method = "provided"
-    if estimated_calories is None:
-        logger = getattr(context, "project_logger", None)
-        inferred = estimate_calories(f"{food}, {quantity}", category="meal", logger=logger)
-        if inferred is None:
-            raise ValueError("calorias_estimadas is required (LLM estimation also failed)")
-        estimated_calories = inferred
-        calorie_estimation_method = "llm_inferred"
+    raw_items = arguments.get("alimentos", arguments.get("items"))
+    logger = getattr(context, "project_logger", None)
 
-    try:
-        calories = float(str(estimated_calories).replace(",", "."))
-    except ValueError:
-        raise ValueError("calorias_estimadas must be a valid number")
-    if calories <= 0:
-        raise ValueError("calorias_estimadas must be greater than zero")
+    # Batch path: alimentos is a list of food objects
+    if isinstance(raw_items, list):
+        if not raw_items:
+            raise ValueError("alimentos must not be empty")
+        meal_group_id = __import__("uuid").uuid4().hex
+        meals = []
+        total_calories = 0.0
+        for item in raw_items:
+            food = str(item.get("alimento", item.get("food", ""))).strip()
+            quantity = str(item.get("quantidade", item.get("quantity", ""))).strip()
+            if not food:
+                raise ValueError("alimento is required for each item")
+            if not quantity:
+                raise ValueError("quantidade is required for each item")
+            cal, method = _resolve_item_calories(
+                food, quantity, item.get("calorias_estimadas", item.get("estimated_calories")), logger
+            )
+            quantity, norm_amount, norm_unit = _normalize_quantity_str(quantity)
+            meal = _health_store.create_meal(
+                user_id=context.user_id,
+                food=food,
+                meal_type=meal_type,
+                quantity=quantity,
+                calories=cal,
+                date=meal_date,
+                normalized_amount=norm_amount,
+                normalized_unit=norm_unit,
+                meal_group_id=meal_group_id,
+            )
+            meal["calorie_estimation_method"] = method
+            meals.append(meal)
+            total_calories += cal
+        return {
+            "status": "created",
+            "meal_group_id": meal_group_id,
+            "meal_type": meal_type,
+            "date": meal_date,
+            "total_calories": round(total_calories, 2),
+            "meals": meals,
+        }
 
-    normalized_amount = None
-    normalized_unit = None
-    try:
-        qty_details = parse_quantity_details(quantity)
-        qty_normalized = normalize_quantity(qty_details)
-        normalized_amount = qty_normalized["amount"]
-        normalized_unit = qty_normalized["unit"]
-        quantity = f"{qty_details['amount']} {qty_details['unit']}"
-    except (ValueError, Exception):
-        pass
-
+    # Legacy single-item path (backward compat)
+    food = str(arguments.get("alimento", arguments.get("food", ""))).strip()
+    quantity = str(arguments.get("quantidade", arguments.get("quantity", ""))).strip()
+    if not food:
+        raise ValueError("alimento is required")
+    if not quantity:
+        raise ValueError("quantidade is required")
+    cal, method = _resolve_item_calories(
+        food, quantity, arguments.get("calorias_estimadas", arguments.get("estimated_calories")), logger
+    )
+    quantity, norm_amount, norm_unit = _normalize_quantity_str(quantity)
+    meal_group_id = __import__("uuid").uuid4().hex
     meal = _health_store.create_meal(
         user_id=context.user_id,
         food=food,
         meal_type=meal_type,
         quantity=quantity,
-        calories=calories,
+        calories=cal,
         date=meal_date,
-        normalized_amount=normalized_amount,
-        normalized_unit=normalized_unit,
+        normalized_amount=norm_amount,
+        normalized_unit=norm_unit,
+        meal_group_id=meal_group_id,
     )
-    meal["calorie_estimation_method"] = calorie_estimation_method
-    return {"status": "created", "meal": meal}
+    meal["calorie_estimation_method"] = method
+    return {
+        "status": "created",
+        "meal_group_id": meal_group_id,
+        "meal_type": meal_type,
+        "date": meal_date,
+        "total_calories": round(cal, 2),
+        "meals": [meal],
+    }
 
 
 def analyze_meals(arguments, context):
@@ -531,3 +681,151 @@ def check_daily_logging_status(arguments, context):
         "exercise_count": len(exercises),
         "exercise_names": exercise_names,
     }
+
+
+# ---------------------------------------------------------------------------
+# Delete task
+# ---------------------------------------------------------------------------
+
+def delete_task(arguments, context):
+    task_id = str(arguments.get("task_id", "")).strip()
+    if not task_id:
+        raise ValueError("task_id is required")
+    deleted = _health_store.delete_task(user_id=context.user_id, task_id=task_id)
+    if not deleted:
+        raise ValueError(f"Task {task_id!r} not found")
+    return {"status": "deleted", "task_id": task_id}
+
+
+# ---------------------------------------------------------------------------
+# Meal CRUD (list, edit, delete, group ops)
+# ---------------------------------------------------------------------------
+
+def list_meals(arguments, context):
+    n_days = max(int(arguments.get("n_days", 1)), 1)
+    limit = min(max(int(arguments.get("limit", 50)), 1), 200)
+    today = today_in_configured_timezone()
+    start = (today - datetime.timedelta(days=n_days - 1)).isoformat()
+    end = today.isoformat()
+    meals = _health_store.list_meals_by_date_range(
+        user_id=context.user_id, start_date=start, end_date=end, limit=limit,
+    )
+    # Group items by meal_group_id; ungrouped items remain as individual entries
+    groups: dict = {}
+    ungrouped: list = []
+    for meal in meals:
+        gid = meal.get("meal_group_id")
+        if gid:
+            if gid not in groups:
+                groups[gid] = {
+                    "meal_group_id": gid,
+                    "meal_type": meal["meal_type"],
+                    "date": meal["date"],
+                    "items": [],
+                    "total_calories": 0.0,
+                }
+            groups[gid]["items"].append(meal)
+            groups[gid]["total_calories"] = round(
+                groups[gid]["total_calories"] + float(meal.get("calories") or 0), 2
+            )
+        else:
+            ungrouped.append(meal)
+    meal_groups = list(groups.values())
+    return {
+        "total": len(meals),
+        "start_date": start,
+        "end_date": end,
+        "meal_groups": meal_groups,
+        "ungrouped_items": ungrouped,
+    }
+
+
+def edit_meal(arguments, context):
+    meal_id = str(arguments.get("meal_id", "")).strip()
+    if not meal_id:
+        raise ValueError("meal_id is required")
+    kwargs = {}
+    for arg_key, store_key in [("alimento", "food"), ("food", "food"),
+                                ("refeicao", "meal_type"), ("meal_type", "meal_type"),
+                                ("quantidade", "quantity"), ("quantity", "quantity"),
+                                ("data", "date"), ("date", "date")]:
+        if arg_key in arguments and store_key not in kwargs:
+            val = str(arguments[arg_key]).strip()
+            if store_key == "meal_type":
+                val = _normalize_meal_category(val)
+            kwargs[store_key] = val
+    for arg_key in ("calorias_estimadas", "estimated_calories", "calories"):
+        if arg_key in arguments and "calories" not in kwargs:
+            kwargs["calories"] = float(str(arguments[arg_key]).replace(",", "."))
+    if not kwargs:
+        raise ValueError("At least one field to update is required")
+    return _health_store.update_meal(user_id=context.user_id, meal_id=meal_id, **kwargs)
+
+
+def delete_meal(arguments, context):
+    meal_id = str(arguments.get("meal_id", "")).strip()
+    if not meal_id:
+        raise ValueError("meal_id is required")
+    deleted = _health_store.delete_meal(user_id=context.user_id, meal_id=meal_id)
+    if not deleted:
+        raise ValueError(f"Meal {meal_id!r} not found")
+    return {"status": "deleted", "meal_id": meal_id}
+
+
+def delete_meal_group(arguments, context):
+    meal_group_id = str(arguments.get("meal_group_id", "")).strip()
+    if not meal_group_id:
+        raise ValueError("meal_group_id is required")
+    count = _health_store.delete_meal_group(user_id=context.user_id, meal_group_id=meal_group_id)
+    if count == 0:
+        raise ValueError(f"Meal group {meal_group_id!r} not found")
+    return {"status": "deleted", "meal_group_id": meal_group_id, "items_deleted": count}
+
+
+def edit_meal_group(arguments, context):
+    meal_group_id = str(arguments.get("meal_group_id", "")).strip()
+    if not meal_group_id:
+        raise ValueError("meal_group_id is required")
+    kwargs = {}
+    if "refeicao" in arguments or "meal_type" in arguments:
+        raw = arguments.get("refeicao", arguments.get("meal_type", ""))
+        kwargs["meal_type"] = _normalize_meal_category(raw)
+    if "data" in arguments or "date" in arguments:
+        meal_date = str(arguments.get("data", arguments.get("date", ""))).strip()
+        try:
+            datetime.date.fromisoformat(meal_date)
+        except ValueError:
+            raise ValueError("date must be a valid ISO date (YYYY-MM-DD)")
+        kwargs["date"] = meal_date
+    if not kwargs:
+        raise ValueError("At least one field to update is required (refeicao or data)")
+    count = _health_store.update_meal_group(user_id=context.user_id, meal_group_id=meal_group_id, **kwargs)
+    if count == 0:
+        raise ValueError(f"Meal group {meal_group_id!r} not found")
+    return {"status": "updated", "meal_group_id": meal_group_id, "items_updated": count}
+
+
+# ---------------------------------------------------------------------------
+# Exercise CRUD (list, delete)
+# ---------------------------------------------------------------------------
+
+def list_exercises(arguments, context):
+    n_days = max(int(arguments.get("n_days", 1)), 1)
+    limit = min(max(int(arguments.get("limit", 50)), 1), 200)
+    today = today_in_configured_timezone()
+    start = (today - datetime.timedelta(days=n_days - 1)).isoformat()
+    end = today.isoformat()
+    exercises = _health_store.list_exercises_by_date_range(
+        user_id=context.user_id, start_date=start, end_date=end, limit=limit,
+    )
+    return {"total": len(exercises), "start_date": start, "end_date": end, "exercises": exercises}
+
+
+def delete_exercise(arguments, context):
+    exercise_id = str(arguments.get("exercise_id", "")).strip()
+    if not exercise_id:
+        raise ValueError("exercise_id is required")
+    deleted = _health_store.delete_exercise(user_id=context.user_id, exercise_id=exercise_id)
+    if not deleted:
+        raise ValueError(f"Exercise {exercise_id!r} not found")
+    return {"status": "deleted", "exercise_id": exercise_id}

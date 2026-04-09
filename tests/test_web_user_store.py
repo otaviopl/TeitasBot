@@ -375,3 +375,114 @@ class TestNotes:
     def test_delete_note_nonexistent(self, store):
         user = store.create_user("alice", "secret123")
         assert store.delete_note("nonexistent", user["id"]) is False
+
+
+class TestNoteFolders:
+    def _user(self, store):
+        return store.create_user("alice", "secret123")
+
+    def test_create_folder(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Projetos")
+        assert folder["id"]
+        assert folder["name"] == "Projetos"
+        assert folder["user_id"] == user["id"]
+
+    def test_create_folder_empty_name_raises(self, store):
+        user = self._user(store)
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.create_folder(user["id"], "  ")
+
+    def test_list_folders_empty(self, store):
+        user = self._user(store)
+        assert store.list_folders(user["id"]) == []
+
+    def test_list_folders(self, store):
+        user = self._user(store)
+        store.create_folder(user["id"], "A")
+        store.create_folder(user["id"], "B")
+        folders = store.list_folders(user["id"])
+        assert len(folders) == 2
+        names = [f["name"] for f in folders]
+        assert "A" in names and "B" in names
+
+    def test_list_folders_scoped_to_user(self, store):
+        u1 = self._user(store)
+        u2 = store.create_user("bob", "secret456")
+        store.create_folder(u1["id"], "Alice folder")
+        assert store.list_folders(u2["id"]) == []
+
+    def test_rename_folder(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Old Name")
+        result = store.rename_folder(folder["id"], user["id"], "New Name")
+        assert result is True
+        folders = store.list_folders(user["id"])
+        assert folders[0]["name"] == "New Name"
+
+    def test_rename_folder_empty_name_raises(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Folder")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            store.rename_folder(folder["id"], user["id"], "  ")
+
+    def test_rename_folder_wrong_user(self, store):
+        u1 = self._user(store)
+        u2 = store.create_user("bob", "secret456")
+        folder = store.create_folder(u1["id"], "Folder")
+        assert store.rename_folder(folder["id"], u2["id"], "Hijacked") is False
+
+    def test_delete_folder_moves_notes_to_root(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Pasta")
+        note = store.create_note(user["id"], "Nota", folder_id=folder["id"])
+        assert note["folder_id"] == folder["id"]
+        store.delete_folder(folder["id"], user["id"])
+        updated = store.get_note(note["id"], user["id"])
+        assert updated["folder_id"] is None
+
+    def test_delete_folder_wrong_user(self, store):
+        u1 = self._user(store)
+        u2 = store.create_user("bob", "secret456")
+        folder = store.create_folder(u1["id"], "Folder")
+        assert store.delete_folder(folder["id"], u2["id"]) is False
+
+    def test_delete_folder_nonexistent(self, store):
+        user = self._user(store)
+        assert store.delete_folder("nonexistent", user["id"]) is False
+
+    def test_note_folder_id_in_list(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Pasta")
+        store.create_note(user["id"], "In folder", folder_id=folder["id"])
+        store.create_note(user["id"], "No folder")
+        notes = store.list_notes(user["id"])
+        folder_ids = {n["folder_id"] for n in notes}
+        assert folder["id"] in folder_ids
+        assert None in folder_ids
+
+    def test_update_note_folder_id(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Pasta")
+        note = store.create_note(user["id"], "Note")
+        assert note["folder_id"] is None
+        store.update_note(note["id"], user["id"], folder_id=folder["id"])
+        updated = store.get_note(note["id"], user["id"])
+        assert updated["folder_id"] == folder["id"]
+
+    def test_update_note_folder_id_to_none(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Pasta")
+        note = store.create_note(user["id"], "Note", folder_id=folder["id"])
+        store.update_note(note["id"], user["id"], folder_id=None)
+        updated = store.get_note(note["id"], user["id"])
+        assert updated["folder_id"] is None
+
+    def test_update_note_without_folder_id_preserves_it(self, store):
+        user = self._user(store)
+        folder = store.create_folder(user["id"], "Pasta")
+        note = store.create_note(user["id"], "Note", folder_id=folder["id"])
+        # Update only title, folder_id should be unchanged
+        store.update_note(note["id"], user["id"], title="New title")
+        updated = store.get_note(note["id"], user["id"])
+        assert updated["folder_id"] == folder["id"]

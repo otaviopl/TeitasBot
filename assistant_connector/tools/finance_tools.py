@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import re
 
-from assistant_connector.tools.health_tools import _health_store
+from assistant_connector.tools.health_tools import _health_store, _read_optional_boolean
 from utils.timezone_utils import today_in_configured_timezone, today_iso_in_configured_timezone
 
 _CATEGORY_KEYWORDS = {
@@ -333,3 +333,130 @@ def analyze_bills(arguments, context):
         "pending_budget": pending_budget,
         "breakdown_by_category": breakdown_by_category,
     }
+
+
+# ---------------------------------------------------------------------------
+# Expenses: list, edit, delete
+# ---------------------------------------------------------------------------
+
+def list_expenses(arguments, context):
+    month_value = str(arguments.get("month", "")).strip()
+    if month_value:
+        if not re.fullmatch(r"\d{4}-\d{2}", month_value):
+            raise ValueError("month must follow YYYY-MM")
+    else:
+        month_value = today_in_configured_timezone().strftime("%Y-%m")
+    expenses = _health_store.list_expenses_by_month(
+        user_id=context.user_id,
+        month=month_value,
+    )
+    return {"month": month_value, "total": len(expenses), "expenses": expenses}
+
+
+def edit_expense(arguments, context):
+    expense_id = str(arguments.get("expense_id", "")).strip()
+    if not expense_id:
+        raise ValueError("expense_id is required")
+    kwargs = {}
+    if "description" in arguments or "name" in arguments:
+        kwargs["name"] = str(arguments.get("description", arguments.get("name", ""))).strip()
+    if "amount" in arguments:
+        kwargs["amount"] = float(str(arguments["amount"]).replace(",", "."))
+    if "category" in arguments:
+        desc = kwargs.get("name", "")
+        kwargs["category"] = _normalize_expense_category(arguments["category"], desc)
+    if "expense_date" in arguments or "date" in arguments:
+        d = str(arguments.get("expense_date", arguments.get("date", ""))).strip()
+        if d:
+            datetime.date.fromisoformat(d[:10])
+            kwargs["date"] = d[:10]
+    if not kwargs:
+        raise ValueError("At least one field to update is required")
+    result = _health_store.update_expense(user_id=context.user_id, expense_id=expense_id, **kwargs)
+    return {"status": "updated", "expense": result}
+
+
+def delete_expense(arguments, context):
+    expense_id = str(arguments.get("expense_id", "")).strip()
+    if not expense_id:
+        raise ValueError("expense_id is required")
+    deleted = _health_store.delete_expense(user_id=context.user_id, expense_id=expense_id)
+    if not deleted:
+        raise ValueError(f"Expense {expense_id!r} not found")
+    return {"status": "deleted", "expense_id": expense_id}
+
+
+# ---------------------------------------------------------------------------
+# Bills: register, edit, delete
+# ---------------------------------------------------------------------------
+
+def register_bill(arguments, context):
+    bill_name = str(arguments.get("bill_name", arguments.get("nome", ""))).strip()
+    if not bill_name:
+        raise ValueError("bill_name is required")
+    budget = arguments.get("budget", arguments.get("valor", None))
+    if budget is None:
+        raise ValueError("budget is required")
+    budget = float(str(budget).replace(",", "."))
+    if budget <= 0:
+        raise ValueError("budget must be > 0")
+    raw_cat = str(arguments.get("category", arguments.get("categoria", "Outros"))).strip()
+    category = _normalize_expense_category(raw_cat, bill_name)
+    due_date = arguments.get("due_date", arguments.get("vencimento"))
+    if due_date:
+        due_date = str(due_date).strip()[:10]
+        datetime.date.fromisoformat(due_date)
+    else:
+        due_date = None
+    ref_month = arguments.get("reference_month", arguments.get("mes"))
+    if ref_month:
+        ref_month = str(ref_month).strip()[:7]
+    else:
+        ref_month = today_in_configured_timezone().strftime("%Y-%m")
+    result = _health_store.create_bill(
+        user_id=context.user_id,
+        bill_name=bill_name,
+        budget=budget,
+        category=category,
+        due_date=due_date,
+        reference_month=ref_month,
+    )
+    return {"status": "created", "bill": result}
+
+
+def edit_bill(arguments, context):
+    bill_id = str(arguments.get("bill_id", "")).strip()
+    if not bill_id:
+        raise ValueError("bill_id is required")
+    kwargs = {}
+    if "bill_name" in arguments or "nome" in arguments:
+        kwargs["bill_name"] = str(arguments.get("bill_name", arguments.get("nome", ""))).strip()
+    if "budget" in arguments or "valor" in arguments:
+        kwargs["budget"] = float(str(arguments.get("budget", arguments.get("valor", "0"))).replace(",", "."))
+    if "category" in arguments or "categoria" in arguments:
+        desc = kwargs.get("bill_name", "")
+        kwargs["category"] = _normalize_expense_category(
+            str(arguments.get("category", arguments.get("categoria", ""))), desc)
+    if "due_date" in arguments or "vencimento" in arguments:
+        d = str(arguments.get("due_date", arguments.get("vencimento", ""))).strip()
+        if d:
+            datetime.date.fromisoformat(d[:10])
+            kwargs["due_date"] = d[:10]
+    if "paid" in arguments:
+        kwargs["paid"] = _read_optional_boolean(arguments, "paid")
+    if "paid_amount" in arguments:
+        kwargs["paid_amount"] = float(str(arguments["paid_amount"]).replace(",", "."))
+    if not kwargs:
+        raise ValueError("At least one field to update is required")
+    result = _health_store.update_bill(user_id=context.user_id, bill_id=bill_id, **kwargs)
+    return {"status": "updated", "bill": result}
+
+
+def delete_bill(arguments, context):
+    bill_id = str(arguments.get("bill_id", "")).strip()
+    if not bill_id:
+        raise ValueError("bill_id is required")
+    deleted = _health_store.delete_bill(user_id=context.user_id, bill_id=bill_id)
+    if not deleted:
+        raise ValueError(f"Bill {bill_id!r} not found")
+    return {"status": "deleted", "bill_id": bill_id}

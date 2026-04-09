@@ -41,7 +41,7 @@ class TestAssistantConfigLoader(unittest.TestCase):
             configuration.tools["analyze_meals"].prompt_guidance,
         )
         self.assertIn(
-            "unidade original do usuário",
+            "todos os alimentos da refeição de uma só vez",
             configuration.tools["register_meal"].prompt_guidance,
         )
         self.assertIn(

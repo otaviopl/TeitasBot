@@ -509,6 +509,61 @@ class TestTaskEndpoints:
         assert res.status_code in (401, 403)
 
 
+class TestAlwaysOnTasks:
+    def test_create_always_on_task(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Fixada", "always_on": True}, headers=auth_headers(auth_token))
+        assert res.status_code == 201
+        assert res.json()["always_on"] is True
+
+    def test_always_on_default_false(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Normal"}, headers=auth_headers(auth_token))
+        assert res.status_code == 201
+        assert res.json()["always_on"] is False
+
+    def test_always_on_limit_5(self, client, auth_token):
+        for i in range(5):
+            res = client.post("/api/tasks", json={"name": f"AO {i}", "always_on": True}, headers=auth_headers(auth_token))
+            assert res.status_code == 201
+        # 6th should fail
+        res = client.post("/api/tasks", json={"name": "AO 5", "always_on": True}, headers=auth_headers(auth_token))
+        assert res.status_code == 400
+        assert "5" in res.json()["detail"]
+
+    def test_toggle_always_on_via_patch(self, client, auth_token):
+        res = client.post("/api/tasks", json={"name": "Tela"}, headers=auth_headers(auth_token))
+        task_id = res.json()["id"]
+        # Set always_on
+        res = client.patch(f"/api/tasks/{task_id}", json={"always_on": True}, headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        # Verify
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        task = next(t for t in res.json()["tasks"] if t["id"] == task_id)
+        assert task["always_on"] is True
+        # Unset
+        res = client.patch(f"/api/tasks/{task_id}", json={"always_on": False}, headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        task = next(t for t in res.json()["tasks"] if t["id"] == task_id)
+        assert task["always_on"] is False
+
+    def test_always_on_limit_on_patch(self, client, auth_token):
+        for i in range(5):
+            client.post("/api/tasks", json={"name": f"AO {i}", "always_on": True}, headers=auth_headers(auth_token))
+        # Create a normal task then try to set always_on
+        res = client.post("/api/tasks", json={"name": "Normal"}, headers=auth_headers(auth_token))
+        task_id = res.json()["id"]
+        res = client.patch(f"/api/tasks/{task_id}", json={"always_on": True}, headers=auth_headers(auth_token))
+        assert res.status_code == 400
+
+    def test_always_on_listed(self, client, auth_token):
+        client.post("/api/tasks", json={"name": "Pinned", "always_on": True}, headers=auth_headers(auth_token))
+        res = client.get("/api/tasks", headers=auth_headers(auth_token))
+        tasks = res.json()["tasks"]
+        pinned = [t for t in tasks if t["always_on"]]
+        assert len(pinned) == 1
+        assert pinned[0]["name"] == "Pinned"
+
+
 def _register_and_login(client, username, password):
     from web_app.dependencies import get_user_store
     store = get_user_store()

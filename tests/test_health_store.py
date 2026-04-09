@@ -149,6 +149,26 @@ class TestMeals:
         assert meal["normalized_amount"] == 1000.0
         assert meal["normalized_unit"] == "ml"
 
+    def test_get_distinct_foods_ordered_by_frequency(self, store):
+        store.create_meal(user_id=USER, food="Arroz", meal_type="ALMOÇO", quantity="200g", calories=300, date="2025-06-01")
+        store.create_meal(user_id=USER, food="Arroz", meal_type="ALMOÇO", quantity="200g", calories=300, date="2025-06-02")
+        store.create_meal(user_id=USER, food="Feijão", meal_type="ALMOÇO", quantity="100g", calories=150, date="2025-06-01")
+        foods = store.get_distinct_foods(user_id=USER)
+        assert foods[0] == "Arroz"
+        assert "Feijão" in foods
+        assert len(set(foods)) == len(foods)  # no duplicates
+
+    def test_get_distinct_foods_isolated_by_user(self, store):
+        store.create_meal(user_id=USER, food="Banana", meal_type="LANCHE", quantity="1 un", calories=90, date="2025-06-01")
+        foods = store.get_distinct_foods(user_id=OTHER_USER)
+        assert foods == []
+
+    def test_get_distinct_foods_respects_limit(self, store):
+        for i in range(5):
+            store.create_meal(user_id=USER, food=f"Food{i}", meal_type="ALMOÇO", quantity="100g", calories=100, date="2025-06-01")
+        foods = store.get_distinct_foods(user_id=USER, limit=3)
+        assert len(foods) == 3
+
 
 # ---- Exercises ----
 

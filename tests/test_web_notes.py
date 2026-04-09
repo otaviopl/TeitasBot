@@ -410,3 +410,146 @@ def hello():
         assert res.status_code == 200
         fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(auth_token))
         assert fetched.json()["content"] == ""
+
+
+class TestNoteFolders:
+    def _create_folder(self, client, token, name="Pasta"):
+        res = client.post(
+            "/api/notes/folders",
+            json={"name": name},
+            headers=auth_headers(token),
+        )
+        assert res.status_code == 201
+        return res.json()
+
+    def test_list_folders_empty(self, client, auth_token):
+        res = client.get("/api/notes/folders", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        assert res.json()["folders"] == []
+
+    def test_create_folder(self, client, auth_token):
+        folder = self._create_folder(client, auth_token, "Projetos")
+        assert folder["name"] == "Projetos"
+        assert folder["id"]
+
+    def test_create_folder_empty_name_rejected(self, client, auth_token):
+        res = client.post(
+            "/api/notes/folders",
+            json={"name": "  "},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 400
+
+    def test_list_folders(self, client, auth_token):
+        self._create_folder(client, auth_token, "A")
+        self._create_folder(client, auth_token, "B")
+        res = client.get("/api/notes/folders", headers=auth_headers(auth_token))
+        assert len(res.json()["folders"]) == 2
+
+    def test_rename_folder(self, client, auth_token):
+        folder = self._create_folder(client, auth_token, "Old")
+        res = client.patch(
+            f"/api/notes/folders/{folder['id']}",
+            json={"name": "New"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+        folders = client.get("/api/notes/folders", headers=auth_headers(auth_token)).json()["folders"]
+        assert folders[0]["name"] == "New"
+
+    def test_rename_folder_not_found(self, client, auth_token):
+        res = client.patch(
+            "/api/notes/folders/nonexistent",
+            json={"name": "New"},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 404
+
+    def test_delete_folder(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        res = client.delete(f"/api/notes/folders/{folder['id']}", headers=auth_headers(auth_token))
+        assert res.status_code == 200
+        folders = client.get("/api/notes/folders", headers=auth_headers(auth_token)).json()["folders"]
+        assert folders == []
+
+    def test_delete_folder_not_found(self, client, auth_token):
+        res = client.delete("/api/notes/folders/nonexistent", headers=auth_headers(auth_token))
+        assert res.status_code == 404
+
+    def test_delete_folder_notes_moved_to_root(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        note_res = client.post(
+            "/api/notes",
+            json={"title": "Note", "folder_id": folder["id"]},
+            headers=auth_headers(auth_token),
+        )
+        note_id = note_res.json()["id"]
+        client.delete(f"/api/notes/folders/{folder['id']}", headers=auth_headers(auth_token))
+        fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(auth_token))
+        assert fetched.json()["folder_id"] is None
+
+    def test_note_create_with_folder_id(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        res = client.post(
+            "/api/notes",
+            json={"title": "Note in folder", "folder_id": folder["id"]},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 201
+        assert res.json()["folder_id"] == folder["id"]
+
+    def test_note_move_to_folder(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        note_res = client.post("/api/notes", json={"title": "Note"}, headers=auth_headers(auth_token))
+        note_id = note_res.json()["id"]
+        res = client.patch(
+            f"/api/notes/{note_id}",
+            json={"folder_id": folder["id"]},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+        fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(auth_token))
+        assert fetched.json()["folder_id"] == folder["id"]
+
+    def test_note_remove_from_folder(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        note_res = client.post(
+            "/api/notes",
+            json={"title": "Note", "folder_id": folder["id"]},
+            headers=auth_headers(auth_token),
+        )
+        note_id = note_res.json()["id"]
+        res = client.patch(
+            f"/api/notes/{note_id}",
+            json={"folder_id": None},
+            headers=auth_headers(auth_token),
+        )
+        assert res.status_code == 200
+        fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(auth_token))
+        assert fetched.json()["folder_id"] is None
+
+    def test_list_notes_includes_folder_id(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        client.post("/api/notes", json={"title": "In folder", "folder_id": folder["id"]}, headers=auth_headers(auth_token))
+        client.post("/api/notes", json={"title": "No folder"}, headers=auth_headers(auth_token))
+        notes = client.get("/api/notes", headers=auth_headers(auth_token)).json()["notes"]
+        folder_ids = {n.get("folder_id") for n in notes}
+        assert folder["id"] in folder_ids
+        assert None in folder_ids
+
+    def test_folders_require_auth(self, client):
+        res = client.get("/api/notes/folders")
+        assert res.status_code == 401
+
+    def test_update_note_without_folder_id_preserves_it(self, client, auth_token):
+        folder = self._create_folder(client, auth_token)
+        note_res = client.post(
+            "/api/notes",
+            json={"title": "Note", "folder_id": folder["id"]},
+            headers=auth_headers(auth_token),
+        )
+        note_id = note_res.json()["id"]
+        # Update only title, folder_id should be preserved
+        client.patch(f"/api/notes/{note_id}", json={"title": "New title"}, headers=auth_headers(auth_token))
+        fetched = client.get(f"/api/notes/{note_id}", headers=auth_headers(auth_token))
+        assert fetched.json()["folder_id"] == folder["id"]

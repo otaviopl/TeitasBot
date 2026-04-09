@@ -88,10 +88,22 @@ class WebUserStore:
                     deadline TEXT,
                     project TEXT,
                     done INTEGER NOT NULL DEFAULT 0,
+                    always_on INTEGER NOT NULL DEFAULT 0,
+                    observations TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """)
+            # Migration: add always_on column for existing DBs
+            try:
+                conn.execute("ALTER TABLE web_tasks ADD COLUMN always_on INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass
+            # Migration: add observations column for existing DBs
+            try:
+                conn.execute("ALTER TABLE web_tasks ADD COLUMN observations TEXT")
+            except Exception:
+                pass
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_web_tasks_user
                     ON web_tasks (user_id, created_at DESC)
@@ -108,6 +120,24 @@ class WebUserStore:
                 CREATE INDEX IF NOT EXISTS idx_web_task_tags
                     ON web_task_tags (task_id)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_note_folders (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_web_note_folders_user
+                    ON web_note_folders (user_id, sort_order ASC)
+            """)
+            # Migration: add folder_id to web_notes for existing DBs
+            try:
+                conn.execute("ALTER TABLE web_notes ADD COLUMN folder_id TEXT REFERENCES web_note_folders(id) ON DELETE SET NULL")
+            except Exception:
+                pass
 
     def create_user(
         self,
@@ -337,7 +367,7 @@ class WebUserStore:
         ).fetchall()
         return [r["tag"] for r in rows]
 
-    def create_note(self, user_id: str, title: str = "Nova anotação", content: str = "") -> dict:
+    def create_note(self, user_id: str, title: str = "Nova anotação", content: str = "", folder_id: Optional[str] = None) -> dict:
         if len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
             raise ValueError("Note content exceeds 500 KB limit.")
         note_id = uuid.uuid4().hex
@@ -346,19 +376,19 @@ class WebUserStore:
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO web_notes (id, user_id, title, content, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO web_notes (id, user_id, title, content, folder_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (note_id, user_id, clean_title, content, now, now),
+                (note_id, user_id, clean_title, content, folder_id, now, now),
             )
-        return {"id": note_id, "user_id": user_id, "title": clean_title, "content": content, "tags": [], "created_at": now, "updated_at": now}
+        return {"id": note_id, "user_id": user_id, "title": clean_title, "content": content, "tags": [], "folder_id": folder_id, "created_at": now, "updated_at": now}
 
     def list_notes(self, user_id: str, limit: int = 100, tag: str | None = None) -> list[dict]:
         with self._lock, self._connect() as conn:
             if tag:
                 rows = conn.execute(
                     """
-                    SELECT n.id, n.user_id, n.title, n.created_at, n.updated_at
+                    SELECT n.id, n.user_id, n.title, n.folder_id, n.created_at, n.updated_at
                     FROM web_notes n
                     JOIN web_note_tags t ON t.note_id = n.id
                     WHERE n.user_id = ? AND t.tag = ?
@@ -368,7 +398,7 @@ class WebUserStore:
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, user_id, title, created_at, updated_at FROM web_notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                    "SELECT id, user_id, title, folder_id, created_at, updated_at FROM web_notes WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
                     (user_id, max(1, limit)),
                 ).fetchall()
             result = []
@@ -376,14 +406,15 @@ class WebUserStore:
                 tags = self._get_note_tags(conn, r["id"])
                 result.append({
                     "id": r["id"], "user_id": r["user_id"], "title": r["title"],
-                    "tags": tags, "created_at": r["created_at"], "updated_at": r["updated_at"],
+                    "tags": tags, "folder_id": r["folder_id"],
+                    "created_at": r["created_at"], "updated_at": r["updated_at"],
                 })
         return result
 
     def get_note(self, note_id: str, user_id: str) -> Optional[dict]:
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT id, user_id, title, content, created_at, updated_at FROM web_notes WHERE id = ? AND user_id = ?",
+                "SELECT id, user_id, title, content, folder_id, created_at, updated_at FROM web_notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id),
             ).fetchone()
             if not row:
@@ -391,10 +422,11 @@ class WebUserStore:
             tags = self._get_note_tags(conn, note_id)
         return {
             "id": row["id"], "user_id": row["user_id"], "title": row["title"],
-            "content": row["content"], "tags": tags, "created_at": row["created_at"], "updated_at": row["updated_at"],
+            "content": row["content"], "tags": tags, "folder_id": row["folder_id"],
+            "created_at": row["created_at"], "updated_at": row["updated_at"],
         }
 
-    def update_note(self, note_id: str, user_id: str, title: Optional[str] = None, content: Optional[str] = None, tags: Optional[list[str]] = None) -> bool:
+    def update_note(self, note_id: str, user_id: str, title: Optional[str] = None, content: Optional[str] = None, tags: Optional[list[str]] = None, folder_id: Optional[str] = ...) -> bool:
         if content is not None and len(content.encode("utf-8")) > self._MAX_NOTE_CONTENT_BYTES:
             raise ValueError("Note content exceeds 500 KB limit.")
         now = _utc_now_iso()
@@ -409,6 +441,9 @@ class WebUserStore:
         if content is not None:
             updates.append("content = ?")
             params.append(content)
+        if folder_id is not ...:
+            updates.append("folder_id = ?")
+            params.append(folder_id)
         params.extend([note_id, user_id])
         sql = f"UPDATE web_notes SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
         with self._lock, self._connect() as conn:
@@ -487,6 +522,53 @@ class WebUserStore:
                 })
         return result
 
+    # ---- Note folder management ----
+
+    def create_folder(self, user_id: str, name: str) -> dict:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Folder name cannot be empty.")
+        folder_id = uuid.uuid4().hex
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            max_order = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM web_note_folders WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO web_note_folders (id, user_id, name, sort_order, created_at) VALUES (?, ?, ?, ?, ?)",
+                (folder_id, user_id, clean_name, max_order + 1, now),
+            )
+        return {"id": folder_id, "user_id": user_id, "name": clean_name, "sort_order": max_order + 1, "created_at": now}
+
+    def list_folders(self, user_id: str) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, user_id, name, sort_order, created_at FROM web_note_folders WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC",
+                (user_id,),
+            ).fetchall()
+        return [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "sort_order": r["sort_order"], "created_at": r["created_at"]} for r in rows]
+
+    def rename_folder(self, folder_id: str, user_id: str, name: str) -> bool:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Folder name cannot be empty.")
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE web_note_folders SET name = ? WHERE id = ? AND user_id = ?",
+                (clean_name, folder_id, user_id),
+            )
+        return cursor.rowcount > 0
+
+    def delete_folder(self, folder_id: str, user_id: str) -> bool:
+        """Delete a folder; its notes have folder_id set to NULL (via ON DELETE SET NULL)."""
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM web_note_folders WHERE id = ? AND user_id = ?",
+                (folder_id, user_id),
+            )
+        return cursor.rowcount > 0
+
 
     # ---- Task management ----
 
@@ -513,16 +595,18 @@ class WebUserStore:
         deadline: Optional[str] = None,
         project: Optional[str] = None,
         tags: list[str] = [],
+        always_on: bool = False,
+        observations: Optional[str] = None,
     ) -> dict:
         task_id = str(uuid.uuid4())
         now = _utc_now_iso()
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO web_tasks (id, user_id, name, deadline, project, done, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                INSERT INTO web_tasks (id, user_id, name, deadline, project, done, always_on, observations, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
                 """,
-                (task_id, user_id, name, deadline, project, now, now),
+                (task_id, user_id, name, deadline, project, 1 if always_on else 0, observations, now, now),
             )
             if tags:
                 self._set_task_tags(conn, task_id, tags)
@@ -530,6 +614,7 @@ class WebUserStore:
         return {
             "id": task_id, "user_id": user_id, "name": name,
             "deadline": deadline, "project": project, "done": False,
+            "always_on": always_on, "observations": observations,
             "tags": clean_tags, "created_at": now, "updated_at": now,
         }
 
@@ -537,12 +622,12 @@ class WebUserStore:
         with self._lock, self._connect() as conn:
             if include_done:
                 rows = conn.execute(
-                    "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE user_id = ? ORDER BY created_at DESC",
+                    "SELECT id, user_id, name, deadline, project, done, always_on, observations, created_at, updated_at FROM web_tasks WHERE user_id = ? ORDER BY created_at DESC",
                     (user_id,),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE user_id = ? AND done = 0 ORDER BY created_at DESC",
+                    "SELECT id, user_id, name, deadline, project, done, always_on, observations, created_at, updated_at FROM web_tasks WHERE user_id = ? AND done = 0 ORDER BY created_at DESC",
                     (user_id,),
                 ).fetchall()
             result = []
@@ -551,7 +636,9 @@ class WebUserStore:
                 result.append({
                     "id": r["id"], "user_id": r["user_id"], "name": r["name"],
                     "deadline": r["deadline"], "project": r["project"],
-                    "done": bool(r["done"]), "tags": tags,
+                    "done": bool(r["done"]), "always_on": bool(r["always_on"]),
+                    "observations": r["observations"],
+                    "tags": tags,
                     "created_at": r["created_at"], "updated_at": r["updated_at"],
                 })
         return result
@@ -559,7 +646,7 @@ class WebUserStore:
     def get_task(self, task_id: str, user_id: str) -> Optional[dict]:
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT id, user_id, name, deadline, project, done, created_at, updated_at FROM web_tasks WHERE id = ? AND user_id = ?",
+                "SELECT id, user_id, name, deadline, project, done, always_on, observations, created_at, updated_at FROM web_tasks WHERE id = ? AND user_id = ?",
                 (task_id, user_id),
             ).fetchone()
             if not row:
@@ -568,7 +655,9 @@ class WebUserStore:
         return {
             "id": row["id"], "user_id": row["user_id"], "name": row["name"],
             "deadline": row["deadline"], "project": row["project"],
-            "done": bool(row["done"]), "tags": tags,
+            "done": bool(row["done"]), "always_on": bool(row["always_on"]),
+            "observations": row["observations"],
+            "tags": tags,
             "created_at": row["created_at"], "updated_at": row["updated_at"],
         }
 
@@ -580,7 +669,9 @@ class WebUserStore:
         deadline: Optional[str] = "__unset__",
         project: Optional[str] = "__unset__",
         done: Optional[bool] = None,
+        always_on: Optional[bool] = None,
         tags: Optional[list[str]] = None,
+        observations: Optional[str] = "__unset__",
     ) -> bool:
         now = _utc_now_iso()
         updates: list[str] = ["updated_at = ?"]
@@ -597,6 +688,12 @@ class WebUserStore:
         if done is not None:
             updates.append("done = ?")
             params.append(1 if done else 0)
+        if always_on is not None:
+            updates.append("always_on = ?")
+            params.append(1 if always_on else 0)
+        if observations != "__unset__":
+            updates.append("observations = ?")
+            params.append(observations)
         params.extend([task_id, user_id])
         sql = f"UPDATE web_tasks SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
         with self._lock, self._connect() as conn:
@@ -614,6 +711,14 @@ class WebUserStore:
                 (task_id, user_id),
             )
             return cursor.rowcount > 0
+
+    def count_always_on_tasks(self, user_id: str) -> int:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM web_tasks WHERE user_id = ? AND always_on = 1",
+                (user_id,),
+            ).fetchone()
+        return row["cnt"] if row else 0
 
     def list_task_projects(self, user_id: str) -> list[str]:
         with self._lock, self._connect() as conn:

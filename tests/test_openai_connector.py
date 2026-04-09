@@ -490,3 +490,57 @@ class TestEstimateCalories(unittest.TestCase):
         with self._patch_client("Não sei estimar"):
             result = llm_api.estimate_calories("algo desconhecido", category="meal")
         self.assertIsNone(result)
+
+    def test_exercise_uses_custom_weight_in_prompt(self):
+        """user_weight_kg should be embedded in the exercise prompt."""
+        captured = {}
+        fake_client = unittest.mock.Mock()
+
+        def fake_create(**kwargs):
+            captured["prompt"] = kwargs.get("input", "")
+            return _FakeResponse("300")
+
+        fake_client.responses.create.side_effect = fake_create
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            result = llm_api.estimate_calories("corrida 30 min", category="exercise", user_weight_kg=90.0)
+        self.assertEqual(result, 300.0)
+        self.assertIn("90", captured["prompt"])
+
+    def test_exercise_default_weight_is_75(self):
+        """Default weight in exercise prompt should be 75 kg."""
+        captured = {}
+        fake_client = unittest.mock.Mock()
+
+        def fake_create(**kwargs):
+            captured["prompt"] = kwargs.get("input", "")
+            return _FakeResponse("250")
+
+        fake_client.responses.create.side_effect = fake_create
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            llm_api.estimate_calories("caminhada 20 min", category="exercise")
+        self.assertIn("75", captured["prompt"])
+
+    def test_generate_nutritional_analysis_includes_calorie_goal(self):
+        """calorie_goal should appear in the data text passed to the LLM."""
+        captured = {}
+        fake_client = unittest.mock.Mock()
+
+        def fake_create(**kwargs):
+            captured["input"] = kwargs.get("input", "")
+            return _FakeResponse("## Análise\nOk.")
+
+        fake_client.responses.create.side_effect = fake_create
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            meals = [{"food": "Arroz", "meal_type": "ALMOÇO", "quantity": "200g", "calories": 300, "date": "2026-04-01"}]
+            result = llm_api.generate_nutritional_analysis(meals, [], calorie_goal=2000)
+        self.assertIn("2000", captured["input"])
+        self.assertIsInstance(result, str)
+
+    def test_generate_nutritional_analysis_no_goal_still_works(self):
+        """generate_nutritional_analysis should work without calorie_goal."""
+        fake_client = unittest.mock.Mock()
+        fake_client.responses.create.return_value = _FakeResponse("## Análise\nOk.")
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            meals = [{"food": "Feijão", "meal_type": "ALMOÇO", "quantity": "100g", "calories": 150, "date": "2026-04-01"}]
+            result = llm_api.generate_nutritional_analysis(meals, [])
+        self.assertIsInstance(result, str)
