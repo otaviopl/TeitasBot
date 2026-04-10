@@ -143,7 +143,33 @@
                         </svg>
                     </button>
                 </div>
+                <!-- Notes context: title + tags (flex:1, shown only on notes tab with a note open) -->
+                <div class="header-notes-ctx hidden" id="header-notes-ctx">
+                    <div class="note-title-area">
+                        <h2 class="note-title-display" id="note-title-display">Nova anotação</h2>
+                        <div class="note-tags-row">
+                            <button class="btn-edit-tags" id="btn-edit-tags" title="Editar tags">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </button>
+                            <div class="note-tags" id="note-tags">
+                                <!-- Dynamically populated with tag pills -->
+                            </div>
+                        </div>
+                        <div class="note-tags-edit hidden" id="note-tags-edit">
+                            <input type="text" class="note-tags-input" id="note-tags-input" placeholder="tag1, tag2, tag3…">
+                            <button class="note-tags-save" id="note-tags-save" title="Salvar tags">✓</button>
+                            <button class="note-tags-cancel" id="note-tags-cancel" title="Cancelar">✕</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="chat-header-actions">
+                    <!-- Tasks context: title (shown only on tasks tab) -->
+                    <div class="header-tasks-ctx hidden" id="header-tasks-ctx">
+                        <h2 class="header-tasks-title">Tarefas</h2>
+                    </div>
                     <div class="health-date-nav-header hidden" id="health-date-nav-header">
                         <button class="health-date-btn" id="health-prev-day" title="Dia anterior">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -173,6 +199,41 @@
                 </div>
                 <div class="chat-header-right">
                     <button class="btn btn-primary btn-header-new hidden" id="btn-header-new">+ Nova</button>
+                    <!-- Tasks context buttons -->
+                    <button class="btn btn-primary btn-new-task hidden" id="btn-new-task">+ Nova tarefa</button>
+                    <!-- Notes context buttons (hidden by default) -->
+                    <span class="note-save-status hidden" id="note-save-status"></span>
+                    <button class="btn btn-ghost btn-icon-only hidden" id="btn-export-pdf" title="Exportar como PDF">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="12" y1="18" x2="12" y2="12"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-edit-note hidden" id="btn-edit-note" title="Editar anotação">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Editar
+                    </button>
+                    <button class="btn btn-done-editing hidden" id="btn-done-editing" title="Concluir edição">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Concluir
+                    </button>
+                    <button class="btn btn-primary btn-header-new-note hidden" id="btn-header-new-note">+ Nova nota</button>
+                    <button class="btn btn-ghost hidden" id="btn-delete-note" title="Excluir anotação">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6"/>
+                            <path d="M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                    </button>
                     <button class="btn btn-ghost" id="btn-reset" title="Limpar conversa">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="3 6 5 6 21 6"/>
@@ -262,60 +323,6 @@
 
             <!-- Notes editor (hidden by default) -->
             <div class="notes-editor hidden" id="notes-editor">
-                <div class="notes-editor-header">
-                    <div class="note-title-area">
-                        <h2 class="note-title-display" id="note-title-display">Nova anotação</h2>
-                        <div class="note-tags-row">
-                            <button class="btn-edit-tags" id="btn-edit-tags" title="Editar tags">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                </svg>
-                            </button>
-                            <div class="note-tags" id="note-tags">
-                                <!-- Dynamically populated with tag pills -->
-                            </div>
-                        </div>
-                        <div class="note-tags-edit hidden" id="note-tags-edit">
-                            <input type="text" class="note-tags-input" id="note-tags-input" placeholder="tag1, tag2, tag3…">
-                            <button class="note-tags-save" id="note-tags-save" title="Salvar tags">✓</button>
-                            <button class="note-tags-cancel" id="note-tags-cancel" title="Cancelar">✕</button>
-                        </div>
-                    </div>
-                    <div class="notes-editor-actions">
-                        <span class="note-save-status" id="note-save-status"></span>
-                        <button class="btn btn-ghost btn-icon-only" id="btn-export-pdf" title="Exportar como PDF">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                <polyline points="14 2 14 8 20 8"/>
-                                <line x1="12" y1="18" x2="12" y2="12"/>
-                                <line x1="9" y1="15" x2="15" y2="15"/>
-                            </svg>
-                        </button>
-                        <button class="btn btn-edit-note" id="btn-edit-note" title="Editar anotação">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                            Editar
-                        </button>
-                        <button class="btn btn-done-editing" id="btn-done-editing" title="Concluir edição">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            Concluir
-                        </button>
-                        <button class="btn btn-ghost" id="btn-delete-note" title="Excluir anotação">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                                <path d="M10 11v6"/>
-                                <path d="M14 11v6"/>
-                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
                 <!-- Note view body (read-only rendered markdown) -->
                 <div class="note-view-body" id="note-view-body">
                     <div class="note-view-content" id="note-view-content"></div>
@@ -453,12 +460,6 @@
 
             <!-- Tasks view -->
             <div class="tasks-view hidden" id="tasks-view">
-                <!-- Header bar -->
-                <div class="tasks-header">
-                    <h2 class="tasks-title">Tarefas</h2>
-                    <button class="btn btn-primary btn-new-task" id="btn-new-task">+ Nova tarefa</button>
-                </div>
-
                 <!-- Add task form (hidden by default) -->
                 <div class="tasks-add-form hidden" id="tasks-add-form">
                     <div class="tasks-form-row">

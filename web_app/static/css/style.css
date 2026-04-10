@@ -795,7 +795,7 @@ input[type="checkbox"]:focus-visible {
     opacity: 0.4;
 }
 
-
+.sidebar-footer {
     padding: 10px 16px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--color-border);
@@ -1295,6 +1295,8 @@ input[type="checkbox"]:focus-visible {
 .message-assistant p { margin-bottom: 8px; }
 .message-assistant p:last-child { margin-bottom: 0; }
 .message-assistant ul, .message-assistant ol { padding-left: 20px; margin-bottom: 8px; }
+.message-assistant li > ul, .message-assistant li > ol { margin-bottom: 0; }
+.message-assistant li > p { margin-bottom: 0; }
 .message-assistant code {
     background: rgba(0, 0, 0, 0.06);
     padding: 1px 5px;
@@ -1522,53 +1524,101 @@ input[type="checkbox"]:focus-visible {
     display: none;
 }
 
-.notes-editor-header {
+/* ---- Header context: Notes ---- */
+
+.header-notes-ctx {
+    flex: 1;
+    min-width: 0;
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-    max-width: 900px;
-    width: 100%;
-    margin: 0 auto;
+    align-items: center;
+    padding: 0 8px;
+    overflow: hidden;
 }
 
-.note-title-area {
+.header-notes-ctx.hidden {
+    display: none;
+}
+
+.header-notes-ctx .note-title-area {
     flex: 1;
     min-width: 0;
 }
 
-.note-title-display {
-    font-size: 1.1rem;
+.header-notes-ctx .note-title-display {
+    font-size: 0.95rem;
     font-weight: 700;
     font-family: var(--font-stack);
     color: var(--color-text);
     margin: 0;
-    padding: 4px 0 2px;
+    padding: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-/* ---- Note tag pills ---- */
-.note-tags-row {
+.header-notes-ctx .note-tags-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding-top: 4px;
-    min-height: 24px;
-}
-
-.note-tags {
-    display: flex;
-    flex-wrap: wrap;
     gap: 4px;
+    padding-top: 2px;
+    min-height: 20px;
+    overflow: hidden;
 }
 
-.note-tags:empty {
+.header-notes-ctx .note-tags {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow: hidden;
+}
+
+.header-notes-ctx .note-tags-edit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-top: 2px;
+    width: 100%;
+}
+
+.header-notes-ctx .note-tags-edit.hidden {
     display: none;
 }
+
+/* ---- Header context: Tasks ---- */
+
+.header-tasks-ctx {
+    display: flex;
+    align-items: center;
+}
+
+.header-tasks-ctx.hidden {
+    display: none;
+}
+
+.header-tasks-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+}
+
+/* ---- Note save status in header ---- */
+.note-save-status {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.note-save-status.uploading {
+    color: var(--color-blue-start);
+    animation: status-pulse 1s ease-in-out infinite;
+}
+
+.note-save-status.hidden {
+    display: none;
+}
+
+
 
 .note-tag-pill {
     display: inline-block;
@@ -1680,21 +1730,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 .notes-editor-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.note-save-status {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    white-space: nowrap;
-}
-
-.note-save-status.uploading {
-    color: var(--color-blue-start);
-    animation: status-pulse 1s ease-in-out infinite;
+    display: none; /* removed — actions moved to header */
 }
 
 @keyframes status-pulse {
@@ -1740,27 +1776,21 @@ input[type="checkbox"]:focus-visible {
     color: var(--color-text);
 }
 
-/* ---- View / edit mode toggling via data-mode attribute ---- */
+.btn-header-new-note {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+    white-space: nowrap;
+}
 
-/* In view mode: hide edit-only elements */
-.notes-editor[data-mode="view"] .notes-editor-body,
-.notes-editor[data-mode="view"] .note-save-status,
-.notes-editor[data-mode="view"] .btn-done-editing {
+/* ---- View / edit mode toggling (elements still inside notes-editor) ---- */
+
+/* In view mode: hide the CodeMirror editor */
+.notes-editor[data-mode="view"] .notes-editor-body {
     display: none !important;
 }
 
-.notes-editor[data-mode="view"] .btn-edit-tags {
-    display: none !important;
-}
-
-.notes-editor[data-mode="view"] .note-tags-edit {
-    display: none !important;
-}
-
-/* In edit mode: hide view-only elements */
-.notes-editor[data-mode="edit"] .note-view-body,
-.notes-editor[data-mode="edit"] .btn-edit-note,
-.notes-editor[data-mode="edit"] #btn-export-pdf {
+/* In edit mode: hide the rendered view */
+.notes-editor[data-mode="edit"] .note-view-body {
     display: none !important;
 }
 
@@ -1832,6 +1862,15 @@ input[type="checkbox"]:focus-visible {
 
 .note-view-content li {
     margin-bottom: 0.2em;
+}
+
+.note-view-content li > ul,
+.note-view-content li > ol {
+    margin-bottom: 0;
+}
+
+.note-view-content li > p {
+    margin-bottom: 0;
 }
 
 .note-view-content code {
@@ -1960,6 +1999,31 @@ input[type="checkbox"]:focus-visible {
     font-size: 0.95rem;
     line-height: 1.6;
     padding: 8px 0;
+}
+
+.notes-editor-body .editor-preview ul,
+.notes-editor-body .editor-preview-side ul,
+.notes-editor-body .editor-preview ol,
+.notes-editor-body .editor-preview-side ol {
+    padding-left: 1.5em;
+    margin: 0 0 0.9em;
+}
+
+.notes-editor-body .editor-preview li,
+.notes-editor-body .editor-preview-side li {
+    margin-bottom: 0.2em;
+}
+
+.notes-editor-body .editor-preview li > ul,
+.notes-editor-body .editor-preview-side li > ul,
+.notes-editor-body .editor-preview li > ol,
+.notes-editor-body .editor-preview-side li > ol {
+    margin-bottom: 0;
+}
+
+.notes-editor-body .editor-preview li > p,
+.notes-editor-body .editor-preview-side li > p {
+    margin-bottom: 0;
 }
 
 .notes-editor-body .editor-statusbar {
@@ -2695,6 +2759,10 @@ input[type="checkbox"]:focus-visible {
     margin-bottom: 4px;
 }
 
+.health-analysis-content li > p {
+    margin-bottom: 0;
+}
+
 .health-analysis-content p {
     margin: 8px 0;
 }
@@ -3402,10 +3470,6 @@ input[type="checkbox"]:focus-visible {
     }
 
     /* ---- Notes editor ---- */
-    .notes-editor-header {
-        padding: 10px 12px;
-    }
-
     .notes-editor-body {
         padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
     }
@@ -3616,21 +3680,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 /* Header */
-.tasks-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-}
-
-.tasks-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-    margin: 0;
-}
+/* .tasks-header removed — title and new-task button moved to chat-header */
 
 /* Add task form */
 .tasks-add-form {

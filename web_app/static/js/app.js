@@ -60,6 +60,10 @@
     const editNoteBtn = document.getElementById('btn-edit-note');
     const doneEditingBtn = document.getElementById('btn-done-editing');
     const exportPdfBtn = document.getElementById('btn-export-pdf');
+    const headerNotesCtx = document.getElementById('header-notes-ctx');
+    const headerNewNoteBtn = document.getElementById('btn-header-new-note');
+    const headerTasksCtx = document.getElementById('header-tasks-ctx');
+    const headerNewTaskBtn = document.getElementById('btn-new-task');
 
     // Search refs
     const searchNotesBtn = document.getElementById('btn-search-notes');
@@ -337,12 +341,46 @@
 
     function updateHeaderNewBtn() {
         var showForChat = activeTab === 'chat' && activeConversationId !== null;
-        var showForNotes = activeTab === 'notes' && activeNoteId !== null;
-        if (showForChat || showForNotes) {
-            headerNewBtn.textContent = showForChat ? '+ Nova conversa' : '+ Nova nota';
+        if (showForChat) {
+            headerNewBtn.textContent = '+ Nova conversa';
             headerNewBtn.classList.remove('hidden');
         } else {
             headerNewBtn.classList.add('hidden');
+        }
+    }
+
+    function showNoteHeaderButtons(hasNote) {
+        if (hasNote) {
+            headerNotesCtx.classList.remove('hidden');
+            noteSaveStatus.classList.remove('hidden');
+            headerNewNoteBtn.classList.remove('hidden');
+            deleteNoteBtn.classList.remove('hidden');
+            // Edit/Done visibility handled by setNoteMode()
+        } else {
+            headerNotesCtx.classList.add('hidden');
+            noteSaveStatus.classList.add('hidden');
+            exportPdfBtn.classList.add('hidden');
+            editNoteBtn.classList.add('hidden');
+            doneEditingBtn.classList.add('hidden');
+            headerNewNoteBtn.classList.add('hidden');
+            deleteNoteBtn.classList.add('hidden');
+        }
+    }
+
+    function setNoteMode(mode) {
+        // mode: 'view' or 'edit'
+        notesEditorEl.setAttribute('data-mode', mode);
+        noteIsEditing = (mode === 'edit');
+        if (mode === 'view') {
+            editNoteBtn.classList.remove('hidden');
+            exportPdfBtn.classList.remove('hidden');
+            doneEditingBtn.classList.add('hidden');
+            noteSaveStatus.classList.add('hidden');
+        } else {
+            editNoteBtn.classList.add('hidden');
+            exportPdfBtn.classList.add('hidden');
+            doneEditingBtn.classList.remove('hidden');
+            noteSaveStatus.classList.remove('hidden');
         }
     }
 
@@ -569,10 +607,10 @@
     headerNewBtn.addEventListener('click', function () {
         if (activeTab === 'chat') {
             createConversation();
-        } else if (activeTab === 'notes') {
-            createNote();
         }
     });
+
+    headerNewNoteBtn.addEventListener('click', createNote);
 
     // ---- Textarea auto-resize ----
     inputEl.addEventListener('input', function () {
@@ -1077,6 +1115,11 @@
         var limitNotice = document.getElementById('conv-limit-notice');
         if (limitNotice) limitNotice.style.display = 'none';
 
+        // Hide all header contexts
+        headerTasksCtx.classList.add('hidden');
+        headerNewTaskBtn.classList.add('hidden');
+        showNoteHeaderButtons(false);
+
         if (tab === 'chat') {
             chatEmptyEl.classList.add('hidden');
             chatInputWrapper.classList.remove('hidden');
@@ -1092,6 +1135,7 @@
             loadNotes();
             document.getElementById('health-date-nav-header').classList.add('hidden');
             document.getElementById('finance-month-nav-header').classList.add('hidden');
+            showNoteHeaderButtons(activeNoteId !== null);
         } else if (tab === 'health') {
             healthViewEl.classList.remove('hidden');
             document.getElementById('health-date-nav-header').classList.remove('hidden');
@@ -1106,6 +1150,8 @@
             tasksViewEl.classList.remove('hidden');
             document.getElementById('health-date-nav-header').classList.add('hidden');
             document.getElementById('finance-month-nav-header').classList.add('hidden');
+            headerTasksCtx.classList.remove('hidden');
+            headerNewTaskBtn.classList.remove('hidden');
             loadTasks();
         }
         updateHeaderNewBtn();
@@ -1129,8 +1175,7 @@
     // ================================================
 
     function enterEditMode() {
-        noteIsEditing = true;
-        notesEditorEl.dataset.mode = 'edit';
+        setNoteMode('edit');
         initEasyMDE();
         var content = (activeNoteData && activeNoteData.content) || '';
         easyMDE.value(content);
@@ -1138,12 +1183,10 @@
     }
 
     function enterViewMode() {
-        noteIsEditing = false;
-        notesEditorEl.dataset.mode = 'view';
+        setNoteMode('view');
         var content = (activeNoteData && activeNoteData.content) || '';
         noteViewContentEl.innerHTML = content ? marked.parse(content) : '';
         injectImageTokens(noteViewContentEl);
-        if (exportPdfBtn) exportPdfBtn.style.display = '';
     }
 
     function injectImageTokens(container) {
@@ -1741,6 +1784,7 @@
             renderNoteTags(note.tags || []);
             noteSaveStatus.textContent = '';
             activeNoteContentDirty = false;
+            showNoteHeaderButtons(true);
             if (startEditing) {
                 enterEditMode();
             } else {
@@ -1753,6 +1797,7 @@
             showToast('Erro ao abrir anotação');
             activeNoteId = null;
             activeNoteData = null;
+            showNoteHeaderButtons(false);
             updateHeaderNewBtn();
         }
     }
@@ -1771,6 +1816,7 @@
                 if (easyMDE) easyMDE.value('');
                 noteTitleDisplay.textContent = 'Nova anotação';
                 noteTagsEl.innerHTML = '';
+                showNoteHeaderButtons(false);
                 updateHeaderNewBtn();
             }
             await loadNotes();
@@ -3994,7 +4040,6 @@
     }
 
     // Wire up add-task form
-    var btnNewTask = document.getElementById('btn-new-task');
     var tasksAddForm = document.getElementById('tasks-add-form');
     var taskFormName = document.getElementById('task-form-name');
     var taskFormDeadline = document.getElementById('task-form-deadline');
@@ -4006,8 +4051,8 @@
     var taskFormCancel = document.getElementById('task-form-cancel');
     var tasksShowDoneEl = document.getElementById('tasks-show-done');
 
-    if (btnNewTask) {
-        btnNewTask.addEventListener('click', function () {
+    if (headerNewTaskBtn) {
+        headerNewTaskBtn.addEventListener('click', function () {
             tasksAddForm.classList.toggle('hidden');
             if (!tasksAddForm.classList.contains('hidden')) {
                 taskFormName.focus();
