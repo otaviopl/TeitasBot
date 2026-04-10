@@ -1131,6 +1131,7 @@
             }
             document.getElementById('health-date-nav-header').classList.add('hidden');
             document.getElementById('finance-month-nav-header').classList.add('hidden');
+            if (_caloriePendingTimer !== null) { clearInterval(_caloriePendingTimer); _caloriePendingTimer = null; }
         } else if (tab === 'notes') {
             loadNotes();
             document.getElementById('health-date-nav-header').classList.add('hidden');
@@ -2527,6 +2528,7 @@
     };
 
     function buildMealGroupEl(type, items) {
+        var anyPending = items.some(function (m) { return m.calories_pending; });
         var subtotal = items.reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
 
         // Determine meal_group_id (use first item's if all share same group)
@@ -2545,6 +2547,15 @@
         var titleSpan = document.createElement('span');
         titleSpan.textContent = MEAL_TYPE_LABELS[type] || type;
         headerEl.appendChild(titleSpan);
+
+        // Spinner shown while calorie estimation is pending
+        if (anyPending) {
+            var spinnerEl = document.createElement('span');
+            spinnerEl.className = 'calorie-pending-spinner';
+            spinnerEl.textContent = 'Estimando calorias...';
+            headerEl.appendChild(spinnerEl);
+        }
+
         if (groupId) {
             var groupDelBtn = document.createElement('button');
             groupDelBtn.className = 'health-meal-group-delete';
@@ -2581,7 +2592,7 @@
 
             var kcalSpan = document.createElement('span');
             kcalSpan.className = 'health-meal-kcal';
-            kcalSpan.textContent = Math.round(parseFloat(m.calories) || 0) + ' kcal';
+            kcalSpan.textContent = m.calories_pending ? '… kcal' : Math.round(parseFloat(m.calories) || 0) + ' kcal';
 
             // Inline edit form (hidden by default)
             var editWrap = document.createElement('div');
@@ -2708,31 +2719,80 @@
             if (MEAL_TYPE_ORDER.indexOf(type) >= 0) return;
             healthMealsEl.appendChild(buildMealGroupEl(type, groups[type]));
         });
+
+        // Start polling if any meal has pending calorie estimation
+        var hasPending = meals.some(function (m) { return m.calories_pending; });
+        if (hasPending) {
+            startCaloriePendingPolling();
+        }
     }
 
     function renderExercises(exercises) {
+        healthExercisesEl.innerHTML = '<h3 class="health-section-title">Exercícios</h3>';
         if (!exercises || exercises.length === 0) {
-            healthExercisesEl.innerHTML = '<h3 class="health-section-title">Exercícios</h3><div class="health-empty-day">Nenhum exercício registrado</div>';
+            healthExercisesEl.innerHTML += '<div class="health-empty-day">Nenhum exercício registrado</div>';
             return;
         }
 
-        var html = '<h3 class="health-section-title">Exercícios</h3>';
         exercises.forEach(function (e) {
             var isDone = e.done === true || e.done === 'true';
-            var pageId = e.id || e.page_id || '';
-            html += '<div class="health-exercise-item">';
-            html += '<div class="health-exercise-check ' + (isDone ? 'done' : '') + '" data-page-id="' + escapeHtml(pageId) + '" data-done="' + isDone + '">' + (isDone ? '✓' : '') + '</div>';
-            html += '<span class="health-exercise-name">' + escapeHtml(e.activity || '') + '</span>';
+            var exerciseId = e.id || e.page_id || '';
+
+            var itemEl = document.createElement('div');
+            itemEl.className = 'health-exercise-item';
+
+            var checkEl = document.createElement('div');
+            checkEl.className = 'health-exercise-check' + (isDone ? ' done' : '');
+            checkEl.dataset.pageId = exerciseId;
+            checkEl.dataset.done = String(isDone);
+            checkEl.textContent = isDone ? '✓' : '';
+
+            var nameEl = document.createElement('span');
+            nameEl.className = 'health-exercise-name';
+            nameEl.textContent = e.activity || '';
+            nameEl.addEventListener('click', function () {
+                openExerciseDetailModal(e);
+            });
+
+            var kcalEl = document.createElement('span');
+            kcalEl.className = 'health-exercise-kcal';
+            kcalEl.textContent = Math.round(parseFloat(e.calories) || 0) + ' kcal';
+
+            var delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'health-exercise-delete-btn';
+            delBtn.title = 'Excluir exercício';
+            delBtn.innerHTML = '&times;';
+            delBtn.addEventListener('click', async function (ev) {
+                ev.stopPropagation();
+                if (!confirm('Excluir exercício "' + (e.activity || '') + '"?')) return;
+                try {
+                    await apiDelete('/api/health/exercises/' + encodeURIComponent(exerciseId));
+                    showToast('Exercício excluído ✓');
+                    loadHealthDashboard();
+                } catch (err) {
+                    showToast('Erro: ' + err.message);
+                }
+            });
+
+            itemEl.appendChild(checkEl);
+            itemEl.appendChild(nameEl);
             if (e.duration_minutes) {
-                html += '<span class="health-exercise-duration">' + e.duration_minutes + ' min</span>';
+                var durEl = document.createElement('span');
+                durEl.className = 'health-exercise-duration';
+                durEl.textContent = e.duration_minutes + ' min';
+                itemEl.appendChild(durEl);
             }
             if (e.observations) {
-                html += '<span class="health-exercise-obs">' + escapeHtml(e.observations) + '</span>';
+                var obsEl = document.createElement('span');
+                obsEl.className = 'health-exercise-obs';
+                obsEl.textContent = e.observations;
+                itemEl.appendChild(obsEl);
             }
-            html += '<span class="health-exercise-kcal">' + Math.round(parseFloat(e.calories) || 0) + ' kcal</span>';
-            html += '</div>';
+            itemEl.appendChild(kcalEl);
+            itemEl.appendChild(delBtn);
+            healthExercisesEl.appendChild(itemEl);
         });
-        healthExercisesEl.innerHTML = html;
     }
 
     // Toggle exercise done status
@@ -2780,6 +2840,150 @@
         });
         healthWeeklyBars.innerHTML = html;
     }
+
+    // ---- Calorie pending polling ----
+    var _caloriePendingTimer = null;
+
+    function startCaloriePendingPolling() {
+        if (_caloriePendingTimer !== null) return; // already polling
+        _caloriePendingTimer = setInterval(async function () {
+            try {
+                var data = await apiGet('/api/health/dashboard?date=' + healthDateISO());
+                var hasPending = (data.meals || []).some(function (m) { return m.calories_pending; });
+                if (!hasPending) {
+                    clearInterval(_caloriePendingTimer);
+                    _caloriePendingTimer = null;
+                }
+                // Re-render meals section to reflect latest calorie values
+                renderMealGroups(data.meals || []);
+                // Recalculate totals display
+                var consumed = (data.meals || []).reduce(function (s, m) { return s + (parseFloat(m.calories) || 0); }, 0);
+                if (healthCaloriesConsumed) healthCaloriesConsumed.textContent = Math.round(consumed) + ' kcal';
+            } catch (_) {
+                clearInterval(_caloriePendingTimer);
+                _caloriePendingTimer = null;
+            }
+        }, 3000);
+    }
+
+    // ---- Exercise detail modal ----
+    var exerciseDetailOverlay = document.getElementById('exercise-detail-overlay');
+    var exerciseDetailCurrentData = null;
+
+    function openExerciseDetailModal(exercise) {
+        exerciseDetailCurrentData = exercise;
+        showExerciseDetailView(exercise);
+        exerciseDetailOverlay.classList.add('visible');
+    }
+
+    function closeExerciseDetailModal() {
+        exerciseDetailOverlay.classList.remove('visible');
+        exerciseDetailCurrentData = null;
+    }
+
+    function showExerciseDetailView(exercise) {
+        document.getElementById('exercise-detail-view').classList.remove('hidden');
+        document.getElementById('exercise-edit-view').classList.add('hidden');
+
+        document.getElementById('exercise-detail-title').textContent = exercise.activity || '';
+
+        var badge = document.getElementById('exercise-detail-status-badge');
+        var isDone = exercise.done === true || exercise.done === 'true';
+        if (isDone) {
+            badge.textContent = '✓ Concluído';
+            badge.className = 'task-detail-status-badge badge-done';
+        } else {
+            badge.textContent = '⏳ Pendente';
+            badge.className = 'task-detail-status-badge badge-pending';
+        }
+
+        var grid = document.getElementById('exercise-detail-meta-grid');
+        grid.innerHTML = '';
+        function addMeta(label, value) {
+            var item = document.createElement('div');
+            item.className = 'task-detail-meta-item';
+            item.innerHTML = '<span class="task-detail-meta-label">' + label + '</span><span class="task-detail-meta-value">' + escapeHtml(String(value)) + '</span>';
+            grid.appendChild(item);
+        }
+        addMeta('Calorias', Math.round(parseFloat(exercise.calories) || 0) + ' kcal');
+        if (exercise.duration_minutes) addMeta('Duração', exercise.duration_minutes + ' min');
+        if (exercise.date) addMeta('Data', exercise.date);
+
+        var obsBlock = document.getElementById('exercise-detail-observations-block');
+        if (exercise.observations) {
+            document.getElementById('exercise-detail-obs-text').textContent = exercise.observations;
+            obsBlock.classList.remove('hidden');
+        } else {
+            obsBlock.classList.add('hidden');
+        }
+    }
+
+    function showExerciseEditView(exercise) {
+        document.getElementById('exercise-detail-view').classList.add('hidden');
+        document.getElementById('exercise-edit-view').classList.remove('hidden');
+
+        document.getElementById('exercise-edit-activity').value = exercise.activity || '';
+        document.getElementById('exercise-edit-calories').value = Math.round(parseFloat(exercise.calories) || 0);
+        document.getElementById('exercise-edit-duration').value = exercise.duration_minutes || '';
+        document.getElementById('exercise-edit-observations').value = exercise.observations || '';
+        document.getElementById('exercise-edit-done').checked = exercise.done === true || exercise.done === 'true';
+    }
+
+    document.getElementById('exercise-detail-close').addEventListener('click', closeExerciseDetailModal);
+    exerciseDetailOverlay.addEventListener('click', function (e) {
+        if (e.target === exerciseDetailOverlay) closeExerciseDetailModal();
+    });
+
+    document.getElementById('exercise-detail-edit-btn').addEventListener('click', function () {
+        if (exerciseDetailCurrentData) showExerciseEditView(exerciseDetailCurrentData);
+    });
+
+    document.getElementById('exercise-detail-delete-btn').addEventListener('click', async function () {
+        if (!exerciseDetailCurrentData) return;
+        var name = exerciseDetailCurrentData.activity || '';
+        var id = exerciseDetailCurrentData.id || exerciseDetailCurrentData.page_id || '';
+        if (!id) return;
+        if (!confirm('Excluir exercício "' + name + '"?')) return;
+        try {
+            await apiDelete('/api/health/exercises/' + encodeURIComponent(id));
+            closeExerciseDetailModal();
+            showToast('Exercício excluído ✓');
+            loadHealthDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    });
+
+    document.getElementById('exercise-edit-cancel-btn').addEventListener('click', function () {
+        if (exerciseDetailCurrentData) showExerciseDetailView(exerciseDetailCurrentData);
+    });
+
+    document.getElementById('exercise-edit-save-btn').addEventListener('click', async function () {
+        if (!exerciseDetailCurrentData) return;
+        var id = exerciseDetailCurrentData.id || exerciseDetailCurrentData.page_id || '';
+        if (!id) return;
+        var activity = document.getElementById('exercise-edit-activity').value.trim();
+        if (!activity) { document.getElementById('exercise-edit-activity').focus(); return; }
+        var calories = parseFloat(document.getElementById('exercise-edit-calories').value) || 0;
+        var durVal = parseInt(document.getElementById('exercise-edit-duration').value) || null;
+        var observations = document.getElementById('exercise-edit-observations').value.trim() || null;
+        var done = document.getElementById('exercise-edit-done').checked;
+
+        var patchData = { activity: activity, calories: calories, done: done };
+        if (durVal) patchData.duration_minutes = durVal;
+        if (observations !== null) patchData.observations = observations;
+
+        try {
+            var updated = await apiPatch('/api/health/exercises/' + encodeURIComponent(id), patchData);
+            // Merge update into current data
+            exerciseDetailCurrentData = Object.assign({}, exerciseDetailCurrentData, updated, patchData);
+            showExerciseDetailView(exerciseDetailCurrentData);
+            showToast('Exercício atualizado ✓');
+            loadHealthDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    });
 
     // ---- Meal modal ----
     var mealOverlay = document.getElementById('health-meal-overlay');

@@ -590,6 +590,59 @@
         </div>
     </div>
 
+    <!-- Exercise detail/edit modal -->
+    <div class="health-modal-overlay" id="exercise-detail-overlay">
+        <div class="health-modal task-detail-modal" id="exercise-detail-modal">
+            <!-- View mode -->
+            <div id="exercise-detail-view">
+                <div class="task-detail-header">
+                    <h3 id="exercise-detail-title"></h3>
+                    <span class="task-detail-status-badge" id="exercise-detail-status-badge"></span>
+                </div>
+                <div class="task-detail-meta-grid" id="exercise-detail-meta-grid"></div>
+                <div class="task-detail-observations-block hidden" id="exercise-detail-observations-block">
+                    <div class="task-detail-obs-label">Observações</div>
+                    <div class="task-detail-obs-text" id="exercise-detail-obs-text"></div>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="exercise-detail-edit-btn">✏ Editar</button>
+                    <button class="btn btn-danger" id="exercise-detail-delete-btn">🗑 Excluir</button>
+                    <button class="modal-close-btn" id="exercise-detail-close">Fechar</button>
+                </div>
+            </div>
+            <!-- Edit mode -->
+            <div id="exercise-edit-view" class="hidden">
+                <h3>Editar Exercício</h3>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-activity">Atividade</label>
+                    <input type="text" class="health-form-input" id="exercise-edit-activity" maxlength="200" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-calories">Calorias queimadas (kcal)</label>
+                    <input type="number" class="health-form-input" id="exercise-edit-calories" min="1" max="50000" step="any">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-duration">Duração (min, opcional)</label>
+                    <input type="number" class="health-form-input" id="exercise-edit-duration" min="1" max="1440" step="1">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-observations">Observações (opcional)</label>
+                    <input type="text" class="health-form-input" id="exercise-edit-observations" maxlength="500" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="tasks-always-on-toggle">
+                        <input type="checkbox" id="exercise-edit-done">
+                        <span class="tasks-always-on-label">✓ Concluído</span>
+                    </label>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="exercise-edit-save-btn">Salvar</button>
+                    <button class="btn btn-ghost" id="exercise-edit-cancel-btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Google status modal -->
     <div class="google-modal-overlay" id="google-modal-overlay">
         <div class="google-modal">

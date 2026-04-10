@@ -155,10 +155,12 @@ class HealthStore:
                 CREATE INDEX IF NOT EXISTS idx_health_meals_user_date
                     ON health_meals (user_id, date)
             """)
-            # Migration: add meal_group_id if not present
+            # Migrations: add new columns if not present
             existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(health_meals)").fetchall()}
             if "meal_group_id" not in existing_cols:
                 conn.execute("ALTER TABLE health_meals ADD COLUMN meal_group_id TEXT")
+            if "calories_pending" not in existing_cols:
+                conn.execute("ALTER TABLE health_meals ADD COLUMN calories_pending INTEGER DEFAULT 0")
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_health_meals_group
                     ON health_meals (meal_group_id)
@@ -378,6 +380,7 @@ class HealthStore:
         normalized_amount: Optional[float] = None,
         normalized_unit: Optional[str] = None,
         meal_group_id: Optional[str] = None,
+        calories_pending: bool = False,
     ) -> dict:
         meal_id = uuid.uuid4().hex
         now = _utc_now_iso()
@@ -386,11 +389,11 @@ class HealthStore:
             conn.execute(
                 """
                 INSERT INTO health_meals
-                  (id, user_id, food, meal_type, quantity, normalized_amount, normalized_unit, calories, date, created_at, meal_group_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, user_id, food, meal_type, quantity, normalized_amount, normalized_unit, calories, date, created_at, meal_group_id, calories_pending)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (meal_id, user_id, food.strip(), meal_type, quantity, normalized_amount,
-                 normalized_unit, calories, meal_date, now, meal_group_id),
+                 normalized_unit, calories, meal_date, now, meal_group_id, int(calories_pending)),
             )
         return {
             "id": meal_id,
@@ -402,6 +405,7 @@ class HealthStore:
             "calories": calories,
             "date": meal_date,
             "meal_group_id": meal_group_id,
+            "calories_pending": calories_pending,
         }
 
     def list_meals_by_date_range(
@@ -436,6 +440,7 @@ class HealthStore:
             "calories": float(r["calories"]),
             "date": r["date"],
             "meal_group_id": r.get("meal_group_id"),
+            "calories_pending": bool(r.get("calories_pending", 0)),
         }
 
     def update_meal(self, user_id: str, meal_id: str, **kwargs) -> dict:
@@ -461,6 +466,21 @@ class HealthStore:
                 raise ValueError(f"Meal {meal_id!r} not found")
             row = conn.execute("SELECT * FROM health_meals WHERE id = ?", (meal_id,)).fetchone()
         return self._meal_row_to_dict(row)
+
+    def update_meal_calories_batch(self, meal_group_id: str, meal_ids: list[str], calories_list: list[float]) -> None:
+        """Update calories for a list of meal items belonging to the same group.
+
+        Sets calories_pending=0 on each updated item.
+        meal_ids and calories_list must have the same length.
+        """
+        if len(meal_ids) != len(calories_list):
+            raise ValueError("meal_ids and calories_list must have the same length")
+        with self._lock, self._connect() as conn:
+            for meal_id, cal in zip(meal_ids, calories_list):
+                conn.execute(
+                    "UPDATE health_meals SET calories = ?, calories_pending = 0 WHERE id = ?",
+                    (cal, meal_id),
+                )
 
     def delete_meal(self, user_id: str, meal_id: str) -> bool:
         with self._lock, self._connect() as conn:

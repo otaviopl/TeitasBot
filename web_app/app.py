@@ -1072,9 +1072,13 @@ async def create_health_meal(
     body: CreateMealRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Register a meal with multiple food items in the local SQLite health database."""
+    """Register a meal with multiple food items in the local SQLite health database.
+
+    Items without explicit calories are saved with calories=0 and calories_pending=True.
+    A background task estimates their calories via a single LLM batch call.
+    """
     from assistant_connector.health_store import HealthStore, parse_quantity_details, normalize_quantity
-    from openai_connector.llm_api import estimate_calories
+    from openai_connector.llm_api import estimate_calories_batch
     from utils.timezone_utils import today_iso_in_configured_timezone
 
     meal_type = body.meal_type.strip().upper()
@@ -1092,15 +1096,6 @@ async def create_health_meal(
         if not quantity or len(quantity) > _MAX_QUANTITY_LEN:
             raise HTTPException(status_code=400, detail=f"quantity must be 1-{_MAX_QUANTITY_LEN} characters")
 
-    # Estimate calories in parallel for items without value
-    async def resolve_calories(item: MealItemRequest) -> float:
-        if item.estimated_calories is not None:
-            return float(item.estimated_calories)
-        cal = await asyncio.to_thread(estimate_calories, f"{item.food.strip()}, {item.quantity.strip()}", "meal")
-        return float(cal) if cal is not None else 0.0
-
-    calories_list = await asyncio.gather(*[resolve_calories(i) for i in body.items])
-
     meal_group_id = __import__("uuid").uuid4().hex
     import datetime as _dt
     meal_date = today_iso_in_configured_timezone()
@@ -1110,12 +1105,20 @@ async def create_health_meal(
             meal_date = body.date
         except ValueError:
             raise HTTPException(status_code=400, detail="date must be a valid ISO date (YYYY-MM-DD)")
+
     user_id = f"web:{user['username']}"
     store: HealthStore = get_health_store()
+
+    # Items with no explicit calories will be marked pending and estimated in background
+    items_needing_estimate = []
     results = []
-    for item, calories in zip(body.items, calories_list):
+    for item in body.items:
         food = item.food.strip()
         quantity = item.quantity.strip()
+        has_explicit_calories = item.estimated_calories is not None
+        calories = float(item.estimated_calories) if has_explicit_calories else 0.0
+        pending = not has_explicit_calories
+
         normalized_amount = None
         normalized_unit = None
         try:
@@ -1125,6 +1128,7 @@ async def create_health_meal(
             normalized_unit = qty_normalized["unit"]
         except Exception:
             pass
+
         result = await asyncio.to_thread(
             store.create_meal,
             user_id=user_id,
@@ -1136,9 +1140,33 @@ async def create_health_meal(
             normalized_amount=normalized_amount,
             normalized_unit=normalized_unit,
             meal_group_id=meal_group_id,
+            calories_pending=pending,
         )
         results.append(result)
-    return {"status": "created", "meals": results, "meal_group_id": meal_group_id}
+        if pending:
+            items_needing_estimate.append({"meal_id": result["id"], "food": food, "quantity": quantity})
+
+    any_pending = len(items_needing_estimate) > 0
+
+    # Spawn background task to estimate calories for items without explicit values
+    if any_pending:
+        async def _estimate_and_update():
+            batch_items = [{"food": x["food"], "quantity": x["quantity"]} for x in items_needing_estimate]
+            try:
+                calories_estimated = await asyncio.to_thread(estimate_calories_batch, batch_items)
+                meal_ids = [x["meal_id"] for x in items_needing_estimate]
+                await asyncio.to_thread(
+                    store.update_meal_calories_batch,
+                    meal_group_id,
+                    meal_ids,
+                    calories_estimated,
+                )
+            except Exception:
+                pass  # Best-effort: failures leave calories_pending=True but don't crash
+
+        asyncio.create_task(_estimate_and_update())
+
+    return {"status": "created", "meals": results, "meal_group_id": meal_group_id, "calories_pending": any_pending}
 
 
 @app.get("/api/health/meals/foods")
@@ -1342,6 +1370,23 @@ async def update_health_exercise(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return result
+
+
+@app.delete("/api/health/exercises/{exercise_id}")
+async def delete_health_exercise(
+    exercise_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete an exercise entry."""
+    from assistant_connector.health_store import HealthStore
+    if not exercise_id.strip():
+        raise HTTPException(status_code=400, detail="exercise_id is required")
+    user_id = f"web:{user['username']}"
+    store: HealthStore = get_health_store()
+    deleted = await asyncio.to_thread(store.delete_exercise, user_id=user_id, exercise_id=exercise_id.strip())
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    return {"status": "deleted"}
 
 
 # ---- Finance endpoints ----

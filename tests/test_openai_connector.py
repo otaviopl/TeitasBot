@@ -544,3 +544,68 @@ class TestEstimateCalories(unittest.TestCase):
             meals = [{"food": "Feijão", "meal_type": "ALMOÇO", "quantity": "100g", "calories": 150, "date": "2026-04-01"}]
             result = llm_api.generate_nutritional_analysis(meals, [])
         self.assertIsInstance(result, str)
+
+
+class TestEstimateCaloriesBatch(unittest.TestCase):
+    """Tests for estimate_calories_batch — single LLM call for all meal items."""
+
+    def _patch_client(self, output_text):
+        fake_resp = _FakeResponse(output_text)
+        fake_client = unittest.mock.Mock()
+        fake_client.responses.create.return_value = fake_resp
+        return unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client)
+
+    def test_returns_list_of_floats(self):
+        with self._patch_client("[350.0, 200, 75]"):
+            items = [
+                {"food": "Arroz", "quantity": "200g"},
+                {"food": "Frango", "quantity": "150g"},
+                {"food": "Salada", "quantity": "100g"},
+            ]
+            result = llm_api.estimate_calories_batch(items)
+        self.assertEqual(result, [350.0, 200.0, 75.0])
+
+    def test_single_item(self):
+        with self._patch_client("[420]"):
+            result = llm_api.estimate_calories_batch([{"food": "Pizza", "quantity": "2 fatias"}])
+        self.assertEqual(result, [420.0])
+
+    def test_empty_list_returns_empty(self):
+        result = llm_api.estimate_calories_batch([])
+        self.assertEqual(result, [])
+
+    def test_api_error_returns_zeros(self):
+        fake_client = unittest.mock.Mock()
+        fake_client.responses.create.side_effect = Exception("API down")
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            items = [{"food": "Arroz", "quantity": "200g"}, {"food": "Feijão", "quantity": "100g"}]
+            result = llm_api.estimate_calories_batch(items)
+        self.assertEqual(result, [0.0, 0.0])
+
+    def test_malformed_response_returns_zeros(self):
+        with self._patch_client("Não consigo estimar"):
+            items = [{"food": "Algo", "quantity": "1x"}]
+            result = llm_api.estimate_calories_batch(items)
+        self.assertEqual(result, [0.0])
+
+    def test_all_items_sent_in_single_call(self):
+        """Verify only one LLM call is made regardless of item count."""
+        call_count = {"n": 0}
+        fake_client = unittest.mock.Mock()
+
+        def fake_create(**kwargs):
+            call_count["n"] += 1
+            return _FakeResponse("[100, 200, 300, 400]")
+
+        fake_client.responses.create.side_effect = fake_create
+        with unittest.mock.patch.object(llm_api, "_create_openai_client", return_value=fake_client):
+            items = [{"food": f"Food{i}", "quantity": "100g"} for i in range(4)]
+            llm_api.estimate_calories_batch(items)
+        self.assertEqual(call_count["n"], 1)
+
+    def test_list_embedded_in_prose(self):
+        """JSON array embedded in surrounding text should be extracted correctly."""
+        with self._patch_client("A estimativa é: [150, 280] kcal no total."):
+            items = [{"food": "Banana", "quantity": "1 un"}, {"food": "Pão", "quantity": "2 fatias"}]
+            result = llm_api.estimate_calories_batch(items)
+        self.assertEqual(result, [150.0, 280.0])

@@ -504,3 +504,135 @@ class TestMealGroupOps:
         assert patch_res.status_code == 200
         assert patch_res.json()["meal"]["food"] == "Pera"
 
+
+# ---- calories_pending tests ----
+
+class TestCaloriesPending:
+    def test_explicit_calories_not_pending(self, client, auth_token):
+        """Items with explicit estimated_calories should not be marked pending."""
+        res = client.post("/api/health/meals", json={
+            "meal_type": "ALMOÇO",
+            "items": [{"food": "Arroz", "quantity": "200g", "estimated_calories": 300}],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["meals"][0]["calories"] == 300.0
+        assert data["meals"][0]["calories_pending"] is False
+
+    def test_no_calories_creates_pending(self, client, auth_token, monkeypatch):
+        """Items without explicit calories should be saved with calories_pending=True."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+
+        import openai_connector.llm_api as llm_mod
+
+        async def fake_batch(items, logger=None):
+            return [0.0] * len(items)
+
+        # Patch the background task so it doesn't actually call the LLM
+        import asyncio
+
+        async def fake_estimate_task():
+            pass
+
+        import web_app.app as web_app_mod
+        monkeypatch.setattr(asyncio, "create_task", lambda coro: None)
+
+        res = client.post("/api/health/meals", json={
+            "meal_type": "JANTAR",
+            "items": [{"food": "Frango grelhado", "quantity": "200g"}],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["calories_pending"] is True
+        assert data["meals"][0]["calories_pending"] is True
+        assert data["meals"][0]["calories"] == 0.0
+
+    def test_mixed_pending_and_not(self, client, auth_token, monkeypatch):
+        """Items with explicit calories are not pending; items without are pending."""
+        monkeypatch.setenv("OPENAI_KEY", "test-key")
+        import asyncio
+        monkeypatch.setattr(asyncio, "create_task", lambda coro: None)
+
+        res = client.post("/api/health/meals", json={
+            "meal_type": "ALMOÇO",
+            "items": [
+                {"food": "Arroz", "quantity": "200g", "estimated_calories": 250},
+                {"food": "Salada", "quantity": "100g"},
+            ],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        # First item has explicit calories — not pending
+        arroz = next(m for m in data["meals"] if m["food"] == "Arroz")
+        salada = next(m for m in data["meals"] if m["food"] == "Salada")
+        assert arroz["calories_pending"] is False
+        assert arroz["calories"] == 250.0
+        assert salada["calories_pending"] is True
+
+    def test_no_pending_when_no_openai_key(self, client, auth_token, monkeypatch):
+        """When OPENAI_KEY is missing, items without calories save with 0.0 (not pending)."""
+        monkeypatch.setenv("OPENAI_KEY", "")
+        import asyncio
+        monkeypatch.setattr(asyncio, "create_task", lambda coro: None)
+
+        res = client.post("/api/health/meals", json={
+            "meal_type": "CAFÉ DA MANHÃ",
+            "items": [{"food": "Pão", "quantity": "2 fatias"}],
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+
+
+# ---- Delete exercise tests ----
+
+class TestDeleteExercise:
+    def test_delete_exercise_requires_auth(self, client):
+        res = client.delete("/api/health/exercises/some-id")
+        assert res.status_code == 401
+
+    def test_delete_exercise_not_found(self, client, auth_token):
+        res = client.delete("/api/health/exercises/nonexistent-id", headers=_auth(auth_token))
+        assert res.status_code == 404
+
+    def test_delete_exercise_success(self, client, auth_token):
+        create_res = client.post("/api/health/exercises", json={
+            "activity": "Swimming", "calories": 400, "done": False
+        }, headers=_auth(auth_token))
+        assert create_res.status_code == 200
+        exercise_id = create_res.json()["exercise"]["id"]
+
+        del_res = client.delete(f"/api/health/exercises/{exercise_id}", headers=_auth(auth_token))
+        assert del_res.status_code == 200
+        assert del_res.json()["status"] == "deleted"
+
+    def test_deleted_exercise_not_in_dashboard(self, client, auth_token):
+        create_res = client.post("/api/health/exercises", json={
+            "activity": "Jump Rope", "calories": 300, "done": True
+        }, headers=_auth(auth_token))
+        exercise_id = create_res.json()["exercise"]["id"]
+
+        client.delete(f"/api/health/exercises/{exercise_id}", headers=_auth(auth_token))
+
+        from utils.timezone_utils import today_iso_in_configured_timezone
+        today = today_iso_in_configured_timezone()
+        dash_res = client.get(f"/api/health/dashboard?date={today}", headers=_auth(auth_token))
+        activities = [e["activity"] for e in dash_res.json()["exercises"]]
+        assert "Jump Rope" not in activities
+
+    def test_cannot_delete_another_users_exercise(self, client, auth_token):
+        """Exercise should only be deletable by its owner."""
+        create_res = client.post("/api/health/exercises", json={
+            "activity": "Boxing", "calories": 500, "done": False
+        }, headers=_auth(auth_token))
+        exercise_id = create_res.json()["exercise"]["id"]
+
+        # Create a second user and try to delete
+        from web_app.dependencies import get_user_store
+        get_user_store().create_user("other_user2", "pass123", "Other")
+        other_token = client.post("/api/auth/login", json={
+            "username": "other_user2", "password": "pass123"
+        }).json()["token"]
+
+        res = client.delete(f"/api/health/exercises/{exercise_id}",
+                            headers=_auth(other_token))
+        assert res.status_code == 404
+

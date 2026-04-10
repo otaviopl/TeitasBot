@@ -378,6 +378,59 @@ def estimate_calories(description: str, category: str = "meal", user_weight_kg: 
     return None
 
 
+def estimate_calories_batch(items: list[dict], logger=None) -> list[float | None]:
+    """Use a single LLM call to estimate calories for multiple meal items.
+
+    Args:
+        items: List of dicts with keys "food" (str) and "quantity" (str).
+        logger: Optional logger instance.
+
+    Returns:
+        List of estimated calories (float) in the same order as input items.
+        Returns 0.0 for any item whose estimation fails.
+    """
+    if not items:
+        return []
+
+    openai_client = _create_openai_client()
+    llm_model = _get_llm_model()
+
+    lines = []
+    for i, item in enumerate(items, 1):
+        food = str(item.get("food", "")).strip()
+        quantity = str(item.get("quantity", "")).strip()
+        lines.append(f"{i}. {food}, {quantity}" if quantity else f"{i}. {food}")
+
+    prompt = (
+        "Estime as calorias (kcal) de cada alimento abaixo na quantidade indicada. "
+        "Se a quantidade não for especificada, assuma uma porção padrão típica brasileira. "
+        "Considere o método de preparo quando mencionado (grelhado, frito, cozido, etc.). "
+        "Responda APENAS com um array JSON de números inteiros, um por linha de entrada, "
+        "sem texto adicional, sem unidade, sem markdown. Exemplo para 3 itens: [350, 180, 75]\n\n"
+        "Alimentos:\n" + "\n".join(lines)
+    )
+
+    try:
+        completion = _safe_openai_call(
+            lambda: openai_client.responses.create(model=llm_model, input=prompt),
+            description="estimate_calories_batch",
+        )
+        raw = completion.output_text.strip()
+        # Extract JSON array from response
+        import re as _re
+        import json as _json
+        match = _re.search(r"\[[\d\s,\.]+\]", raw)
+        if match:
+            parsed = _json.loads(match.group())
+            if isinstance(parsed, list) and len(parsed) == len(items):
+                return [round(float(v), 1) if v and float(v) > 0 else 0.0 for v in parsed]
+    except Exception:
+        if logger:
+            logger.warning("Failed to estimate calories in batch via LLM for %d items", len(items))
+
+    return [0.0] * len(items)
+
+
 _NUTRITIONAL_ANALYSIS_PROMPT = (
     "Você é um nutricionista esportivo. Analise os dados de alimentação e exercícios "
     "dos últimos 7 dias e produza uma análise concisa em português com Markdown.\n\n"
