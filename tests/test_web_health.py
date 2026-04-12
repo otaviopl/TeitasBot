@@ -256,6 +256,14 @@ class TestCreateExercise:
         res = client.post("/api/health/exercises", json={}, headers=_auth(auth_token))
         assert res.status_code == 422
 
+    def test_create_exercise_with_date(self, client, auth_token):
+        res = client.post("/api/health/exercises", json={
+            "activity": "Running", "calories": 350, "date": "2025-01-15", "done": True
+        }, headers=_auth(auth_token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["exercise"]["date"] == "2025-01-15"
+
     def test_create_exercise_success(self, client, auth_token):
         res = client.post("/api/health/exercises", json={
             "activity": "Running", "calories": 350, "done": True
@@ -275,6 +283,12 @@ class TestCreateExercise:
     def test_calories_invalid(self, client, auth_token):
         res = client.post("/api/health/exercises", json={
             "activity": "Yoga", "calories": -5
+        }, headers=_auth(auth_token))
+        assert res.status_code == 400
+
+    def test_create_exercise_with_invalid_date(self, client, auth_token):
+        res = client.post("/api/health/exercises", json={
+            "activity": "Yoga", "calories": 120, "date": "bad-date"
         }, headers=_auth(auth_token))
         assert res.status_code == 400
 
@@ -635,4 +649,3 @@ class TestDeleteExercise:
         res = client.delete(f"/api/health/exercises/{exercise_id}",
                             headers=_auth(other_token))
         assert res.status_code == 404
-

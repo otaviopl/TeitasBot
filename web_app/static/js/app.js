@@ -3171,8 +3171,10 @@
         mealSubmitBtn.textContent = 'Registrando…';
 
         try {
+            var selectedDate = healthDateISO();
             await apiPost('/api/health/meals', {
                 meal_type: selectedMealType,
+                date: selectedDate,
                 items: items,
             });
             mealOverlay.classList.remove('visible');
@@ -3214,9 +3216,11 @@
         try {
             var durVal = document.getElementById('exercise-duration').value;
             var durMin = durVal ? parseInt(durVal) : null;
+            var selectedDate = healthDateISO();
             await apiPost('/api/health/exercises', {
                 activity: document.getElementById('exercise-activity').value.trim(),
                 calories: parseFloat(document.getElementById('exercise-calories').value),
+                date: selectedDate,
                 observations: document.getElementById('exercise-observations').value.trim(),
                 done: document.getElementById('exercise-done').checked,
                 duration_minutes: durMin && durMin > 0 ? durMin : null,

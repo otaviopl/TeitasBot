@@ -1275,6 +1275,7 @@ async def update_health_meal(
 class CreateExerciseRequest(BaseModel):
     activity: str
     calories: float
+    date: str | None = None
     observations: str = ""
     done: bool = True
     duration_minutes: int | None = None
@@ -1286,6 +1287,7 @@ async def create_health_exercise(
     user: dict = Depends(get_current_user),
 ):
     """Register an exercise in the local SQLite health database."""
+    import datetime as _dt
     from assistant_connector.health_store import HealthStore
 
     activity = body.activity.strip()
@@ -1299,6 +1301,14 @@ async def create_health_exercise(
 
     from utils.timezone_utils import today_iso_in_configured_timezone
 
+    exercise_date = today_iso_in_configured_timezone()
+    if body.date:
+        try:
+            _dt.date.fromisoformat(body.date)
+            exercise_date = body.date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be a valid ISO date (YYYY-MM-DD)")
+
     user_id = f"web:{user['username']}"
     store: HealthStore = get_health_store()
     result = await asyncio.to_thread(
@@ -1306,7 +1316,7 @@ async def create_health_exercise(
         user_id=user_id,
         activity=activity,
         calories=body.calories,
-        date=today_iso_in_configured_timezone(),
+        date=exercise_date,
         observations=observations,
         done=body.done,
         duration_minutes=body.duration_minutes,

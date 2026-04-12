@@ -1,5 +1,5 @@
-/* sw.js — Service Worker for PWA (cache-first static assets, network-first API) */
-var CACHE_NAME = 'pa-pwa-v4';
+/* sw.js — Service Worker for PWA (network-first static assets, network-first API) */
+var CACHE_NAME = 'pa-pwa-v5';
 var STATIC_ASSETS = [
     '/',
     '/chat',
@@ -49,21 +49,18 @@ self.addEventListener('fetch', function (event) {
         return;
     }
 
-    // Cache-first for static assets
+    // Network-first for static assets (cache as offline fallback)
     event.respondWith(
-        caches.match(event.request).then(function (cached) {
-            if (cached) {
-                // Update cache in the background
-                fetch(event.request).then(function (response) {
-                    if (response && response.status === 200) {
-                        caches.open(CACHE_NAME).then(function (cache) {
-                            cache.put(event.request, response);
-                        });
-                    }
-                }).catch(function () {});
-                return cached;
+        fetch(event.request).then(function (response) {
+            if (response && response.status === 200) {
+                var responseClone = response.clone();
+                caches.open(CACHE_NAME).then(function (cache) {
+                    cache.put(event.request, responseClone);
+                });
             }
-            return fetch(event.request);
+            return response;
+        }).catch(function () {
+            return caches.match(event.request);
         })
     );
 });
