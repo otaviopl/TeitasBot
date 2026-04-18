@@ -1572,6 +1572,261 @@ async def delete_finance_bill(
     return {"status": "deleted"}
 
 
+def _make_card_hash(date_str: str, title: str, amount_str: str) -> str:
+    import hashlib
+    raw = f"{date_str}|{title}|{amount_str}"
+    return "card:" + hashlib.sha256(raw.encode()).hexdigest()[:20]
+
+
+def _parse_nubank_card_csv(content: str) -> list[dict]:
+    import csv as _csv
+    import io as _io
+    import re as _re
+
+    rows = []
+    reader = _csv.DictReader(_io.StringIO(content))
+    for row in reader:
+        date_str = (row.get("date") or "").strip()
+        title = (row.get("title") or "").strip()
+        amount_str = (row.get("amount") or "").strip()
+
+        if not date_str or not title or not amount_str:
+            continue
+        try:
+            import datetime as _dt
+            _dt.date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        try:
+            amount = float(amount_str)
+        except ValueError:
+            continue
+
+        # Determine row type
+        if amount < 0:
+            row_type = "payment"
+        elif title.startswith("IOF de "):
+            row_type = "iof"
+            # Clean IOF title: 'IOF de "Hostinger.Com"' -> 'IOF - Hostinger.Com'
+            inner = _re.sub(r'^IOF de "?|"?$', '', title).strip('" ')
+            title = f"IOF - {inner}"
+        else:
+            row_type = "expense"
+
+        # Detect installments: "Nome - Parcela X/Y" or "Nome - X/Y"
+        installment = None
+        m = _re.search(r'\s*-\s*Parcela\s+(\d+)/(\d+)\s*$', title, _re.IGNORECASE)
+        if not m:
+            m = _re.search(r'\s*-\s*(\d+)/(\d+)\s*$', title)
+        if m:
+            installment = {"current": int(m.group(1)), "total": int(m.group(2))}
+
+        card_hash = _make_card_hash(date_str, title, amount_str)
+
+        rows.append({
+            "nubank_id": card_hash,
+            "date": date_str,
+            "amount": abs(amount),
+            "name": title,
+            "description": title,
+            "type": row_type,
+            "installment": installment,
+        })
+    return rows
+
+
+def _clean_nubank_description(desc: str) -> str:
+    """Extract a human-readable name from a Nubank transaction description."""
+    parts = desc.split(" - ")
+    if len(parts) >= 2:
+        return parts[1].strip()
+    return desc
+
+
+def _parse_nubank_csv(content: str) -> list[dict]:
+    import csv as _csv
+    import io as _io
+
+    SKIP_EXACT = {"Aplicação RDB", "Pagamento de fatura"}
+
+    rows = []
+    reader = _csv.DictReader(_io.StringIO(content))
+    for row in reader:
+        date_str = (row.get("Data") or "").strip()
+        valor_str = (row.get("Valor") or "").strip()
+        nubank_id = (row.get("Identificador") or "").strip()
+        desc_raw = (row.get("Descrição") or "").strip()
+
+        if not date_str or not valor_str or not desc_raw:
+            continue
+        try:
+            amount = float(valor_str.replace(",", "."))
+        except ValueError:
+            continue
+        if amount >= 0:
+            continue
+        if desc_raw in SKIP_EXACT or desc_raw.startswith("Aplicação RDB"):
+            continue
+
+        try:
+            d, m_part, y = date_str.split("/")
+            iso_date = f"{y}-{m_part.zfill(2)}-{d.zfill(2)}"
+        except ValueError:
+            continue
+
+        rows.append({
+            "nubank_id": nubank_id,
+            "date": iso_date,
+            "amount": round(abs(amount), 2),
+            "name": _clean_nubank_description(desc_raw),
+            "description": desc_raw,
+        })
+    return rows
+
+
+@app.post("/api/finance/import/nubank/preview")
+async def nubank_import_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Parse a Nubank account CSV and return expense rows with AI-suggested categories."""
+    content_bytes = await file.read()
+    try:
+        content = content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        content = content_bytes.decode("latin-1")
+
+    rows = _parse_nubank_csv(content)
+    if not rows:
+        return {"rows": [], "total_amount": 0.0, "count": 0}
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    nubank_ids = [r["nubank_id"] for r in rows if r["nubank_id"]]
+    existing_ids = await asyncio.to_thread(store.check_nubank_ids_exist, user_id, nubank_ids)
+
+    for row in rows:
+        row["already_imported"] = row["nubank_id"] in existing_ids
+
+    from openai_connector.llm_api import categorize_expenses_batch
+
+    to_categorize = [r for r in rows if not r["already_imported"]]
+    if to_categorize:
+        categories = await asyncio.to_thread(
+            categorize_expenses_batch, [r["name"] for r in to_categorize]
+        )
+        for row, cat in zip(to_categorize, categories):
+            row["category"] = cat
+
+    for row in rows:
+        row.setdefault("category", "Outros")
+
+    new_rows = [r for r in rows if not r["already_imported"]]
+    return {
+        "rows": rows,
+        "total_amount": round(sum(r["amount"] for r in new_rows), 2),
+        "count": len(new_rows),
+    }
+
+
+@app.post("/api/finance/import/nubank/card/preview")
+async def nubank_card_import_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Parse a Nubank credit card CSV (fatura) and return rows with AI-suggested categories."""
+    content_bytes = await file.read()
+    try:
+        content = content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        content = content_bytes.decode("latin-1")
+
+    rows = _parse_nubank_card_csv(content)
+    if not rows:
+        return {"rows": [], "total_amount": 0.0, "count": 0}
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    all_hashes = [r["nubank_id"] for r in rows]
+    existing_ids = await asyncio.to_thread(store.check_nubank_ids_exist, user_id, all_hashes)
+
+    for row in rows:
+        already = row["nubank_id"] in existing_ids
+        # If same hash exists, flag as potential duplicate but still show
+        row["already_imported"] = already
+        row["duplicate_warning"] = already
+
+    from openai_connector.llm_api import categorize_expenses_batch
+
+    # Only categorize actual expense rows not already imported
+    to_categorize = [r for r in rows if r["type"] == "expense" and not r["already_imported"]]
+    if to_categorize:
+        categories = await asyncio.to_thread(
+            categorize_expenses_batch, [r["name"] for r in to_categorize]
+        )
+        for row, cat in zip(to_categorize, categories):
+            row["category"] = cat
+
+    # Default categories for non-expense types
+    for row in rows:
+        if "category" not in row:
+            if row["type"] == "iof":
+                row["category"] = "Outros"
+            elif row["type"] == "payment":
+                row["category"] = "Outros"
+            else:
+                row["category"] = "Outros"
+
+    expense_rows = [r for r in rows if r["type"] != "payment" and not r["already_imported"]]
+    total = round(sum(r["amount"] for r in expense_rows), 2)
+    return {
+        "rows": rows,
+        "total_amount": total,
+        "count": len(expense_rows),
+    }
+
+
+class NubankImportRow(BaseModel):
+    nubank_id: str
+    date: str
+    amount: float
+    name: str
+    category: str = "Outros"
+    description: str = ""
+
+
+class NubankImportConfirmRequest(BaseModel):
+    rows: list[NubankImportRow]
+
+
+@app.post("/api/finance/import/nubank/confirm")
+async def nubank_import_confirm(
+    body: NubankImportConfirmRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Bulk import selected Nubank expenses, deduplicating by nubank_id."""
+    if not body.rows:
+        raise HTTPException(status_code=400, detail="No rows to import")
+
+    expenses = [
+        {
+            "nubank_id": r.nubank_id,
+            "date": r.date,
+            "amount": r.amount,
+            "name": r.name.strip()[:200],
+            "category": r.category or "Outros",
+            "description": r.description[:500],
+        }
+        for r in body.rows
+        if r.amount > 0 and r.name.strip()
+    ]
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    result = await asyncio.to_thread(store.bulk_import_expenses, user_id, expenses)
+    return result
+
+
 @app.get("/api/finance/dashboard")
 async def finance_dashboard(
     month: str | None = Query(None, description="YYYY-MM, defaults to current month"),
@@ -1630,6 +1885,33 @@ async def finance_dashboard(
         },
         "category_breakdown": category_breakdown,
     }
+
+
+@app.get("/api/finance/imported-expenses")
+async def imported_expenses(
+    month: str | None = Query(None, description="YYYY-MM, defaults to current month"),
+    user: dict = Depends(get_current_user),
+):
+    """Return only CSV-imported expenses for the given month."""
+    import re
+    from utils.timezone_utils import today_iso_in_configured_timezone
+
+    if month:
+        if not re.match(r"^\d{4}-\d{2}$", month):
+            raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+        target_month = month
+    else:
+        target_month = today_iso_in_configured_timezone()[:7]
+
+    start = target_month + "-01"
+    end = target_month + "-31"
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    expenses = await asyncio.to_thread(
+        store.list_imported_expenses_by_date_range, user_id, start, end
+    )
+    total = round(sum(float(e["amount"]) for e in expenses), 2)
+    return {"month": target_month, "expenses": expenses, "total": total, "count": len(expenses)}
 
 
 # ---- Health Goals endpoints ----

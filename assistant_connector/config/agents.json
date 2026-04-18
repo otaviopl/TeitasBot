@@ -1015,6 +1015,42 @@
       }
     },
     {
+      "name": "analyze_card_expenses",
+      "description": "Analisa despesas importadas via fatura do cartão Nubank (CSV da fatura) para um determinado mês, com total gasto, breakdown por categoria e lista de transações do cartão.",
+      "prompt_guidance": "Use quando o usuário perguntar sobre gastos no cartão de crédito, fatura Nubank, compras parceladas ou quiser analisar o que foi gasto no cartão em determinado mês.",
+      "guidance_priority": 29,
+      "handler": "assistant_connector.tools.finance_tools:analyze_card_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_imported_expenses",
+      "description": "Analisa despesas importadas via extrato Nubank (CSV da conta corrente) para um determinado mês, com total gasto, breakdown por categoria e lista de transações do extrato.",
+      "prompt_guidance": "Use quando o usuário perguntar sobre despesas importadas do extrato da conta Nubank, Pix enviados, boletos pagos ou quiser entender de onde vieram as despesas de determinado mês.",
+      "guidance_priority": 28,
+      "handler": "assistant_connector.tools.finance_tools:analyze_imported_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "list_meals",
       "description": "Lista refeições registradas nos últimos N dias.",
       "handler": "assistant_connector.tools.health_tools:list_meals",

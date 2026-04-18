@@ -92,7 +92,7 @@ def register_expense(arguments, context):
 
 
 def analyze_expenses(arguments, context):
-    month_value = str(arguments.get("month", "")).strip()
+    month_value = str(arguments.get("month") or "").strip()
     day_value = str(
         arguments.get("date", arguments.get("day", arguments.get("expense_date", "")))
     ).strip()
@@ -217,7 +217,7 @@ def analyze_expenses(arguments, context):
 # ---------------------------------------------------------------------------
 
 def list_bills(arguments, context):
-    month_value = str(arguments.get("month", "")).strip()
+    month_value = str(arguments.get("month") or "").strip()
     if month_value:
         if not re.fullmatch(r"\d{4}-\d{2}", month_value):
             raise ValueError("month must follow YYYY-MM")
@@ -272,7 +272,7 @@ def pay_bill(arguments, context):
 
 
 def analyze_bills(arguments, context):
-    month_value = str(arguments.get("month", "")).strip()
+    month_value = str(arguments.get("month") or "").strip()
     if month_value:
         if not re.fullmatch(r"\d{4}-\d{2}", month_value):
             raise ValueError("month must follow YYYY-MM")
@@ -340,7 +340,7 @@ def analyze_bills(arguments, context):
 # ---------------------------------------------------------------------------
 
 def list_expenses(arguments, context):
-    month_value = str(arguments.get("month", "")).strip()
+    month_value = str(arguments.get("month") or "").strip()
     if month_value:
         if not re.fullmatch(r"\d{4}-\d{2}", month_value):
             raise ValueError("month must follow YYYY-MM")
@@ -460,3 +460,107 @@ def delete_bill(arguments, context):
     if not deleted:
         raise ValueError(f"Bill {bill_id!r} not found")
     return {"status": "deleted", "bill_id": bill_id}
+
+
+# ---------------------------------------------------------------------------
+# Imported expenses analysis
+# ---------------------------------------------------------------------------
+
+def analyze_card_expenses(arguments, context):
+    """Analyze expenses imported from Nubank credit card CSV (fatura) for a given month."""
+    month_value = str(arguments.get("month") or "").strip()
+    if month_value:
+        if not re.fullmatch(r"\d{4}-\d{2}", month_value):
+            raise ValueError("month must follow YYYY-MM")
+        target_date = datetime.date.fromisoformat(f"{month_value}-01")
+    else:
+        target_date = today_in_configured_timezone().replace(day=1)
+
+    month_start, month_end = _month_bounds(target_date)
+    month_key = target_date.strftime("%Y-%m")
+
+    expenses = _health_store.list_card_expenses_by_date_range(
+        user_id=context.user_id,
+        start_date=month_start.isoformat(),
+        end_date=month_end.isoformat(),
+    )
+
+    if not expenses:
+        return {
+            "month": month_key,
+            "source": "csv_nubank_card",
+            "total_spent": 0.0,
+            "count": 0,
+            "breakdown_by_category": [],
+            "expenses": [],
+        }
+
+    total_spent = round(sum(e["amount"] for e in expenses), 2)
+    by_category: dict = {}
+    for e in expenses:
+        cat = e["category"]
+        by_category[cat] = by_category.get(cat, 0.0) + e["amount"]
+
+    breakdown = [
+        {"category": cat, "total": round(amt, 2)}
+        for cat, amt in sorted(by_category.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return {
+        "month": month_key,
+        "source": "csv_nubank_card",
+        "total_spent": total_spent,
+        "count": len(expenses),
+        "breakdown_by_category": breakdown,
+        "expenses": expenses,
+    }
+
+
+def analyze_imported_expenses(arguments, context):
+    """Analyze expenses imported via Nubank CSV for a given month or date range."""
+    month_value = str(arguments.get("month") or "").strip()
+    if month_value:
+        if not re.fullmatch(r"\d{4}-\d{2}", month_value):
+            raise ValueError("month must follow YYYY-MM")
+        target_date = datetime.date.fromisoformat(f"{month_value}-01")
+    else:
+        target_date = today_in_configured_timezone().replace(day=1)
+
+    month_start, month_end = _month_bounds(target_date)
+    month_key = target_date.strftime("%Y-%m")
+
+    expenses = _health_store.list_imported_expenses_by_date_range(
+        user_id=context.user_id,
+        start_date=month_start.isoformat(),
+        end_date=month_end.isoformat(),
+    )
+
+    if not expenses:
+        return {
+            "month": month_key,
+            "source": "csv_nubank",
+            "total_spent": 0.0,
+            "count": 0,
+            "breakdown_by_category": [],
+            "expenses": [],
+        }
+
+    total_spent = round(sum(e["amount"] for e in expenses), 2)
+    by_category: dict = {}
+    for e in expenses:
+        cat = e["category"]
+        by_category[cat] = by_category.get(cat, 0.0) + e["amount"]
+
+    breakdown = [
+        {"category": cat, "total": round(amt, 2)}
+        for cat, amt in sorted(by_category.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return {
+        "month": month_key,
+        "source": "csv_nubank",
+        "total_spent": total_spent,
+        "count": len(expenses),
+        "breakdown_by_category": breakdown,
+        "expenses": expenses,
+    }

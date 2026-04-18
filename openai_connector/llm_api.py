@@ -431,6 +431,50 @@ def estimate_calories_batch(items: list[dict], logger=None) -> list[float | None
     return [0.0] * len(items)
 
 
+def categorize_expenses_batch(descriptions: list[str], logger=None) -> list[str]:
+    """Use a single LLM call to categorize multiple expense descriptions.
+
+    Returns a list of category strings in the same order as input.
+    Valid categories: Alimentação, Transporte, Moradia, Saúde, Lazer, Outros.
+    """
+    _VALID = {"Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Outros"}
+
+    if not descriptions:
+        return []
+
+    openai_client = _create_openai_client()
+    llm_model = _get_llm_model()
+
+    lines = "\n".join(f"{i}. {d}" for i, d in enumerate(descriptions, 1))
+    prompt = (
+        "Categorize cada despesa abaixo em uma das categorias: "
+        "Alimentação, Transporte, Moradia, Saúde, Lazer, Outros.\n"
+        "Responda APENAS com um array JSON de strings, uma por despesa, sem texto adicional. "
+        "Exemplo para 3 despesas: [\"Alimentação\", \"Transporte\", \"Outros\"]\n\n"
+        "Despesas:\n" + lines
+    )
+
+    try:
+        import json as _json
+        import re as _re
+
+        completion = _safe_openai_call(
+            lambda: openai_client.responses.create(model=llm_model, input=prompt),
+            description="categorize_expenses_batch",
+        )
+        raw = completion.output_text.strip()
+        match = _re.search(r"\[.*\]", raw, _re.DOTALL)
+        if match:
+            parsed = _json.loads(match.group())
+            if isinstance(parsed, list) and len(parsed) == len(descriptions):
+                return [c if c in _VALID else "Outros" for c in parsed]
+    except Exception:
+        if logger:
+            logger.warning("Failed to categorize expenses in batch via LLM for %d items", len(descriptions))
+
+    return ["Outros"] * len(descriptions)
+
+
 _NUTRITIONAL_ANALYSIS_PROMPT = (
     "Você é um nutricionista esportivo. Analise os dados de alimentação e exercícios "
     "dos últimos 7 dias e produza uma análise concisa em português com Markdown.\n\n"

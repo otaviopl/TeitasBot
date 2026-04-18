@@ -3398,6 +3398,21 @@
         }
     }
 
+    function renderExpenseItem(exp) {
+        var isImported = exp.source && exp.source.indexOf('csv_nubank') === 0;
+        var csvBadge = isImported
+            ? '<span class="finance-csv-badge">CSV</span>'
+            : '';
+        return '<div class="finance-expense-item" data-expense-id="' + exp.id + '">' +
+            '<span class="finance-expense-name">' + escapeHtml(exp.name) + csvBadge + '</span>' +
+            '<span class="finance-expense-date">' + formatDateShort(exp.date) + '</span>' +
+            '<span class="finance-expense-amount">' + formatBRL(exp.amount) + '</span>' +
+            '<button class="finance-expense-delete" data-expense-id="' + exp.id + '" title="Excluir">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+            '</button>' +
+            '</div>';
+    }
+
     function renderExpensesByCategory(expenses, breakdown) {
         if (!expenses || expenses.length === 0) {
             financeExpensesEl.innerHTML = '<h3 class="finance-section-title">Despesas</h3>' +
@@ -3415,6 +3430,9 @@
         var catTotals = {};
         (breakdown || []).forEach(function (b) { catTotals[b.category] = b.total; });
 
+        var importedExpenses = expenses.filter(function (e) { return e.source && e.source.indexOf('csv_nubank') === 0; });
+        var importedTotal = importedExpenses.reduce(function (s, e) { return s + e.amount; }, 0);
+
         var html = '<h3 class="finance-section-title">Despesas (' + expenses.length + ')</h3>';
         Object.keys(grouped).sort().forEach(function (cat) {
             var items = grouped[cat];
@@ -3426,18 +3444,28 @@
                 '<span class="finance-category-total">' + formatBRL(total) + '</span>' +
                 '</div>';
 
-            items.forEach(function (exp) {
-                html += '<div class="finance-expense-item" data-expense-id="' + exp.id + '">' +
-                    '<span class="finance-expense-name">' + escapeHtml(exp.name) + '</span>' +
-                    '<span class="finance-expense-date">' + formatDateShort(exp.date) + '</span>' +
-                    '<span class="finance-expense-amount">' + formatBRL(exp.amount) + '</span>' +
-                    '<button class="finance-expense-delete" data-expense-id="' + exp.id + '" title="Excluir">' +
-                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
-                    '</button>' +
-                    '</div>';
-            });
+            items.forEach(function (exp) { html += renderExpenseItem(exp); });
             html += '</div>';
         });
+
+        // Imported expenses section
+        if (importedExpenses.length > 0) {
+            html += '<div class="finance-imported-section">' +
+                '<div class="finance-imported-header">' +
+                '<span class="finance-imported-title">Importadas via Nubank</span>' +
+                '<span class="finance-imported-total">' + importedExpenses.length + ' · ' + formatBRL(importedTotal) + '</span>' +
+                '</div>' +
+                '<div class="finance-imported-list">';
+            importedExpenses.forEach(function (exp) {
+                html += '<div class="finance-imported-row">' +
+                    '<span class="finance-imported-name">' + escapeHtml(exp.name) + '</span>' +
+                    '<span class="finance-imported-meta">' + formatDateShort(exp.date) + ' · ' + escapeHtml(exp.category) + '</span>' +
+                    '<span class="finance-imported-amount">' + formatBRL(exp.amount) + '</span>' +
+                    '</div>';
+            });
+            html += '</div></div>';
+        }
+
         financeExpensesEl.innerHTML = html;
 
         // Delete expense
@@ -3569,6 +3597,492 @@
             chip.classList.add('active');
         });
     }
+
+    // ---- Nubank CSV import ----
+    var nubankOverlay = document.getElementById('nubank-import-overlay');
+    var nubankClose = document.getElementById('nubank-import-close');
+    var nubankCsvInput = document.getElementById('nubank-csv-input');
+    var nubankFileLabel = document.getElementById('nubank-file-name');
+    var nubankFileLabelWrap = nubankCsvInput ? nubankCsvInput.previousElementSibling : null;
+    var nubankUploadBtn = document.getElementById('nubank-upload-btn');
+    var nubankStepUpload = document.getElementById('nubank-step-upload');
+    var nubankStepLoading = document.getElementById('nubank-step-loading');
+    var nubankStepPreview = document.getElementById('nubank-step-preview');
+    var nubankPreviewBody = document.getElementById('nubank-preview-body');
+    var nubankSelectAll = document.getElementById('nubank-select-all');
+    var nubankConfirmBtn = document.getElementById('nubank-confirm-btn');
+    var nubankSelectedCount = document.getElementById('nubank-selected-count');
+    var nubankSummaryText = document.getElementById('nubank-summary-text');
+
+    var _nubankRows = [];
+
+    var FINANCE_CATEGORIES = ['Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Lazer', 'Outros'];
+
+    function showNubankStep(step) {
+        nubankStepUpload.classList.toggle('hidden', step !== 'upload');
+        nubankStepLoading.classList.toggle('hidden', step !== 'loading');
+        nubankStepPreview.classList.toggle('hidden', step !== 'preview');
+    }
+
+    function nubankResetModal() {
+        showNubankStep('upload');
+        nubankCsvInput.value = '';
+        nubankFileLabel.textContent = 'Escolher arquivo .csv';
+        if (nubankFileLabelWrap) nubankFileLabelWrap.classList.remove('has-file');
+        nubankUploadBtn.disabled = true;
+        _nubankRows = [];
+    }
+
+    document.getElementById('btn-import-nubank').addEventListener('click', function () {
+        nubankResetModal();
+        nubankOverlay.classList.add('visible');
+    });
+
+    nubankClose.addEventListener('click', function () {
+        nubankOverlay.classList.remove('visible');
+    });
+
+    nubankOverlay.addEventListener('click', function (e) {
+        if (e.target === nubankOverlay) nubankOverlay.classList.remove('visible');
+    });
+
+    nubankCsvInput.addEventListener('change', function () {
+        var f = nubankCsvInput.files[0];
+        if (f) {
+            nubankFileLabel.textContent = f.name;
+            if (nubankFileLabelWrap) nubankFileLabelWrap.classList.add('has-file');
+            nubankUploadBtn.disabled = false;
+        } else {
+            nubankFileLabel.textContent = 'Escolher arquivo .csv';
+            if (nubankFileLabelWrap) nubankFileLabelWrap.classList.remove('has-file');
+            nubankUploadBtn.disabled = true;
+        }
+    });
+
+    function nubankUpdateSelectedCount() {
+        var checked = nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked').length;
+        var total = _nubankRows.filter(function (r) { return !r.already_imported; }).length;
+        nubankSelectedCount.textContent = checked + ' de ' + total + ' selecionados';
+        nubankConfirmBtn.disabled = checked === 0;
+    }
+
+    function nubankBuildTable(rows) {
+        _nubankRows = rows;
+        nubankPreviewBody.innerHTML = '';
+
+        rows.forEach(function (row, idx) {
+            var tr = document.createElement('tr');
+            if (row.already_imported) tr.classList.add('already-imported');
+
+            var tdCheck = document.createElement('td');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.idx = idx;
+            cb.checked = !row.already_imported;
+            cb.disabled = !!row.already_imported;
+            cb.addEventListener('change', function () {
+                tr.classList.toggle('row-unchecked', !cb.checked);
+                nubankUpdateSelectedCount();
+                var allNew = Array.from(nubankPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)'));
+                nubankSelectAll.checked = allNew.length > 0 && allNew.every(function (c) { return c.checked; });
+            });
+            tdCheck.appendChild(cb);
+
+            var tdDate = document.createElement('td');
+            tdDate.textContent = row.date ? row.date.split('-').reverse().join('/') : '';
+
+            var tdName = document.createElement('td');
+            tdName.textContent = row.name;
+            tdName.title = row.description || '';
+            tdName.style.maxWidth = '200px';
+            tdName.style.overflow = 'hidden';
+            tdName.style.textOverflow = 'ellipsis';
+            tdName.style.whiteSpace = 'nowrap';
+
+            var tdAmount = document.createElement('td');
+            tdAmount.className = 'nubank-amount';
+            tdAmount.textContent = 'R$ ' + row.amount.toFixed(2).replace('.', ',');
+
+            var tdCat = document.createElement('td');
+            if (row.already_imported) {
+                tdCat.textContent = row.category || 'Outros';
+                tdCat.style.color = 'var(--color-text-muted)';
+                tdCat.style.fontSize = '0.8rem';
+            } else {
+                var sel = document.createElement('select');
+                sel.className = 'nubank-cat-select';
+                sel.dataset.idx = idx;
+                FINANCE_CATEGORIES.forEach(function (cat) {
+                    var opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    if (cat === row.category) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                sel.addEventListener('change', function () {
+                    _nubankRows[idx].category = sel.value;
+                });
+                tdCat.appendChild(sel);
+            }
+
+            tr.appendChild(tdCheck);
+            tr.appendChild(tdDate);
+            tr.appendChild(tdName);
+            tr.appendChild(tdAmount);
+            tr.appendChild(tdCat);
+            nubankPreviewBody.appendChild(tr);
+        });
+
+        nubankUpdateSelectedCount();
+    }
+
+    nubankSelectAll.addEventListener('change', function () {
+        nubankPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(function (cb) {
+            cb.checked = nubankSelectAll.checked;
+            cb.closest('tr').classList.toggle('row-unchecked', !nubankSelectAll.checked);
+        });
+        nubankUpdateSelectedCount();
+    });
+
+    nubankUploadBtn.addEventListener('click', async function () {
+        var f = nubankCsvInput.files[0];
+        if (!f) return;
+        showNubankStep('loading');
+        nubankUploadBtn.disabled = true;
+        try {
+            var formData = new FormData();
+            formData.append('file', f);
+            var resp = await fetch('/api/finance/import/nubank/preview', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: formData,
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao processar CSV');
+            }
+            var data = await resp.json();
+            if (!data.rows || data.rows.length === 0) {
+                showToast('Nenhuma despesa encontrada no arquivo.');
+                nubankOverlay.classList.remove('visible');
+                return;
+            }
+            var newCount = data.count;
+            var totalStr = 'R$ ' + (data.total_amount || 0).toFixed(2).replace('.', ',');
+            nubankSummaryText.textContent = newCount + ' despesas novas · ' + totalStr + ' total';
+            nubankBuildTable(data.rows);
+            showNubankStep('preview');
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+            showNubankStep('upload');
+        } finally {
+            nubankUploadBtn.disabled = false;
+        }
+    });
+
+    nubankConfirmBtn.addEventListener('click', async function () {
+        var checkboxes = Array.from(nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked'));
+        var selectedRows = checkboxes.map(function (cb) {
+            return _nubankRows[parseInt(cb.dataset.idx)];
+        }).filter(Boolean);
+
+        if (selectedRows.length === 0) {
+            showToast('Nenhuma despesa selecionada.');
+            return;
+        }
+
+        nubankConfirmBtn.disabled = true;
+        nubankConfirmBtn.textContent = 'Importando…';
+        try {
+            var payload = {
+                rows: selectedRows.map(function (r) {
+                    return {
+                        nubank_id: r.nubank_id,
+                        date: r.date,
+                        amount: r.amount,
+                        name: r.name,
+                        category: r.category || 'Outros',
+                        description: r.description || '',
+                    };
+                }),
+            };
+            var resp = await fetch('/api/finance/import/nubank/confirm', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao importar');
+            }
+            var result = await resp.json();
+            var msg = result.imported + ' despesa(s) importada(s)';
+            if (result.skipped > 0) msg += ', ' + result.skipped + ' duplicada(s) ignorada(s)';
+            showToast(msg + ' ✓');
+            nubankOverlay.classList.remove('visible');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            nubankConfirmBtn.disabled = false;
+            nubankConfirmBtn.textContent = 'Importar selecionados';
+        }
+    });
+
+    // ---- Nubank card (fatura) import ----
+    var cardOverlay = document.getElementById('card-import-overlay');
+    var cardClose = document.getElementById('card-import-close');
+    var cardCsvInput = document.getElementById('card-csv-input');
+    var cardFileLabel = document.getElementById('card-file-name');
+    var cardFileLabelWrap = cardCsvInput ? cardCsvInput.previousElementSibling : null;
+    var cardUploadBtn = document.getElementById('card-upload-btn');
+    var cardStepUpload = document.getElementById('card-step-upload');
+    var cardStepLoading = document.getElementById('card-step-loading');
+    var cardStepPreview = document.getElementById('card-step-preview');
+    var cardPreviewBody = document.getElementById('card-preview-body');
+    var cardSelectAll = document.getElementById('card-select-all');
+    var cardConfirmBtn = document.getElementById('card-confirm-btn');
+    var cardSelectedCount = document.getElementById('card-selected-count');
+    var cardSummaryText = document.getElementById('card-summary-text');
+
+    var _cardRows = [];
+
+    var CARD_ROW_LABELS = { expense: 'Despesa', iof: 'IOF', payment: 'Pagamento' };
+
+    function showCardStep(step) {
+        cardStepUpload.classList.toggle('hidden', step !== 'upload');
+        cardStepLoading.classList.toggle('hidden', step !== 'loading');
+        cardStepPreview.classList.toggle('hidden', step !== 'preview');
+    }
+
+    function cardResetModal() {
+        showCardStep('upload');
+        cardCsvInput.value = '';
+        cardFileLabel.textContent = 'Escolher arquivo .csv';
+        if (cardFileLabelWrap) cardFileLabelWrap.classList.remove('has-file');
+        cardUploadBtn.disabled = true;
+        _cardRows = [];
+    }
+
+    document.getElementById('btn-import-card').addEventListener('click', function () {
+        cardResetModal();
+        cardOverlay.classList.add('visible');
+    });
+
+    cardClose.addEventListener('click', function () { cardOverlay.classList.remove('visible'); });
+    cardOverlay.addEventListener('click', function (e) {
+        if (e.target === cardOverlay) cardOverlay.classList.remove('visible');
+    });
+
+    cardCsvInput.addEventListener('change', function () {
+        var f = cardCsvInput.files[0];
+        if (f) {
+            cardFileLabel.textContent = f.name;
+            if (cardFileLabelWrap) cardFileLabelWrap.classList.add('has-file');
+            cardUploadBtn.disabled = false;
+        } else {
+            cardFileLabel.textContent = 'Escolher arquivo .csv';
+            if (cardFileLabelWrap) cardFileLabelWrap.classList.remove('has-file');
+            cardUploadBtn.disabled = true;
+        }
+    });
+
+    function cardUpdateSelectedCount() {
+        var checked = cardPreviewBody.querySelectorAll('input[type=checkbox]:checked').length;
+        var selectable = cardPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)').length;
+        cardSelectedCount.textContent = checked + ' de ' + selectable + ' selecionados';
+        cardConfirmBtn.disabled = checked === 0;
+    }
+
+    function cardBuildTable(rows) {
+        _cardRows = rows;
+        cardPreviewBody.innerHTML = '';
+
+        rows.forEach(function (row, idx) {
+            var tr = document.createElement('tr');
+            var isPayment = row.type === 'payment';
+            var isIof = row.type === 'iof';
+            var isDuplicate = !!row.duplicate_warning;
+            var alreadyImported = !!row.already_imported;
+
+            if (isPayment) tr.classList.add('card-row-payment');
+            if (alreadyImported) tr.classList.add('already-imported');
+
+            // Checkbox
+            var tdCheck = document.createElement('td');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.idx = idx;
+            // Default: payment = unchecked; already imported = disabled; others = checked
+            cb.checked = !isPayment && !alreadyImported;
+            cb.disabled = false; // duplicates are shown, user decides
+            if (alreadyImported) cb.disabled = true;
+            cb.addEventListener('change', function () {
+                tr.classList.toggle('row-unchecked', !cb.checked);
+                cardUpdateSelectedCount();
+                var allCbs = Array.from(cardPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)'));
+                cardSelectAll.checked = allCbs.length > 0 && allCbs.every(function (c) { return c.checked; });
+            });
+            if (!cb.checked && !cb.disabled) tr.classList.add('row-unchecked');
+            tdCheck.appendChild(cb);
+
+            // Date
+            var tdDate = document.createElement('td');
+            var dp = (row.date || '').split('-');
+            tdDate.textContent = dp.length === 3 ? dp[2] + '/' + dp[1] : row.date;
+
+            // Description with badges
+            var tdName = document.createElement('td');
+            var nameSpan = document.createElement('span');
+            nameSpan.textContent = row.name;
+            nameSpan.style.cssText = 'max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle';
+            tdName.appendChild(nameSpan);
+
+            if (isPayment) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-payment">Pagamento</span>');
+            } else if (isIof) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-iof">IOF</span>');
+            }
+            if (row.installment) {
+                tdName.insertAdjacentHTML('beforeend',
+                    '<span class="card-type-badge badge-installment">' + row.installment.current + '/' + row.installment.total + '</span>');
+            }
+            if (isDuplicate && !alreadyImported) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-duplicate" title="Possível duplicata">⚠️</span>');
+            }
+            if (alreadyImported) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-already">Já importado</span>');
+            }
+
+            // Amount
+            var tdAmount = document.createElement('td');
+            tdAmount.className = isPayment ? 'nubank-amount card-payment-amount' : 'nubank-amount';
+            tdAmount.textContent = (isPayment ? '+ ' : '') + 'R$ ' + row.amount.toFixed(2).replace('.', ',');
+
+            // Category
+            var tdCat = document.createElement('td');
+            if (isPayment || alreadyImported) {
+                tdCat.textContent = row.category || 'Outros';
+                tdCat.style.color = 'var(--color-text-muted)';
+                tdCat.style.fontSize = '0.8rem';
+            } else {
+                var sel = document.createElement('select');
+                sel.className = 'nubank-cat-select';
+                sel.dataset.idx = idx;
+                FINANCE_CATEGORIES.forEach(function (cat) {
+                    var opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    if (cat === row.category) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                sel.addEventListener('change', function () { _cardRows[idx].category = sel.value; });
+                tdCat.appendChild(sel);
+            }
+
+            tr.appendChild(tdCheck);
+            tr.appendChild(tdDate);
+            tr.appendChild(tdName);
+            tr.appendChild(tdAmount);
+            tr.appendChild(tdCat);
+            cardPreviewBody.appendChild(tr);
+        });
+
+        cardUpdateSelectedCount();
+    }
+
+    cardSelectAll.addEventListener('change', function () {
+        cardPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(function (cb) {
+            cb.checked = cardSelectAll.checked;
+            cb.closest('tr').classList.toggle('row-unchecked', !cardSelectAll.checked);
+        });
+        cardUpdateSelectedCount();
+    });
+
+    cardUploadBtn.addEventListener('click', async function () {
+        var f = cardCsvInput.files[0];
+        if (!f) return;
+        showCardStep('loading');
+        cardUploadBtn.disabled = true;
+        try {
+            var fd = new FormData();
+            fd.append('file', f);
+            var resp = await fetch('/api/finance/import/nubank/card/preview', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd,
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao processar CSV');
+            }
+            var data = await resp.json();
+            if (!data.rows || data.rows.length === 0) {
+                showToast('Nenhuma transação encontrada no arquivo.');
+                cardOverlay.classList.remove('visible');
+                return;
+            }
+            var newCount = data.count;
+            var totalStr = 'R$ ' + (data.total_amount || 0).toFixed(2).replace('.', ',');
+            var dupCount = data.rows.filter(function (r) { return r.duplicate_warning && !r.already_imported; }).length;
+            var summary = newCount + ' transações · ' + totalStr;
+            if (dupCount > 0) summary += ' · ⚠️ ' + dupCount + ' possível(is) duplicata(s)';
+            cardSummaryText.textContent = summary;
+            cardBuildTable(data.rows);
+            showCardStep('preview');
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+            showCardStep('upload');
+        } finally {
+            cardUploadBtn.disabled = false;
+        }
+    });
+
+    cardConfirmBtn.addEventListener('click', async function () {
+        var checkboxes = Array.from(cardPreviewBody.querySelectorAll('input[type=checkbox]:checked'));
+        var selectedRows = checkboxes.map(function (cb) {
+            return _cardRows[parseInt(cb.dataset.idx)];
+        }).filter(Boolean);
+
+        if (selectedRows.length === 0) { showToast('Nenhuma transação selecionada.'); return; }
+
+        cardConfirmBtn.disabled = true;
+        cardConfirmBtn.textContent = 'Importando…';
+        try {
+            var payload = {
+                rows: selectedRows.map(function (r) {
+                    return {
+                        nubank_id: r.nubank_id,
+                        date: r.date,
+                        amount: r.amount,
+                        name: r.name,
+                        category: r.category || 'Outros',
+                        description: r.description || '',
+                    };
+                }),
+            };
+            var resp = await fetch('/api/finance/import/nubank/confirm', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao importar');
+            }
+            var result = await resp.json();
+            var msg = result.imported + ' transação(ões) importada(s)';
+            if (result.skipped > 0) msg += ', ' + result.skipped + ' ignorada(s)';
+            showToast(msg + ' ✓');
+            cardOverlay.classList.remove('visible');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            cardConfirmBtn.disabled = false;
+            cardConfirmBtn.textContent = 'Importar selecionados';
+        }
+    });
 
     // ---- Init ----
     inputEl.focus();

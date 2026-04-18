@@ -4596,3 +4596,267 @@ input[type="checkbox"]:focus-visible {
         font-size: 0.9rem;
     }
 }
+
+/* ---- CSV badge on expense items ---- */
+.finance-csv-badge {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 5px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    border-radius: 3px;
+    background: var(--color-primary-muted, rgba(99, 102, 241, 0.12));
+    color: var(--color-primary);
+    vertical-align: middle;
+    line-height: 1.4;
+}
+
+/* ---- Imported expenses summary section ---- */
+.finance-imported-section {
+    margin-top: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.finance-imported-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 14px;
+    background: var(--color-bg-alt, rgba(99, 102, 241, 0.05));
+    border-bottom: 1px solid var(--color-border);
+}
+
+.finance-imported-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.finance-imported-title::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    opacity: 0.7;
+}
+
+.finance-imported-total {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.finance-imported-list {
+    padding: 4px 0;
+}
+
+.finance-imported-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.82rem;
+}
+
+.finance-imported-row:last-child {
+    border-bottom: none;
+}
+
+.finance-imported-name {
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.finance-imported-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.finance-imported-amount {
+    font-weight: 600;
+    color: var(--color-danger, #e53e3e);
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* ---- Nubank CSV import modal ---- */
+.nubank-import-modal {
+    max-width: 700px;
+}
+
+.nubank-hint {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: 14px;
+}
+
+.nubank-file-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    margin-bottom: 14px;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.nubank-file-label:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.nubank-file-label.has-file {
+    border-color: var(--color-primary);
+    color: var(--color-text);
+}
+
+#nubank-upload-btn {
+    width: 100%;
+}
+
+.nubank-summary {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--color-text);
+}
+
+.nubank-table-wrap {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: 14px;
+}
+
+.nubank-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.nubank-table th {
+    position: sticky;
+    top: 0;
+    background: var(--color-bg-alt, var(--color-bg));
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.nubank-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+
+.nubank-table tr:last-child td {
+    border-bottom: none;
+}
+
+.nubank-table tr.already-imported {
+    opacity: 0.4;
+}
+
+.nubank-table tr.row-unchecked {
+    opacity: 0.5;
+}
+
+.nubank-table .nubank-amount {
+    font-weight: 600;
+    color: var(--color-danger, #e53e3e);
+    white-space: nowrap;
+}
+
+.nubank-cat-select {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, 4px);
+    padding: 2px 4px;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.nubank-preview-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.nubank-selected-info {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+
+#nubank-confirm-btn {
+    flex-shrink: 0;
+}
+
+/* ---- Card import row badges ---- */
+.card-type-badge {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 5px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    border-radius: 3px;
+    vertical-align: middle;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+}
+
+.badge-payment {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+}
+
+.badge-iof {
+    background: rgba(245, 158, 11, 0.12);
+    color: #b45309;
+}
+
+.badge-installment {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--color-primary);
+}
+
+.badge-duplicate {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    cursor: help;
+}
+
+.badge-already {
+    background: rgba(107, 114, 128, 0.12);
+    color: var(--color-text-muted);
+}
+
+.card-row-payment td {
+    color: #059669;
+}
+
+.card-payment-amount {
+    color: #059669 !important;
+}

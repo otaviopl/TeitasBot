@@ -206,6 +206,14 @@ class HealthStore:
                 CREATE INDEX IF NOT EXISTS idx_financial_expenses_user_cat
                     ON financial_expenses (user_id, category, date)
             """)
+            # Migration: add nubank_id for deduplication on CSV imports
+            expense_cols = {row[1] for row in conn.execute("PRAGMA table_info(financial_expenses)").fetchall()}
+            if "nubank_id" not in expense_cols:
+                conn.execute("ALTER TABLE financial_expenses ADD COLUMN nubank_id TEXT")
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_financial_expenses_nubank
+                    ON financial_expenses (nubank_id)
+            """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS financial_bills (
                     id TEXT PRIMARY KEY,
@@ -759,6 +767,13 @@ class HealthStore:
     @staticmethod
     def _expense_row_to_dict(row) -> dict:
         r = dict(row)
+        nubank_id = r.get("nubank_id") or None
+        if nubank_id and nubank_id.startswith("card:"):
+            source = "csv_nubank_card"
+        elif nubank_id:
+            source = "csv_nubank_account"
+        else:
+            source = "manual"
         return {
             "id": r["id"],
             "name": r["name"],
@@ -766,6 +781,7 @@ class HealthStore:
             "category": r.get("category", "Outros"),
             "description": r.get("description", ""),
             "date": r["date"],
+            "source": source,
         }
 
     def update_expense(self, user_id: str, expense_id: str, **kwargs) -> dict:
@@ -955,3 +971,93 @@ class HealthStore:
         start = month[:7] + "-01"
         end = month[:7] + "-31"
         return self.list_expenses_by_date_range(user_id, start, end)
+
+    def list_card_expenses_by_date_range(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+    ) -> list[dict]:
+        """List only expenses imported via Nubank card CSV (nubank_id LIKE 'card:%')."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM financial_expenses
+                WHERE user_id = ? AND date >= ? AND date <= ? AND nubank_id LIKE 'card:%'
+                ORDER BY date ASC, created_at ASC
+                """,
+                (user_id, start_date[:10], end_date[:10]),
+            ).fetchall()
+        return [self._expense_row_to_dict(r) for r in rows]
+
+    def list_imported_expenses_by_date_range(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+    ) -> list[dict]:
+        """List only expenses imported via Nubank CSV (nubank_id IS NOT NULL)."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM financial_expenses
+                WHERE user_id = ? AND date >= ? AND date <= ? AND nubank_id IS NOT NULL
+                ORDER BY date ASC, created_at ASC
+                """,
+                (user_id, start_date[:10], end_date[:10]),
+            ).fetchall()
+        return [self._expense_row_to_dict(r) for r in rows]
+
+    def check_nubank_ids_exist(self, user_id: str, nubank_ids: list[str]) -> set[str]:
+        """Return the subset of nubank_ids already imported for this user."""
+        if not nubank_ids:
+            return set()
+        placeholders = ",".join("?" * len(nubank_ids))
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT nubank_id FROM financial_expenses WHERE user_id = ? AND nubank_id IN ({placeholders})",
+                [user_id] + nubank_ids,
+            ).fetchall()
+        return {r["nubank_id"] for r in rows if r["nubank_id"]}
+
+    def bulk_import_expenses(self, user_id: str, expenses: list[dict]) -> dict:
+        """Bulk insert expenses, skipping rows whose nubank_id is already present.
+
+        Each dict must have: name, amount, category, description, date, nubank_id.
+        Returns {"imported": int, "skipped": int}.
+        """
+        if not expenses:
+            return {"imported": 0, "skipped": 0}
+
+        nubank_ids = [e["nubank_id"] for e in expenses if e.get("nubank_id")]
+        existing = self.check_nubank_ids_exist(user_id, nubank_ids)
+
+        now = _utc_now_iso()
+        imported = 0
+        skipped = 0
+
+        with self._lock, self._connect() as conn:
+            for e in expenses:
+                nid = e.get("nubank_id") or None
+                if nid and nid in existing:
+                    skipped += 1
+                    continue
+                expense_id = uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO financial_expenses
+                      (id, user_id, name, amount, category, description, date, created_at, nubank_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        expense_id, user_id,
+                        str(e.get("name", ""))[:200],
+                        float(e["amount"]),
+                        e.get("category", "Outros"),
+                        str(e.get("description", ""))[:500],
+                        e["date"], now, nid,
+                    ),
+                )
+                imported += 1
+
+        return {"imported": imported, "skipped": skipped}
