@@ -3338,7 +3338,11 @@
 
         try {
             var monthStr = financeMonthISO();
-            var data = await apiGet('/api/finance/dashboard?month=' + monthStr);
+            var results = await Promise.all([
+                apiGet('/api/finance/dashboard?month=' + monthStr),
+                getCardClosingDay(),
+            ]);
+            var data = results[0];
             if (!data) {
                 financeLoadingEl.classList.add('hidden');
                 return;
@@ -3372,7 +3376,7 @@
         renderFinanceGoals(data.goals || []);
         renderBills(data.bills);
         loadCardCycle();
-        renderExpensesByCategory(data.expenses, data.category_breakdown);
+        renderExpensesByCategory(data.expenses, data.category_breakdown, data.month);
     }
 
     function goalStatusLabel(status) {
@@ -3541,13 +3545,24 @@
         }
     }
 
-    function renderExpenseItem(exp) {
+    function renderExpenseItem(exp, dashboardMonth) {
+        var isCard = exp.source === 'csv_nubank_card';
         var isImported = exp.source && exp.source.indexOf('csv_nubank') === 0;
-        var csvBadge = isImported
-            ? '<span class="finance-csv-badge">CSV</span>'
-            : '';
+        var csvBadge = isImported ? '<span class="finance-csv-badge">CSV</span>' : '';
+
+        var faturaBadge = '';
+        if (isCard && _cardClosingDay !== null && dashboardMonth) {
+            var cycleM = expenseCycleMonth(exp.date, _cardClosingDay);
+            var dashM = parseInt(dashboardMonth.split('-')[1]);
+            var dashY = parseInt(dashboardMonth.split('-')[0]);
+            if (cycleM.month !== dashM || cycleM.year !== dashY) {
+                faturaBadge = '<span class="billing-month-badge billing-next-bill">Fatura '
+                    + MONTHS_SHORT_PT[cycleM.month - 1] + '</span>';
+            }
+        }
+
         return '<div class="finance-expense-item" data-expense-id="' + exp.id + '">' +
-            '<span class="finance-expense-name">' + escapeHtml(exp.name) + csvBadge + '</span>' +
+            '<span class="finance-expense-name">' + escapeHtml(exp.name) + csvBadge + faturaBadge + '</span>' +
             '<span class="finance-expense-date">' + formatDateShort(exp.date) + '</span>' +
             '<span class="finance-expense-amount">' + formatBRL(exp.amount) + '</span>' +
             '<button class="finance-expense-delete" data-expense-id="' + exp.id + '" title="Excluir">' +
@@ -3556,7 +3571,7 @@
             '</div>';
     }
 
-    function renderExpensesByCategory(expenses, breakdown) {
+    function renderExpensesByCategory(expenses, breakdown, dashboardMonth) {
         if (!expenses || expenses.length === 0) {
             financeExpensesEl.innerHTML = '<h3 class="finance-section-title">Despesas</h3>' +
                 '<div class="finance-empty-state">Nenhuma despesa registrada neste mês</div>';
@@ -3587,7 +3602,7 @@
                 '<span class="finance-category-total">' + formatBRL(total) + '</span>' +
                 '</div>';
 
-            items.forEach(function (exp) { html += renderExpenseItem(exp); });
+            items.forEach(function (exp) { html += renderExpenseItem(exp, dashboardMonth); });
             html += '</div>';
         });
 
@@ -4419,6 +4434,30 @@
         }
     });
 
+    var MONTHS_SHORT_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+    // Given an expense date string (YYYY-MM-DD) and closing day, return {month, year} of the cycle it belongs to
+    function expenseCycleMonth(dateStr, closingDay) {
+        var p = dateStr.split('-');
+        var y = parseInt(p[0]), m = parseInt(p[1]), d = parseInt(p[2]);
+        if (d <= closingDay) return { month: m, year: y };
+        if (m === 12) return { month: 1, year: y + 1 };
+        return { month: m + 1, year: y };
+    }
+
+    var _cardClosingDay = null;
+
+    async function getCardClosingDay() {
+        if (_cardClosingDay !== null) return _cardClosingDay;
+        try {
+            var cfg = await apiGet('/api/finance/card/config');
+            _cardClosingDay = cfg.closing_day;
+        } catch (_) {
+            _cardClosingDay = 19;
+        }
+        return _cardClosingDay;
+    }
+
     async function loadCardCycle() {
         if (!cardCycleEl) return;
         try {
@@ -4443,10 +4482,19 @@
             return '<div class="cycle-cat-row"><span>' + escapeHtml(b.category) + '</span><span>' + formatBRL(b.total) + '</span></div>';
         }).join('');
 
+        // Cycle's closing month (used to detect cross-month expenses)
+        var cycleEndMonth = parseInt(data.cycle_end.split('-')[1]);
+        var cycleEndYear = parseInt(data.cycle_end.split('-')[0]);
+
         var expRows = data.expenses.map(function (e) {
             var d = (e.date || '').split('-').reverse().join('/');
+            var expMonth = parseInt((e.date || '').split('-')[1]);
+            var expYear = parseInt((e.date || '').split('-')[0]);
+            var prevMonthBadge = (expMonth !== cycleEndMonth || expYear !== cycleEndYear)
+                ? '<span class="billing-month-badge billing-prev-month">' + MONTHS_SHORT_PT[expMonth - 1] + '</span>'
+                : '';
             return '<div class="cycle-exp-row">' +
-                '<span class="cycle-exp-name" title="' + escapeHtml(e.description || e.name) + '">' + escapeHtml(e.name) + '</span>' +
+                '<span class="cycle-exp-name" title="' + escapeHtml(e.description || e.name) + '">' + escapeHtml(e.name) + prevMonthBadge + '</span>' +
                 '<span class="cycle-exp-meta">' + d + ' · ' + escapeHtml(e.category) + '</span>' +
                 '<span class="cycle-exp-amount">' + formatBRL(e.amount) + '</span>' +
                 '</div>';
