@@ -266,6 +266,27 @@ class HealthStore:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS financial_income (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Receita',
+                    description TEXT NOT NULL DEFAULT '',
+                    date TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    nubank_id TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_financial_income_user_date
+                    ON financial_income (user_id, date)
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_financial_income_nubank
+                    ON financial_income (user_id, nubank_id) WHERE nubank_id IS NOT NULL
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS card_billing_config (
                     user_id TEXT PRIMARY KEY,
                     closing_day INTEGER NOT NULL DEFAULT 19,
@@ -998,6 +1019,73 @@ class HealthStore:
         start = month[:7] + "-01"
         end = month[:7] + "-31"
         return self.list_expenses_by_date_range(user_id, start, end)
+
+    def list_income_by_month(self, user_id: str, month: str) -> list[dict]:
+        start = month[:7] + "-01"
+        end = month[:7] + "-31"
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM financial_income
+                WHERE user_id = ? AND date >= ? AND date <= ?
+                ORDER BY date DESC, created_at DESC
+                """,
+                (user_id, start, end),
+            ).fetchall()
+        return [self._income_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _income_row_to_dict(row) -> dict:
+        r = dict(row)
+        nubank_id = r.get("nubank_id") or None
+        return {
+            "id": r["id"],
+            "name": r["name"],
+            "amount": float(r["amount"]),
+            "category": r.get("category", "Receita"),
+            "description": r.get("description", ""),
+            "date": r.get("date", ""),
+            "nubank_id": nubank_id,
+            "source": "csv_nubank_income" if nubank_id else "manual",
+        }
+
+    def check_nubank_income_ids_exist(self, user_id: str, nubank_ids: list[str]) -> set[str]:
+        if not nubank_ids:
+            return set()
+        placeholders = ",".join("?" * len(nubank_ids))
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT nubank_id FROM financial_income WHERE user_id = ? AND nubank_id IN ({placeholders})",
+                [user_id] + nubank_ids,
+            ).fetchall()
+        return {r["nubank_id"] for r in rows if r["nubank_id"]}
+
+    def bulk_import_income(self, user_id: str, income_rows: list[dict]) -> dict:
+        now = _utc_now_iso()
+        existing = self.check_nubank_income_ids_exist(
+            user_id, [r["nubank_id"] for r in income_rows if r.get("nubank_id")]
+        )
+        imported = 0
+        skipped = 0
+        with self._lock, self._connect() as conn:
+            for r in income_rows:
+                nid = r.get("nubank_id")
+                if nid and nid in existing:
+                    skipped += 1
+                    continue
+                row_id = uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO financial_income
+                      (id, user_id, name, amount, category, description, date, created_at, nubank_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (row_id, user_id, r["name"], r["amount"],
+                     r.get("category", "Receita"), r.get("description", ""),
+                     r["date"], now, nid),
+                )
+                imported += 1
+        return {"imported": imported, "skipped": skipped}
 
     def get_card_billing_config(self, user_id: str) -> dict:
         with self._lock, self._connect() as conn:

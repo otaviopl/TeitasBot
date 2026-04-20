@@ -1960,13 +1960,17 @@ def _clean_nubank_description(desc: str) -> str:
     return desc
 
 
-def _parse_nubank_csv(content: str) -> list[dict]:
+def _parse_nubank_csv(content: str) -> dict:
+    """Return {"expenses": [...], "income": [...]} from a Nubank account CSV."""
     import csv as _csv
     import io as _io
 
-    SKIP_EXACT = {"Aplicação RDB", "Pagamento de fatura"}
+    EXPENSE_SKIP_EXACT = {"Aplicação RDB", "Pagamento de fatura"}
+    INCOME_SKIP_EXACT = {"Resgate RDB"}
+    INCOME_SKIP_PREFIX = ("Valor adicionado na conta por cartão de crédito",)
 
-    rows = []
+    expenses = []
+    income = []
     reader = _csv.DictReader(_io.StringIO(content))
     for row in reader:
         date_str = (row.get("Data") or "").strip()
@@ -1980,10 +1984,6 @@ def _parse_nubank_csv(content: str) -> list[dict]:
             amount = float(valor_str.replace(",", "."))
         except ValueError:
             continue
-        if amount >= 0:
-            continue
-        if desc_raw in SKIP_EXACT or desc_raw.startswith("Aplicação RDB"):
-            continue
 
         try:
             d, m_part, y = date_str.split("/")
@@ -1991,14 +1991,31 @@ def _parse_nubank_csv(content: str) -> list[dict]:
         except ValueError:
             continue
 
-        rows.append({
-            "nubank_id": nubank_id,
-            "date": iso_date,
-            "amount": round(abs(amount), 2),
-            "name": _clean_nubank_description(desc_raw),
-            "description": desc_raw,
-        })
-    return rows
+        if amount < 0:
+            if desc_raw in EXPENSE_SKIP_EXACT or desc_raw.startswith("Aplicação RDB"):
+                continue
+            expenses.append({
+                "nubank_id": nubank_id,
+                "date": iso_date,
+                "amount": round(abs(amount), 2),
+                "name": _clean_nubank_description(desc_raw),
+                "description": desc_raw,
+            })
+        else:
+            if desc_raw in INCOME_SKIP_EXACT:
+                continue
+            if any(desc_raw.startswith(p) for p in INCOME_SKIP_PREFIX):
+                continue
+            income.append({
+                "nubank_id": nubank_id,
+                "date": iso_date,
+                "amount": round(amount, 2),
+                "name": _clean_nubank_description(desc_raw),
+                "description": desc_raw,
+                "category": "Receita",
+            })
+
+    return {"expenses": expenses, "income": income}
 
 
 @app.post("/api/finance/import/nubank/preview")
@@ -2013,17 +2030,27 @@ async def nubank_import_preview(
     except UnicodeDecodeError:
         content = content_bytes.decode("latin-1")
 
-    rows = _parse_nubank_csv(content)
-    if not rows:
-        return {"rows": [], "total_amount": 0.0, "count": 0}
+    parsed = _parse_nubank_csv(content)
+    rows = parsed["expenses"]
+    income_rows = parsed["income"]
+
+    if not rows and not income_rows:
+        return {"rows": [], "income_rows": [], "total_amount": 0.0, "count": 0, "income_count": 0}
 
     user_id = f"web:{user['username']}"
     store = get_health_store()
-    nubank_ids = [r["nubank_id"] for r in rows if r["nubank_id"]]
-    existing_ids = await asyncio.to_thread(store.check_nubank_ids_exist, user_id, nubank_ids)
 
+    # Dedup check for expenses
+    expense_ids = [r["nubank_id"] for r in rows if r["nubank_id"]]
+    existing_expense_ids = await asyncio.to_thread(store.check_nubank_ids_exist, user_id, expense_ids)
     for row in rows:
-        row["already_imported"] = row["nubank_id"] in existing_ids
+        row["already_imported"] = row["nubank_id"] in existing_expense_ids
+
+    # Dedup check for income
+    income_ids = [r["nubank_id"] for r in income_rows if r["nubank_id"]]
+    existing_income_ids = await asyncio.to_thread(store.check_nubank_income_ids_exist, user_id, income_ids)
+    for row in income_rows:
+        row["already_imported"] = row["nubank_id"] in existing_income_ids
 
     from openai_connector.llm_api import categorize_expenses_batch
 
@@ -2039,10 +2066,14 @@ async def nubank_import_preview(
         row.setdefault("category", "Outros")
 
     new_rows = [r for r in rows if not r["already_imported"]]
+    new_income = [r for r in income_rows if not r["already_imported"]]
     return {
         "rows": rows,
+        "income_rows": income_rows,
         "total_amount": round(sum(r["amount"] for r in new_rows), 2),
         "count": len(new_rows),
+        "income_count": len(new_income),
+        "income_total": round(sum(r["amount"] for r in new_income), 2),
     }
 
 
@@ -2113,7 +2144,8 @@ class NubankImportRow(BaseModel):
 
 
 class NubankImportConfirmRequest(BaseModel):
-    rows: list[NubankImportRow]
+    rows: list[NubankImportRow] = []
+    income_rows: list[NubankImportRow] = []
 
 
 @app.post("/api/finance/import/nubank/confirm")
@@ -2121,27 +2153,53 @@ async def nubank_import_confirm(
     body: NubankImportConfirmRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Bulk import selected Nubank expenses, deduplicating by nubank_id."""
-    if not body.rows:
+    """Bulk import selected Nubank expenses and income, deduplicating by nubank_id."""
+    if not body.rows and not body.income_rows:
         raise HTTPException(status_code=400, detail="No rows to import")
-
-    expenses = [
-        {
-            "nubank_id": r.nubank_id,
-            "date": r.date,
-            "amount": r.amount,
-            "name": r.name.strip()[:200],
-            "category": r.category or "Outros",
-            "description": r.description[:500],
-        }
-        for r in body.rows
-        if r.amount > 0 and r.name.strip()
-    ]
 
     user_id = f"web:{user['username']}"
     store = get_health_store()
-    result = await asyncio.to_thread(store.bulk_import_expenses, user_id, expenses)
-    return result
+
+    exp_result = {"imported": 0, "skipped": 0}
+    if body.rows:
+        expenses = [
+            {
+                "nubank_id": r.nubank_id,
+                "date": r.date,
+                "amount": r.amount,
+                "name": r.name.strip()[:200],
+                "category": r.category or "Outros",
+                "description": r.description[:500],
+            }
+            for r in body.rows
+            if r.amount > 0 and r.name.strip()
+        ]
+        if expenses:
+            exp_result = await asyncio.to_thread(store.bulk_import_expenses, user_id, expenses)
+
+    inc_result = {"imported": 0, "skipped": 0}
+    if body.income_rows:
+        income = [
+            {
+                "nubank_id": r.nubank_id,
+                "date": r.date,
+                "amount": r.amount,
+                "name": r.name.strip()[:200],
+                "category": r.category or "Receita",
+                "description": r.description[:500],
+            }
+            for r in body.income_rows
+            if r.amount > 0 and r.name.strip()
+        ]
+        if income:
+            inc_result = await asyncio.to_thread(store.bulk_import_income, user_id, income)
+
+    return {
+        "imported": exp_result["imported"] + inc_result["imported"],
+        "skipped": exp_result["skipped"] + inc_result["skipped"],
+        "expenses_imported": exp_result["imported"],
+        "income_imported": inc_result["imported"],
+    }
 
 
 @app.post("/api/finance/import/inter/preview")
@@ -2381,14 +2439,22 @@ async def finance_dashboard(
         except Exception:
             return []
 
-    expenses, bills, goals = await asyncio.gather(fetch_expenses(), fetch_bills(), fetch_goals())
+    async def fetch_income():
+        try:
+            return await asyncio.to_thread(store.list_income_by_month, user_id, target_month)
+        except Exception:
+            return []
+
+    expenses, bills, goals, income = await asyncio.gather(
+        fetch_expenses(), fetch_bills(), fetch_goals(), fetch_income()
+    )
 
     total_expenses = sum(float(e.get("amount") or 0) for e in expenses)
+    total_income = sum(float(i.get("amount") or 0) for i in income)
     total_budget = sum(float(b.get("budget") or 0) for b in bills)
     total_paid = sum(float(b.get("paid_amount") or 0) for b in bills if b.get("paid"))
     unpaid_count = sum(1 for b in bills if not b.get("paid"))
 
-    # Category breakdown for expenses
     cat_map: dict[str, float] = {}
     for e in expenses:
         cat = e.get("category", "Outros")
@@ -2398,10 +2464,12 @@ async def finance_dashboard(
     return {
         "month": target_month,
         "expenses": expenses,
+        "income": income,
         "bills": bills,
         "goals": goals,
         "totals": {
             "total_expenses": round(total_expenses, 2),
+            "total_income": round(total_income, 2),
             "total_budget": round(total_budget, 2),
             "total_paid": round(total_paid, 2),
             "pending_budget": round(total_budget - total_paid, 2),

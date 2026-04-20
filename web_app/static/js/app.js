@@ -3361,7 +3361,8 @@
         financeContentEl.classList.remove('hidden');
 
         var totals = data.totals;
-        financeTotalExpenses.textContent = formatBRL(totals.total_expenses) + ' em despesas';
+        financeTotalExpenses.textContent = formatBRL(totals.total_expenses) + ' em despesas'
+            + (totals.total_income > 0 ? '  ·  ' + formatBRL(totals.total_income) + ' em entradas' : '');
         financeTotalBills.textContent = formatBRL(totals.total_budget) + ' em contas fixas';
         financePending.textContent = formatBRL(totals.pending_budget) + ' pendente';
 
@@ -3834,8 +3835,12 @@
     var nubankConfirmBtn = document.getElementById('nubank-confirm-btn');
     var nubankSelectedCount = document.getElementById('nubank-selected-count');
     var nubankSummaryText = document.getElementById('nubank-summary-text');
+    var nubankIncomeSection = document.getElementById('nubank-income-section');
+    var nubankIncomeBody = document.getElementById('nubank-income-body');
+    var nubankIncomeSelectAll = document.getElementById('nubank-income-select-all');
 
     var _nubankRows = [];
+    var _nubankIncomeRows = [];
 
     var FINANCE_CATEGORIES = ['Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Lazer', 'Outros'];
 
@@ -3852,6 +3857,8 @@
         if (nubankFileLabelWrap) nubankFileLabelWrap.classList.remove('has-file');
         nubankUploadBtn.disabled = true;
         _nubankRows = [];
+        _nubankIncomeRows = [];
+        if (nubankIncomeSection) nubankIncomeSection.classList.add('hidden');
     }
 
     document.getElementById('btn-import-nubank').addEventListener('click', function () {
@@ -3881,10 +3888,62 @@
     });
 
     function nubankUpdateSelectedCount() {
-        var checked = nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked').length;
-        var total = _nubankRows.filter(function (r) { return !r.already_imported; }).length;
-        nubankSelectedCount.textContent = checked + ' de ' + total + ' selecionados';
-        nubankConfirmBtn.disabled = checked === 0;
+        var expChecked = nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked').length;
+        var incChecked = nubankIncomeBody ? nubankIncomeBody.querySelectorAll('input[type=checkbox]:checked').length : 0;
+        var total = _nubankRows.filter(function (r) { return !r.already_imported; }).length
+                  + _nubankIncomeRows.filter(function (r) { return !r.already_imported; }).length;
+        nubankSelectedCount.textContent = (expChecked + incChecked) + ' de ' + total + ' selecionados';
+        nubankConfirmBtn.disabled = (expChecked + incChecked) === 0;
+    }
+
+    function nubankBuildIncomeTable(rows) {
+        _nubankIncomeRows = rows;
+        nubankIncomeBody.innerHTML = '';
+
+        rows.forEach(function (row, idx) {
+            var tr = document.createElement('tr');
+            if (row.already_imported) tr.classList.add('already-imported');
+
+            var tdCheck = document.createElement('td');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.incomeIdx = idx;
+            cb.checked = !row.already_imported;
+            cb.disabled = !!row.already_imported;
+            cb.addEventListener('change', function () {
+                tr.classList.toggle('row-unchecked', !cb.checked);
+                nubankUpdateSelectedCount();
+                var allIncome = Array.from(nubankIncomeBody.querySelectorAll('input[type=checkbox]:not(:disabled)'));
+                nubankIncomeSelectAll.checked = allIncome.length > 0 && allIncome.every(function (c) { return c.checked; });
+            });
+            tdCheck.appendChild(cb);
+
+            var tdDate = document.createElement('td');
+            tdDate.textContent = row.date ? row.date.split('-').reverse().join('/') : '';
+
+            var tdName = document.createElement('td');
+            tdName.textContent = row.name;
+            tdName.title = row.description || '';
+            tdName.style.cssText = 'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            if (row.already_imported) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-already">Já importado</span>');
+            }
+
+            var tdAmount = document.createElement('td');
+            tdAmount.className = 'nubank-amount nubank-income-amount';
+            tdAmount.textContent = '+ R$ ' + row.amount.toFixed(2).replace('.', ',');
+
+            var tdEmpty = document.createElement('td');
+
+            tr.appendChild(tdCheck);
+            tr.appendChild(tdDate);
+            tr.appendChild(tdName);
+            tr.appendChild(tdAmount);
+            tr.appendChild(tdEmpty);
+            nubankIncomeBody.appendChild(tr);
+        });
+
+        nubankUpdateSelectedCount();
     }
 
     function nubankBuildTable(rows) {
@@ -3965,6 +4024,14 @@
         nubankUpdateSelectedCount();
     });
 
+    nubankIncomeSelectAll.addEventListener('change', function () {
+        nubankIncomeBody.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(function (cb) {
+            cb.checked = nubankIncomeSelectAll.checked;
+            cb.closest('tr').classList.toggle('row-unchecked', !nubankIncomeSelectAll.checked);
+        });
+        nubankUpdateSelectedCount();
+    });
+
     nubankUploadBtn.addEventListener('click', async function () {
         var f = nubankCsvInput.files[0];
         if (!f) return;
@@ -3983,15 +4050,27 @@
                 throw new Error(err.detail || 'Erro ao processar CSV');
             }
             var data = await resp.json();
-            if (!data.rows || data.rows.length === 0) {
-                showToast('Nenhuma despesa encontrada no arquivo.');
+            var hasExpenses = data.rows && data.rows.length > 0;
+            var hasIncome = data.income_rows && data.income_rows.length > 0;
+            if (!hasExpenses && !hasIncome) {
+                showToast('Nenhuma transação encontrada no arquivo.');
                 nubankOverlay.classList.remove('visible');
                 return;
             }
-            var newCount = data.count;
-            var totalStr = 'R$ ' + (data.total_amount || 0).toFixed(2).replace('.', ',');
-            nubankSummaryText.textContent = newCount + ' despesas novas · ' + totalStr + ' total';
-            nubankBuildTable(data.rows);
+            var parts = [];
+            if (data.count > 0) parts.push(data.count + ' despesa(s) novas · R$ ' + (data.total_amount || 0).toFixed(2).replace('.', ','));
+            if (data.income_count > 0) parts.push(data.income_count + ' entrada(s) · R$ ' + (data.income_total || 0).toFixed(2).replace('.', ','));
+            nubankSummaryText.textContent = parts.join(' · ');
+
+            nubankBuildTable(data.rows || []);
+
+            if (hasIncome) {
+                nubankBuildIncomeTable(data.income_rows);
+                nubankIncomeSection.classList.remove('hidden');
+            } else {
+                nubankIncomeSection.classList.add('hidden');
+            }
+
             showNubankStep('preview');
         } catch (err) {
             showToast('Erro: ' + err.message);
@@ -4002,13 +4081,18 @@
     });
 
     nubankConfirmBtn.addEventListener('click', async function () {
-        var checkboxes = Array.from(nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked'));
-        var selectedRows = checkboxes.map(function (cb) {
+        var expCheckboxes = Array.from(nubankPreviewBody.querySelectorAll('input[type=checkbox]:checked'));
+        var selectedRows = expCheckboxes.map(function (cb) {
             return _nubankRows[parseInt(cb.dataset.idx)];
         }).filter(Boolean);
 
-        if (selectedRows.length === 0) {
-            showToast('Nenhuma despesa selecionada.');
+        var incCheckboxes = Array.from(nubankIncomeBody.querySelectorAll('input[type=checkbox]:checked'));
+        var selectedIncome = incCheckboxes.map(function (cb) {
+            return _nubankIncomeRows[parseInt(cb.dataset.incomeIdx)];
+        }).filter(Boolean);
+
+        if (selectedRows.length === 0 && selectedIncome.length === 0) {
+            showToast('Nenhuma transação selecionada.');
             return;
         }
 
@@ -4017,14 +4101,10 @@
         try {
             var payload = {
                 rows: selectedRows.map(function (r) {
-                    return {
-                        nubank_id: r.nubank_id,
-                        date: r.date,
-                        amount: r.amount,
-                        name: r.name,
-                        category: r.category || 'Outros',
-                        description: r.description || '',
-                    };
+                    return { nubank_id: r.nubank_id, date: r.date, amount: r.amount, name: r.name, category: r.category || 'Outros', description: r.description || '' };
+                }),
+                income_rows: selectedIncome.map(function (r) {
+                    return { nubank_id: r.nubank_id, date: r.date, amount: r.amount, name: r.name, category: 'Receita', description: r.description || '' };
                 }),
             };
             var resp = await fetch('/api/finance/import/nubank/confirm', {
@@ -4037,7 +4117,10 @@
                 throw new Error(err.detail || 'Erro ao importar');
             }
             var result = await resp.json();
-            var msg = result.imported + ' despesa(s) importada(s)';
+            var parts = [];
+            if (result.expenses_imported > 0) parts.push(result.expenses_imported + ' despesa(s)');
+            if (result.income_imported > 0) parts.push(result.income_imported + ' entrada(s)');
+            var msg = parts.join(' e ') + ' importada(s)';
             if (result.skipped > 0) msg += ', ' + result.skipped + ' duplicada(s) ignorada(s)';
             showToast(msg + ' ✓');
             nubankOverlay.classList.remove('visible');

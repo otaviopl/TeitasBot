@@ -931,6 +931,9 @@
             <!-- Step 3: preview table -->
             <div id="nubank-step-preview" class="hidden">
                 <p class="nubank-summary" id="nubank-summary-text"></p>
+
+                <!-- Expenses -->
+                <p class="nubank-section-label">Despesas</p>
                 <div class="nubank-table-wrap">
                     <table class="nubank-table" id="nubank-preview-table">
                         <thead>
@@ -945,6 +948,26 @@
                         <tbody id="nubank-preview-body"></tbody>
                     </table>
                 </div>
+
+                <!-- Income -->
+                <div id="nubank-income-section" class="hidden">
+                    <p class="nubank-section-label nubank-section-income">Entradas</p>
+                    <div class="nubank-table-wrap">
+                        <table class="nubank-table" id="nubank-income-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="nubank-income-select-all" title="Selecionar todos" checked></th>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th>Valor</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="nubank-income-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="nubank-preview-actions">
                     <span id="nubank-selected-count" class="nubank-selected-info"></span>
                     <button class="btn btn-primary" id="nubank-confirm-btn">Importar selecionados</button>

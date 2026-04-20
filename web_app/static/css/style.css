@@ -5089,3 +5089,19 @@ input[type="checkbox"]:focus-visible {
     white-space: nowrap;
     text-align: right;
 }
+
+/* ---- Nubank income section ---- */
+.nubank-section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin: 14px 0 4px 2px;
+}
+.nubank-section-income { color: #059669; }
+.nubank-income-amount {
+    font-weight: 600;
+    color: #059669 !important;
+    white-space: nowrap;
+}
