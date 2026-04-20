@@ -20,7 +20,13 @@ _ENV_FALLBACK: dict[str, str] = {
 }
 
 # Keys that are stored only in the DB (no .env fallback variable).
-_STORE_ONLY_KEYS: frozenset[str] = frozenset(["google_token_json"])
+_STORE_ONLY_KEYS: frozenset[str] = frozenset(
+    [
+        "google_token_json",
+        "email_important_senders",
+        "email_important_keywords",
+    ]
+)
 
 # Integrations and their minimum required credential keys.
 _INTEGRATION_REQUIREMENTS: dict[str, list[str]] = {

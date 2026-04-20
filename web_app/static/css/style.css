@@ -3189,6 +3189,108 @@ input[type="checkbox"]:focus-visible {
     margin-bottom: 20px;
 }
 
+.finance-goals {
+    margin-bottom: 20px;
+}
+
+.finance-goals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.finance-goals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.finance-goal-card {
+    background: linear-gradient(180deg, rgba(22, 99, 222, 0.05), rgba(128, 196, 232, 0.06));
+    border: 1px solid rgba(22, 99, 222, 0.12);
+    border-radius: var(--radius-md);
+    padding: 14px;
+}
+
+.finance-goal-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.finance-goal-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.finance-goal-subtitle {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+.finance-goal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.finance-goal-delete {
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 1.15rem;
+    line-height: 1;
+    padding: 0;
+}
+
+.finance-goal-delete:hover {
+    color: #dc2626;
+}
+
+.finance-goal-progress {
+    height: 7px;
+    background: rgba(0, 0, 0, 0.07);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.finance-goal-progress span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--color-blue-start), var(--color-blue-end));
+}
+
+.finance-goal-metric {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 6px;
+}
+
+.finance-goal-detail {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+}
+
+.finance-goal-hint {
+    font-size: 0.84rem;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+}
+
+.finance-goal-textarea {
+    min-height: 112px;
+    resize: vertical;
+}
+
 .finance-summary-row {
     display: flex;
     align-items: center;

@@ -11,6 +11,8 @@ _KEY_DESCRIPTIONS = {
     "email_signature": "Assinatura dos emails",
     "email_style_guide": "Guia de estilo para redigir emails",
     "email_subject_prefix": "Prefixo no assunto dos emails",
+    "email_important_senders": "Lista de remetentes prioritários para o resumo diário de emails",
+    "email_important_keywords": "Palavras-chave que marcam um email como importante",
     "google_token_json": "Token OAuth do Google (Gmail + Calendar) — gerado via /google_auth",
 }
 

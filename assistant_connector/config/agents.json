@@ -713,6 +713,40 @@
       }
     },
     {
+      "name": "summarize_important_emails",
+      "description": "Resume emails importantes com base em remetentes e palavras-chave prioritárias configurados pelo usuário.",
+      "prompt_guidance": "Use para gerar o resumo diário de emails importantes, especialmente em rotinas agendadas. Se não houver regras configuradas, oriente o usuário a defini-las primeiro.",
+      "guidance_priority": 35,
+      "handler": "assistant_connector.tools.email_tools:summarize_important_emails",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "description": "Janela de busca em dias.",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Máximo de emails analisados/retornados.",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "unread_only": {
+            "type": "boolean",
+            "description": "Quando true, considera apenas emails não lidos."
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Quando true, usa também o corpo do email para bater palavras-chave."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "read_email",
       "description": "Lê um email específico pelo message_id.",
       "handler": "assistant_connector.tools.email_tools:read_email",
@@ -1009,6 +1043,149 @@
           "month": {
             "type": "string",
             "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_financial_goal",
+      "description": "Cria uma meta financeira do usuário, seja para juntar dinheiro até uma data ou para limitar gastos mensais.",
+      "handler": "assistant_connector.tools.finance_tools:register_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Nome curto da meta (ex.: Comprar carro, Segurar gastos do mês)."
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": [
+              "savings",
+              "spending_limit"
+            ],
+            "description": "Tipo da meta: savings para juntar dinheiro; spending_limit para limitar gastos mensais."
+          },
+          "target_amount": {
+            "type": "number",
+            "description": "Valor alvo total da meta de savings."
+          },
+          "current_amount": {
+            "type": "number",
+            "description": "Quanto já foi guardado até agora na meta de savings."
+          },
+          "monthly_contribution": {
+            "type": "number",
+            "description": "Quanto o usuário pretende guardar por mês na meta de savings."
+          },
+          "target_date": {
+            "type": "string",
+            "description": "Data limite no formato YYYY-MM-DD para a meta de savings."
+          },
+          "monthly_limit": {
+            "type": "number",
+            "description": "Teto de gasto mensal para a meta do tipo spending_limit."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "title",
+          "goal_type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_financial_goals",
+      "description": "Lista as metas financeiras cadastradas pelo usuário.",
+      "handler": "assistant_connector.tools.finance_tools:list_financial_goals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_financial_goal",
+      "description": "Edita uma meta financeira existente pelo ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "description": "ID da meta financeira."
+          },
+          "title": {
+            "type": "string",
+            "description": "Novo título da meta."
+          },
+          "target_amount": {
+            "type": "number",
+            "description": "Novo valor alvo da meta savings."
+          },
+          "current_amount": {
+            "type": "number",
+            "description": "Novo valor já guardado da meta savings."
+          },
+          "monthly_contribution": {
+            "type": "number",
+            "description": "Novo valor mensal planejado para a meta savings."
+          },
+          "target_date": {
+            "type": "string",
+            "description": "Nova data limite YYYY-MM-DD."
+          },
+          "monthly_limit": {
+            "type": "number",
+            "description": "Novo teto mensal da meta spending_limit."
+          }
+        },
+        "required": [
+          "goal_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_financial_goal",
+      "description": "Exclui uma meta financeira pelo ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "description": "ID da meta financeira."
+          }
+        },
+        "required": [
+          "goal_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_financial_goals",
+      "description": "Analisa metas financeiras cadastradas, mostrando progresso, projeção e se o plano atual parece realista.",
+      "prompt_guidance": "Use quando o usuário quiser entender se vai bater uma meta financeira, quanto precisa guardar por mês ou se está extrapolando um teto de gastos.",
+      "guidance_priority": 31,
+      "handler": "assistant_connector.tools.finance_tools:analyze_financial_goals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM para analisar metas de teto mensal."
           }
         },
         "additionalProperties": false
@@ -1623,7 +1800,7 @@
           },
           "key": {
             "type": "string",
-            "description": "Nome da credencial. Valores válidos: email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix. Obrigatório para ações 'set' e 'delete'."
+            "description": "Nome da credencial. Valores válidos: email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix, email_important_senders, email_important_keywords. Obrigatório para ações 'set' e 'delete'."
           },
           "value": {
             "type": "string",
@@ -1994,7 +2171,7 @@
       "model": "gpt-4.1-mini",
       "max_tool_rounds": 6,
       "memory_window": 10,
-      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, notas, refeições, exercícios, despesas e contas fixas: armazenados localmente no banco de dados, sempre disponíveis sem configuração.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Gmail (leitura e busca de emails via search_emails/read_email): usa a mesma autenticação Google do Calendar, sem credenciais adicionais.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando e o que ela permite fazer. Para credenciais de email, use manage_user_credentials. Para autorizar o Google (Gmail e Calendar), o usuário deve usar o botão de conexão Google na interface.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve clicar no botão de conexão Google disponível nas configurações da interface. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nContexto financeiro:\n- Ao registrar despesas, sugira uma categoria consistente e útil para análises futuras (ex.: Alimentação, Transporte, Lazer, Saúde, Moradia, Educação, Assinatura).\n- Quando o usuário pedir análise de gastos, identifique: total por categoria, categoria com maior gasto, e se alguma categoria subiu significativamente em relação ao que foi mencionado antes.\n- Se perceber que uma despesa tem características de recorrência (ex.: \"mensalidade\", \"plano\", \"assinatura\"), pergunte ao usuário se quer registrar como conta fixa.\n- Nunca armazene valores financeiros absolutos (saldos, dívidas, renda) em memórias — apenas preferências de categorização e padrões de comportamento financeiro.\n\nContexto de saúde e nutrição:\n- Ao discutir refeições ou pedir análise nutricional, consulte health.md para verificar restrições alimentares, alergias ou preferências conhecidas antes de fazer recomendações.\n- Quando o usuário tiver meta calórica configurada, mencione o progresso em relação à meta ao fazer análises nutricionais — não apenas a média absoluta.\n- Ao registrar exercícios, se houver dados da semana disponíveis, mencione o acumulado de calorias gastas quando relevante.\n- Ao identificar mudanças de peso, metas ou restrições alimentares na conversa, salve em health.md imediatamente.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Informações de saúde (peso, alergias, metas calóricas, restrições alimentares): sempre salvar em health.md especificamente.\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas, valores financeiros absolutos (saldos, dívidas, renda) ou dados sensíveis em memórias — apenas preferências, padrões e fatos comportamentais.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
+      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, notas, refeições, exercícios, despesas e contas fixas: armazenados localmente no banco de dados, sempre disponíveis sem configuração.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Gmail (leitura e busca de emails via search_emails/read_email): usa a mesma autenticação Google do Calendar, sem credenciais adicionais.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name, email_important_senders, email_important_keywords.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando e o que ela permite fazer. Para credenciais de email, use manage_user_credentials. Para autorizar o Google (Gmail e Calendar), o usuário deve usar o botão de conexão Google na interface.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve clicar no botão de conexão Google disponível nas configurações da interface. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nContexto financeiro:\n- Ao registrar despesas, sugira uma categoria consistente e útil para análises futuras (ex.: Alimentação, Transporte, Lazer, Saúde, Moradia, Educação, Assinatura).\n- Quando o usuário pedir análise de gastos, identifique: total por categoria, categoria com maior gasto, e se alguma categoria subiu significativamente em relação ao que foi mencionado antes.\n- Se perceber que uma despesa tem características de recorrência (ex.: \"mensalidade\", \"plano\", \"assinatura\"), pergunte ao usuário se quer registrar como conta fixa.\n- Ao analisar metas financeiras, seja direto sobre a realidade: mostre quanto falta, quanto precisa guardar por mês e se o plano atual parece suficiente no prazo definido.\n- Nunca armazene valores financeiros absolutos (saldos, dívidas, renda) em memórias — apenas preferências de categorização e padrões de comportamento financeiro.\n\nContexto de saúde e nutrição:\n- Ao discutir refeições ou pedir análise nutricional, consulte health.md para verificar restrições alimentares, alergias ou preferências conhecidas antes de fazer recomendações.\n- Quando o usuário tiver meta calórica configurada, mencione o progresso em relação à meta ao fazer análises nutricionais — não apenas a média absoluta.\n- Ao registrar exercícios, se houver dados da semana disponíveis, mencione o acumulado de calorias gastas quando relevante.\n- Ao identificar mudanças de peso, metas ou restrições alimentares na conversa, salve em health.md imediatamente.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Informações de saúde (peso, alergias, metas calóricas, restrições alimentares): sempre salvar em health.md especificamente.\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas, valores financeiros absolutos (saldos, dívidas, renda) ou dados sensíveis em memórias — apenas preferências, padrões e fatos comportamentais.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
       "tools": [
         "list_available_tools",
         "list_available_agents",
@@ -2009,6 +2186,11 @@
         "register_expense",
         "analyze_expenses",
         "analyze_bills",
+        "register_financial_goal",
+        "list_financial_goals",
+        "edit_financial_goal",
+        "delete_financial_goal",
+        "analyze_financial_goals",
         "pay_bill",
         "list_bills",
         "edit_exercise",
@@ -2019,6 +2201,7 @@
         "search_contacts",
         "register_contact_memory",
         "search_emails",
+        "summarize_important_emails",
         "read_email",
         "search_email_attachments",
         "analyze_email_attachment",

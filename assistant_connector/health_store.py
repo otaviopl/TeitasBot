@@ -238,6 +238,25 @@ class HealthStore:
                     ON financial_bills (user_id, paid, reference_month)
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS financial_goals (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    goal_type TEXT NOT NULL,
+                    target_amount REAL,
+                    current_amount REAL NOT NULL DEFAULT 0,
+                    monthly_contribution REAL,
+                    monthly_limit REAL,
+                    target_date TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_financial_goals_user
+                    ON financial_goals (user_id, goal_type, created_at DESC)
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS user_health_goals (
                     user_id TEXT PRIMARY KEY,
                     calorie_goal INTEGER NOT NULL DEFAULT 2400,
@@ -1061,3 +1080,182 @@ class HealthStore:
                 imported += 1
 
         return {"imported": imported, "skipped": skipped}
+
+    # ---- Financial goals ----
+
+    def create_financial_goal(
+        self,
+        user_id: str,
+        title: str,
+        goal_type: str,
+        *,
+        target_amount: Optional[float] = None,
+        current_amount: float = 0.0,
+        monthly_contribution: Optional[float] = None,
+        monthly_limit: Optional[float] = None,
+        target_date: Optional[str] = None,
+    ) -> dict:
+        clean_goal_type = str(goal_type or "").strip().lower()
+        if clean_goal_type not in {"savings", "spending_limit"}:
+            raise ValueError("goal_type must be 'savings' or 'spending_limit'")
+
+        clean_title = str(title or "").strip()
+        if not clean_title:
+            raise ValueError("title is required")
+
+        if clean_goal_type == "savings":
+            if target_amount is None or float(target_amount) <= 0:
+                raise ValueError("target_amount must be greater than zero")
+            if target_date is None or not str(target_date).strip():
+                raise ValueError("target_date is required for savings goals")
+            if float(current_amount) < 0:
+                raise ValueError("current_amount cannot be negative")
+            if monthly_contribution is not None and float(monthly_contribution) < 0:
+                raise ValueError("monthly_contribution cannot be negative")
+            monthly_limit = None
+        else:
+            if monthly_limit is None or float(monthly_limit) <= 0:
+                raise ValueError("monthly_limit must be greater than zero")
+            target_amount = None
+            current_amount = 0.0
+            monthly_contribution = None
+            target_date = None
+
+        goal_id = uuid.uuid4().hex
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO financial_goals
+                  (id, user_id, title, goal_type, target_amount, current_amount,
+                   monthly_contribution, monthly_limit, target_date, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    goal_id,
+                    user_id,
+                    clean_title,
+                    clean_goal_type,
+                    float(target_amount) if target_amount is not None else None,
+                    float(current_amount),
+                    float(monthly_contribution) if monthly_contribution is not None else None,
+                    float(monthly_limit) if monthly_limit is not None else None,
+                    target_date,
+                    now,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM financial_goals WHERE id = ?",
+                (goal_id,),
+            ).fetchone()
+        return self._goal_row_to_dict(row)
+
+    def list_financial_goals(self, user_id: str) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM financial_goals
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (user_id,),
+            ).fetchall()
+        return [self._goal_row_to_dict(row) for row in rows]
+
+    def update_financial_goal(self, user_id: str, goal_id: str, **kwargs) -> dict:
+        with self._lock, self._connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM financial_goals WHERE id = ? AND user_id = ?",
+                (goal_id, user_id),
+            ).fetchone()
+            if existing is None:
+                raise ValueError(f"Financial goal {goal_id!r} not found")
+
+            current = self._goal_row_to_dict(existing)
+            goal_type = str(current["goal_type"]).strip().lower()
+            updates = ["updated_at = ?"]
+            params: list = [_utc_now_iso()]
+
+            if "title" in kwargs:
+                clean_title = str(kwargs["title"] or "").strip()
+                if not clean_title:
+                    raise ValueError("title cannot be empty")
+                updates.append("title = ?")
+                params.append(clean_title)
+
+            if goal_type == "savings":
+                if "target_amount" in kwargs:
+                    value = float(kwargs["target_amount"])
+                    if value <= 0:
+                        raise ValueError("target_amount must be greater than zero")
+                    updates.append("target_amount = ?")
+                    params.append(value)
+                if "current_amount" in kwargs:
+                    value = float(kwargs["current_amount"])
+                    if value < 0:
+                        raise ValueError("current_amount cannot be negative")
+                    updates.append("current_amount = ?")
+                    params.append(value)
+                if "monthly_contribution" in kwargs:
+                    raw_value = kwargs["monthly_contribution"]
+                    if raw_value is None or raw_value == "":
+                        updates.append("monthly_contribution = ?")
+                        params.append(None)
+                    else:
+                        value = float(raw_value)
+                        if value < 0:
+                            raise ValueError("monthly_contribution cannot be negative")
+                        updates.append("monthly_contribution = ?")
+                        params.append(value)
+                if "target_date" in kwargs:
+                    clean_target_date = str(kwargs["target_date"] or "").strip()
+                    if not clean_target_date:
+                        raise ValueError("target_date cannot be empty")
+                    updates.append("target_date = ?")
+                    params.append(clean_target_date)
+            else:
+                if "monthly_limit" in kwargs:
+                    value = float(kwargs["monthly_limit"])
+                    if value <= 0:
+                        raise ValueError("monthly_limit must be greater than zero")
+                    updates.append("monthly_limit = ?")
+                    params.append(value)
+
+            if len(updates) == 1:
+                raise ValueError("At least one field to update is required")
+
+            params.extend([goal_id, user_id])
+            sql = f"UPDATE financial_goals SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+            conn.execute(sql, params)
+            row = conn.execute(
+                "SELECT * FROM financial_goals WHERE id = ?",
+                (goal_id,),
+            ).fetchone()
+        return self._goal_row_to_dict(row)
+
+    def delete_financial_goal(self, user_id: str, goal_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM financial_goals WHERE id = ? AND user_id = ?",
+                (goal_id, user_id),
+            )
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _goal_row_to_dict(row) -> dict:
+        r = dict(row)
+        return {
+            "id": r["id"],
+            "title": r["title"],
+            "goal_type": r["goal_type"],
+            "target_amount": float(r["target_amount"]) if r.get("target_amount") is not None else None,
+            "current_amount": float(r.get("current_amount") or 0.0),
+            "monthly_contribution": (
+                float(r["monthly_contribution"]) if r.get("monthly_contribution") is not None else None
+            ),
+            "monthly_limit": float(r["monthly_limit"]) if r.get("monthly_limit") is not None else None,
+            "target_date": r.get("target_date"),
+            "created_at": r["created_at"],
+            "updated_at": r["updated_at"],
+        }

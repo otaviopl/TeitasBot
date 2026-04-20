@@ -113,6 +113,12 @@
                     <button class="sidebar-footer-icon btn-google-connect" id="btn-google-connect" title="Google">
                         <img src="/static/icons/google-logo.png" width="20" height="20" alt="Google" style="display:block;">
                     </button>
+                    <button class="sidebar-footer-icon" id="btn-email-rules" title="Emails importantes">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16v16H4z"/>
+                            <path d="M22 6l-10 7L2 6"/>
+                        </svg>
+                    </button>
                     <button class="sidebar-footer-icon btn-memories" id="btn-memories" title="Memórias">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
@@ -415,6 +421,7 @@
                 <!-- Month navigator actions bar -->
                 <div class="finance-month-nav">
                     <div class="finance-actions">
+                        <button class="btn btn-outline btn-finance-add" id="btn-add-finance-goal" title="Criar meta">🎯 Meta</button>
                         <button class="btn btn-primary btn-finance-add" id="btn-add-expense" title="Registrar despesa">+ Despesa</button>
                         <button class="btn btn-outline btn-finance-add" id="btn-add-bill" title="Registrar conta">+ Conta</button>
                         <button class="btn btn-outline btn-finance-add" id="btn-import-nubank" title="Importar extrato Nubank">↑ Extrato</button>
@@ -429,6 +436,9 @@
 
                 <!-- Monthly content -->
                 <div class="finance-content hidden" id="finance-content">
+                    <div class="finance-goals" id="finance-goals">
+                        <!-- Dynamically populated -->
+                    </div>
                     <!-- Summary card -->
                     <div class="finance-summary" id="finance-summary">
                         <div class="finance-summary-row">
@@ -831,6 +841,62 @@
                 <button type="submit" class="btn btn-primary health-form-submit" id="bill-submit-btn">Registrar Conta</button>
             </form>
             <button class="modal-close-btn" id="finance-bill-close">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="health-modal-overlay" id="finance-goal-overlay">
+        <div class="health-modal" id="finance-goal-modal">
+            <h3>Nova Meta Financeira</h3>
+            <form id="finance-goal-form" autocomplete="off">
+                <label class="health-form-label" for="finance-goal-title">Nome da meta</label>
+                <input type="text" id="finance-goal-title" class="health-form-input" placeholder="Ex: Comprar carro" maxlength="120" required>
+
+                <label class="health-form-label" for="finance-goal-type">Tipo</label>
+                <select id="finance-goal-type" class="health-form-input">
+                    <option value="savings">Juntar dinheiro</option>
+                    <option value="spending_limit">Limitar gastos do mês</option>
+                </select>
+
+                <div id="finance-goal-savings-fields">
+                    <label class="health-form-label" for="finance-goal-current-amount">Quanto já guardou (R$)</label>
+                    <input type="number" id="finance-goal-current-amount" class="health-form-input" placeholder="0.00" min="0" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-target-amount">Valor alvo (R$)</label>
+                    <input type="number" id="finance-goal-target-amount" class="health-form-input" placeholder="50000.00" min="0.01" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-monthly-contribution">Quanto pretende guardar por mês (R$)</label>
+                    <input type="number" id="finance-goal-monthly-contribution" class="health-form-input" placeholder="1500.00" min="0" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-target-date">Prazo</label>
+                    <input type="date" id="finance-goal-target-date" class="health-form-input">
+                </div>
+
+                <div id="finance-goal-spending-fields" class="hidden">
+                    <label class="health-form-label" for="finance-goal-monthly-limit">Teto mensal de gastos (R$)</label>
+                    <input type="number" id="finance-goal-monthly-limit" class="health-form-input" placeholder="3000.00" min="0.01" max="99999999.99" step="0.01">
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="finance-goal-submit-btn">Salvar Meta</button>
+            </form>
+            <button class="modal-close-btn" id="finance-goal-close">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="health-modal-overlay" id="email-rules-overlay">
+        <div class="health-modal" id="email-rules-modal">
+            <h3>Emails Importantes</h3>
+            <form id="email-rules-form" autocomplete="off">
+                <p class="finance-goal-hint">Essas regras alimentam o resumo diário enviado no Telegram.</p>
+
+                <label class="health-form-label" for="email-important-senders">Remetentes prioritários</label>
+                <textarea id="email-important-senders" class="health-form-input finance-goal-textarea" placeholder="empresa@cliente.com&#10;banco@avisos.com&#10;dominio-importante.com"></textarea>
+
+                <label class="health-form-label" for="email-important-keywords">Palavras-chave importantes</label>
+                <textarea id="email-important-keywords" class="health-form-input finance-goal-textarea" placeholder="boleto&#10;prazo&#10;pagamento&#10;contrato"></textarea>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="email-rules-submit-btn">Salvar Regras</button>
+            </form>
+            <button class="modal-close-btn" id="email-rules-close">Cancelar</button>
         </div>
     </div>
 

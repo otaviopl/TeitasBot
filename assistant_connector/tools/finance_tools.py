@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import datetime
 import re
 
@@ -46,6 +47,26 @@ def _month_bounds(target_date: datetime.date):
     else:
         next_month = datetime.date(month_start.year, month_start.month + 1, 1)
     return month_start, (next_month - datetime.timedelta(days=1))
+
+
+def _shift_months(target_date: datetime.date, delta_months: int) -> datetime.date:
+    total_months = (target_date.year * 12 + (target_date.month - 1)) + delta_months
+    year = total_months // 12
+    month = total_months % 12 + 1
+    return datetime.date(year, month, 1)
+
+
+def _months_until(target_date: datetime.date, reference_date: datetime.date) -> float:
+    delta_days = (target_date - reference_date).days
+    if delta_days <= 0:
+        return 0.0
+    return max(delta_days / 30.4375, 0.0)
+
+
+def _currency_or_none(value):
+    if value is None:
+        return None
+    return round(float(value), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +354,220 @@ def analyze_bills(arguments, context):
         "pending_budget": pending_budget,
         "breakdown_by_category": breakdown_by_category,
     }
+
+
+# ---------------------------------------------------------------------------
+# Financial goals
+# ---------------------------------------------------------------------------
+
+def register_financial_goal(arguments, context):
+    title = str(arguments.get("title", "")).strip()
+    goal_type = str(arguments.get("goal_type", "")).strip().lower()
+    target_date = str(arguments.get("target_date", "")).strip() or None
+    if target_date:
+        datetime.date.fromisoformat(target_date)
+
+    result = _health_store.create_financial_goal(
+        user_id=context.user_id,
+        title=title,
+        goal_type=goal_type,
+        target_amount=_read_optional_float(arguments.get("target_amount")),
+        current_amount=_read_optional_float(arguments.get("current_amount")) or 0.0,
+        monthly_contribution=_read_optional_float(arguments.get("monthly_contribution")),
+        monthly_limit=_read_optional_float(arguments.get("monthly_limit")),
+        target_date=target_date,
+    )
+    return {"status": "created", "goal": result}
+
+
+def list_financial_goals(arguments, context):
+    goals = _health_store.list_financial_goals(user_id=context.user_id)
+    return {"total": len(goals), "goals": goals}
+
+
+def edit_financial_goal(arguments, context):
+    goal_id = str(arguments.get("goal_id", "")).strip()
+    if not goal_id:
+        raise ValueError("goal_id is required")
+
+    kwargs = {}
+    for field in ("title", "target_amount", "current_amount", "monthly_contribution", "monthly_limit"):
+        if field in arguments:
+            if field == "title":
+                kwargs[field] = str(arguments.get(field, "")).strip()
+            else:
+                kwargs[field] = _read_optional_float(arguments.get(field))
+    if "target_date" in arguments:
+        target_date = str(arguments.get("target_date", "")).strip()
+        if target_date:
+            datetime.date.fromisoformat(target_date)
+            kwargs["target_date"] = target_date
+    if not kwargs:
+        raise ValueError("At least one field to update is required")
+
+    result = _health_store.update_financial_goal(
+        user_id=context.user_id,
+        goal_id=goal_id,
+        **kwargs,
+    )
+    return {"status": "updated", "goal": result}
+
+
+def delete_financial_goal(arguments, context):
+    goal_id = str(arguments.get("goal_id", "")).strip()
+    if not goal_id:
+        raise ValueError("goal_id is required")
+    deleted = _health_store.delete_financial_goal(user_id=context.user_id, goal_id=goal_id)
+    if not deleted:
+        raise ValueError(f"Financial goal {goal_id!r} not found")
+    return {"status": "deleted", "goal_id": goal_id}
+
+
+def analyze_financial_goals(arguments, context):
+    month_value = str(arguments.get("month") or "").strip()
+    return {
+        "month": _normalize_analysis_month(month_value),
+        "goals": build_financial_goal_analysis(
+            user_id=context.user_id,
+            month=month_value or None,
+            store=_health_store,
+        ),
+    }
+
+
+def build_financial_goal_analysis(*, user_id: str, month: str | None = None, store=None) -> list[dict]:
+    target_month = _normalize_analysis_month(month)
+    target_date = datetime.date.fromisoformat(f"{target_month}-01")
+    reference_today = today_in_configured_timezone()
+    goals = (store or _health_store).list_financial_goals(user_id=user_id)
+    if not goals:
+        return []
+
+    expenses_this_month = (store or _health_store).list_expenses_by_month(user_id=user_id, month=target_month)
+    total_spent_this_month = round(sum(float(item.get("amount", 0.0)) for item in expenses_this_month), 2)
+
+    recent_months = [_shift_months(target_date, -offset).strftime("%Y-%m") for offset in range(0, 3)]
+    recent_totals = []
+    for month_key in recent_months:
+        month_expenses = (store or _health_store).list_expenses_by_month(user_id=user_id, month=month_key)
+        recent_totals.append(round(sum(float(item.get("amount", 0.0)) for item in month_expenses), 2))
+    average_monthly_spend = round(sum(recent_totals) / len(recent_totals), 2) if recent_totals else 0.0
+
+    analyses = []
+    for goal in goals:
+        if goal["goal_type"] == "savings":
+            analyses.append(
+                _analyze_savings_goal(
+                    goal=goal,
+                    reference_today=reference_today,
+                    average_monthly_spend=average_monthly_spend,
+                )
+            )
+        else:
+            analyses.append(
+                _analyze_spending_goal(
+                    goal=goal,
+                    month_key=target_month,
+                    target_date=target_date,
+                    reference_today=reference_today,
+                    total_spent_this_month=total_spent_this_month,
+                )
+            )
+    return analyses
+
+
+def _analyze_savings_goal(*, goal: dict, reference_today: datetime.date, average_monthly_spend: float) -> dict:
+    target_amount = float(goal.get("target_amount") or 0.0)
+    current_amount = float(goal.get("current_amount") or 0.0)
+    remaining_amount = round(max(target_amount - current_amount, 0.0), 2)
+    target_date = datetime.date.fromisoformat(goal["target_date"]) if goal.get("target_date") else None
+    months_left = _months_until(target_date, reference_today) if target_date else 0.0
+    required_monthly = round((remaining_amount / months_left), 2) if months_left > 0 else remaining_amount
+    planned_monthly = _currency_or_none(goal.get("monthly_contribution")) or 0.0
+    projected_completion_date = None
+    projected_amount_at_target = current_amount
+    if planned_monthly > 0 and target_date is not None:
+        projected_amount_at_target = round(current_amount + (planned_monthly * months_left), 2)
+        if remaining_amount > 0:
+            months_to_finish = remaining_amount / planned_monthly
+            projected_completion_date = (
+                reference_today + datetime.timedelta(days=round(months_to_finish * 30.4375))
+            ).isoformat()
+
+    progress_percent = round(min((current_amount / target_amount) * 100, 100), 1) if target_amount > 0 else 0.0
+    if remaining_amount <= 0:
+        status = "achieved"
+    elif planned_monthly <= 0:
+        status = "needs_plan"
+    elif target_date is not None and projected_completion_date and projected_completion_date <= target_date.isoformat():
+        status = "on_track"
+    else:
+        status = "at_risk"
+
+    return {
+        **goal,
+        "status": status,
+        "progress_percent": progress_percent,
+        "remaining_amount": remaining_amount,
+        "months_left": round(months_left, 1),
+        "required_monthly_saving": required_monthly,
+        "planned_monthly_saving": round(planned_monthly, 2),
+        "projected_amount_at_target_date": round(projected_amount_at_target, 2),
+        "projected_completion_date": projected_completion_date,
+        "average_monthly_spend": average_monthly_spend,
+        "monthly_gap": round(planned_monthly - required_monthly, 2),
+    }
+
+
+def _analyze_spending_goal(
+    *,
+    goal: dict,
+    month_key: str,
+    target_date: datetime.date,
+    reference_today: datetime.date,
+    total_spent_this_month: float,
+) -> dict:
+    monthly_limit = float(goal.get("monthly_limit") or 0.0)
+    year, month = target_date.year, target_date.month
+    days_in_month = calendar.monthrange(year, month)[1]
+    is_current_month = reference_today.year == year and reference_today.month == month
+    elapsed_days = reference_today.day if is_current_month else days_in_month
+    projected_monthly_spend = round(
+        total_spent_this_month if elapsed_days <= 0 else (total_spent_this_month / elapsed_days) * days_in_month,
+        2,
+    )
+    remaining_budget = round(monthly_limit - total_spent_this_month, 2)
+    projected_gap = round(monthly_limit - projected_monthly_spend, 2)
+    status = "on_track" if projected_monthly_spend <= monthly_limit else "at_risk"
+    if not is_current_month and total_spent_this_month <= monthly_limit:
+        status = "achieved"
+
+    progress_percent = round(min((total_spent_this_month / monthly_limit) * 100, 100), 1) if monthly_limit > 0 else 0.0
+    return {
+        **goal,
+        "status": status,
+        "analysis_month": month_key,
+        "progress_percent": progress_percent,
+        "spent_this_month": round(total_spent_this_month, 2),
+        "remaining_budget": remaining_budget,
+        "projected_monthly_spend": projected_monthly_spend,
+        "projected_gap": projected_gap,
+    }
+
+
+def _normalize_analysis_month(month_value: str | None) -> str:
+    clean_value = str(month_value or "").strip()
+    if clean_value:
+        if not re.fullmatch(r"\d{4}-\d{2}", clean_value):
+            raise ValueError("month must follow YYYY-MM")
+        return clean_value
+    return today_in_configured_timezone().strftime("%Y-%m")
+
+
+def _read_optional_float(value):
+    if value is None or value == "":
+        return None
+    return float(str(value).replace(",", "."))
 
 
 # ---------------------------------------------------------------------------

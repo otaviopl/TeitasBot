@@ -125,6 +125,7 @@
     const financeTotalBills = document.getElementById('finance-total-bills');
     const financePending = document.getElementById('finance-pending');
     const financeProgressFill = document.getElementById('finance-progress-fill');
+    const financeGoalsEl = document.getElementById('finance-goals');
     const financeBillsEl = document.getElementById('finance-bills');
     const financeExpensesEl = document.getElementById('finance-expenses');
     let financeMonth = new Date();
@@ -144,6 +145,7 @@
     const sidebarNavHealth = document.getElementById('sidebar-nav-health');
     const sidebarNavFinance = document.getElementById('sidebar-nav-finance');
     const sidebarNavTasks = document.getElementById('sidebar-nav-tasks');
+    const emailRulesBtn = document.getElementById('btn-email-rules');
     const tasksViewEl = document.getElementById('tasks-view');
     const sidebarHeaderEl = document.querySelector('.sidebar-header');
 
@@ -901,6 +903,72 @@
     // Re-check Google status when user comes back to the tab
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) checkGoogleStatus();
+    });
+
+    // ---- Email importance rules ----
+    var emailRulesOverlay = document.getElementById('email-rules-overlay');
+    var emailRulesForm = document.getElementById('email-rules-form');
+    var emailRulesSenders = document.getElementById('email-important-senders');
+    var emailRulesKeywords = document.getElementById('email-important-keywords');
+    var emailRulesSubmitBtn = document.getElementById('email-rules-submit-btn');
+    var emailRulesCloseBtn = document.getElementById('email-rules-close');
+
+    function closeEmailRulesModal() {
+        emailRulesOverlay.classList.remove('visible');
+    }
+
+    function textareaToItems(value) {
+        return String(value || '')
+            .split(/\r?\n|,|;/)
+            .map(function (item) { return item.trim(); })
+            .filter(Boolean);
+    }
+
+    async function openEmailRulesModal() {
+        try {
+            var resp = await fetch('/api/email/importance-rules', { headers: authHeaders() });
+            var data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Erro ao carregar regras');
+            emailRulesSenders.value = (data.senders || []).join('\n');
+            emailRulesKeywords.value = (data.keywords || []).join('\n');
+            emailRulesOverlay.classList.add('visible');
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    }
+
+    if (emailRulesBtn) {
+        emailRulesBtn.addEventListener('click', openEmailRulesModal);
+    }
+
+    emailRulesCloseBtn.addEventListener('click', closeEmailRulesModal);
+    emailRulesOverlay.addEventListener('click', function (e) {
+        if (e.target === emailRulesOverlay) closeEmailRulesModal();
+    });
+
+    emailRulesForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        emailRulesSubmitBtn.disabled = true;
+        emailRulesSubmitBtn.textContent = 'Salvando…';
+        try {
+            var resp = await fetch('/api/email/importance-rules', {
+                method: 'PUT',
+                headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+                body: JSON.stringify({
+                    senders: textareaToItems(emailRulesSenders.value),
+                    keywords: textareaToItems(emailRulesKeywords.value)
+                })
+            });
+            var data = await resp.json().catch(function () { return {}; });
+            if (!resp.ok) throw new Error(data.detail || 'Erro ao salvar regras');
+            closeEmailRulesModal();
+            showToast('Regras salvas ✓');
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            emailRulesSubmitBtn.disabled = false;
+            emailRulesSubmitBtn.textContent = 'Salvar Regras';
+        }
     });
 
     // ---- Memories modal ----
@@ -3300,8 +3368,74 @@
         var pct = totals.total_budget > 0 ? Math.min((totals.total_paid / totals.total_budget) * 100, 100) : 0;
         financeProgressFill.style.width = pct + '%';
 
+        renderFinanceGoals(data.goals || []);
         renderBills(data.bills);
         renderExpensesByCategory(data.expenses, data.category_breakdown);
+    }
+
+    function goalStatusLabel(status) {
+        if (status === 'achieved') return { text: 'No alvo', cls: 'badge-paid' };
+        if (status === 'on_track') return { text: 'No ritmo', cls: 'badge-paid' };
+        if (status === 'needs_plan') return { text: 'Sem plano', cls: 'badge-pending' };
+        return { text: 'Atenção', cls: 'badge-overdue' };
+    }
+
+    function renderFinanceGoals(goals) {
+        if (!goals || goals.length === 0) {
+            financeGoalsEl.innerHTML = '<div class="finance-goals-header">' +
+                '<h3 class="finance-section-title">Metas financeiras</h3>' +
+                '</div>' +
+                '<div class="finance-empty-state">Crie metas para comparar o plano com a sua realidade de gastos.</div>';
+            return;
+        }
+
+        var html = '<div class="finance-goals-header">' +
+            '<h3 class="finance-section-title">Metas financeiras (' + goals.length + ')</h3>' +
+            '</div>' +
+            '<div class="finance-goals-grid">';
+
+        goals.forEach(function (goal) {
+            var badge = goalStatusLabel(goal.status);
+            var progress = Math.max(0, Math.min(Number(goal.progress_percent || 0), 100));
+            html += '<div class="finance-goal-card" data-goal-id="' + escapeHtml(goal.id) + '">' +
+                '<div class="finance-goal-top">' +
+                '<div>' +
+                '<div class="finance-goal-title">' + escapeHtml(goal.title || 'Meta financeira') + '</div>' +
+                '<div class="finance-goal-subtitle">' + (goal.goal_type === 'savings' ? 'Juntar dinheiro' : 'Limitar gastos') + '</div>' +
+                '</div>' +
+                '<div class="finance-goal-actions">' +
+                '<span class="finance-badge ' + badge.cls + '">' + badge.text + '</span>' +
+                '<button class="finance-goal-delete" data-goal-id="' + escapeHtml(goal.id) + '" title="Excluir meta">×</button>' +
+                '</div>' +
+                '</div>' +
+                '<div class="finance-goal-progress"><span style="width:' + progress + '%"></span></div>';
+
+            if (goal.goal_type === 'savings') {
+                html += '<div class="finance-goal-metric">' + formatBRL(goal.current_amount || 0) + ' de ' + formatBRL(goal.target_amount || 0) + '</div>' +
+                    '<div class="finance-goal-detail">Faltam ' + formatBRL(goal.remaining_amount || 0) + '</div>' +
+                    '<div class="finance-goal-detail">Precisa guardar ' + formatBRL(goal.required_monthly_saving || 0) + '/mês</div>' +
+                    '<div class="finance-goal-detail">Plano atual: ' + formatBRL(goal.planned_monthly_saving || 0) + '/mês</div>' +
+                    '<div class="finance-goal-detail">Gasto médio recente: ' + formatBRL(goal.average_monthly_spend || 0) + '/mês</div>';
+                if (goal.target_date) {
+                    html += '<div class="finance-goal-detail">Prazo: ' + formatDateLong(goal.target_date) + '</div>';
+                }
+            } else {
+                html += '<div class="finance-goal-metric">' + formatBRL(goal.spent_this_month || 0) + ' de ' + formatBRL(goal.monthly_limit || 0) + '</div>' +
+                    '<div class="finance-goal-detail">Projeção do mês: ' + formatBRL(goal.projected_monthly_spend || 0) + '</div>' +
+                    '<div class="finance-goal-detail">' + ((goal.projected_gap || 0) >= 0 ? 'Folga projetada: ' : 'Estouro projetado: ') + formatBRL(Math.abs(goal.projected_gap || 0)) + '</div>';
+            }
+
+            html += '</div>';
+        });
+
+        html += '</div>';
+        financeGoalsEl.innerHTML = html;
+
+        financeGoalsEl.querySelectorAll('.finance-goal-delete').forEach(function (el) {
+            el.addEventListener('click', function () {
+                deleteFinanceGoal(el.dataset.goalId);
+            });
+        });
     }
 
     function renderBills(bills) {
@@ -3371,6 +3505,13 @@
         if (!dateStr) return '';
         var parts = dateStr.split('-');
         return parts[2] + '/' + parts[1];
+    }
+
+    function formatDateLong(dateStr) {
+        if (!dateStr) return '';
+        var parsed = new Date(dateStr + 'T00:00:00');
+        if (isNaN(parsed.getTime())) return dateStr;
+        return parsed.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
     }
 
     async function toggleBillPaid(billId) {
@@ -3499,6 +3640,13 @@
     var billForm = document.getElementById('finance-bill-form');
     var billSubmitBtn = document.getElementById('bill-submit-btn');
     var billCloseBtn = document.getElementById('finance-bill-close');
+    var goalOverlay = document.getElementById('finance-goal-overlay');
+    var goalForm = document.getElementById('finance-goal-form');
+    var goalSubmitBtn = document.getElementById('finance-goal-submit-btn');
+    var goalCloseBtn = document.getElementById('finance-goal-close');
+    var goalTypeInput = document.getElementById('finance-goal-type');
+    var goalSavingsFields = document.getElementById('finance-goal-savings-fields');
+    var goalSpendingFields = document.getElementById('finance-goal-spending-fields');
 
     document.getElementById('btn-add-expense').addEventListener('click', function () {
         if (expenseDatePicker) {
@@ -3586,6 +3734,67 @@
         }
     });
 
+    function syncGoalFieldsVisibility() {
+        var isSavings = goalTypeInput.value === 'savings';
+        goalSavingsFields.classList.toggle('hidden', !isSavings);
+        goalSpendingFields.classList.toggle('hidden', isSavings);
+    }
+
+    document.getElementById('btn-add-finance-goal').addEventListener('click', function () {
+        goalForm.reset();
+        goalTypeInput.value = 'savings';
+        syncGoalFieldsVisibility();
+        goalOverlay.classList.add('visible');
+    });
+
+    goalTypeInput.addEventListener('change', syncGoalFieldsVisibility);
+
+    goalCloseBtn.addEventListener('click', function () {
+        goalOverlay.classList.remove('visible');
+    });
+
+    goalOverlay.addEventListener('click', function (e) {
+        if (e.target === goalOverlay) goalOverlay.classList.remove('visible');
+    });
+
+    goalForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        goalSubmitBtn.disabled = true;
+        goalSubmitBtn.textContent = 'Salvando…';
+
+        var goalType = goalTypeInput.value;
+        var payload = {
+            title: document.getElementById('finance-goal-title').value.trim(),
+            goal_type: goalType
+        };
+        if (goalType === 'savings') {
+            payload.current_amount = parseFloat(document.getElementById('finance-goal-current-amount').value || '0');
+            payload.target_amount = parseFloat(document.getElementById('finance-goal-target-amount').value || '0');
+            payload.monthly_contribution = document.getElementById('finance-goal-monthly-contribution').value
+                ? parseFloat(document.getElementById('finance-goal-monthly-contribution').value)
+                : undefined;
+            payload.target_date = document.getElementById('finance-goal-target-date').value || undefined;
+        } else {
+            payload.monthly_limit = parseFloat(document.getElementById('finance-goal-monthly-limit').value || '0');
+        }
+
+        try {
+            await apiPost('/api/finance/goals', payload);
+            goalOverlay.classList.remove('visible');
+            goalForm.reset();
+            syncGoalFieldsVisibility();
+            showToast('Meta salva ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            goalSubmitBtn.disabled = false;
+            goalSubmitBtn.textContent = 'Salvar Meta';
+        }
+    });
+
+    syncGoalFieldsVisibility();
+
     // Generic chip group setup
     function setupChipGroup(groupId) {
         var group = document.getElementById(groupId);
@@ -3596,6 +3805,17 @@
             group.querySelectorAll('.health-chip').forEach(function (c) { c.classList.remove('active'); });
             chip.classList.add('active');
         });
+    }
+
+    async function deleteFinanceGoal(goalId) {
+        if (!confirm('Excluir esta meta financeira?')) return;
+        try {
+            await apiDelete('/api/finance/goals/' + goalId);
+            showToast('Meta excluída ✓');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
     }
 
     // ---- Nubank CSV import ----

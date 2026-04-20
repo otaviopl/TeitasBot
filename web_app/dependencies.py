@@ -72,6 +72,7 @@ def get_google_oauth() -> Optional[WebGoogleOAuth]:
         _google_oauth = WebGoogleOAuth(
             credential_store=credential_store,
             callback_url=callback_url,
+            credentials_path=os.getenv("GOOGLE_OAUTH_CREDENTIALS_PATH", "credentials.json"),
             logger=logger,
         )
     return _google_oauth
@@ -167,4 +168,3 @@ async def get_current_user(
             detail="User not found or inactive",
         )
     return user
-

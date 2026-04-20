@@ -719,6 +719,53 @@ async def google_disconnect(user: dict = Depends(get_current_user)):
     return {"status": "ok"}
 
 
+def _normalize_text_rule_items(raw_items) -> list[str]:
+    if isinstance(raw_items, list):
+        values = raw_items
+    else:
+        values = str(raw_items or "").replace(";", "\n").replace(",", "\n").splitlines()
+    normalized = []
+    seen = set()
+    for value in values:
+        clean_value = str(value or "").strip()
+        if not clean_value:
+            continue
+        lowered = clean_value.casefold()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        normalized.append(clean_value)
+    return normalized[:50]
+
+
+class EmailImportanceRulesRequest(BaseModel):
+    senders: list[str] = []
+    keywords: list[str] = []
+
+
+@app.get("/api/email/importance-rules")
+async def get_email_importance_rules_endpoint(user: dict = Depends(get_current_user)):
+    store = get_credential_store()
+    user_id = f"web:{user['username']}"
+    senders = _normalize_text_rule_items(store.get_credential(user_id, "email_important_senders") or "")
+    keywords = _normalize_text_rule_items(store.get_credential(user_id, "email_important_keywords") or "")
+    return {"senders": senders, "keywords": keywords}
+
+
+@app.put("/api/email/importance-rules")
+async def update_email_importance_rules(
+    body: EmailImportanceRulesRequest,
+    user: dict = Depends(get_current_user),
+):
+    store = get_credential_store()
+    user_id = f"web:{user['username']}"
+    senders = _normalize_text_rule_items(body.senders)
+    keywords = _normalize_text_rule_items(body.keywords)
+    store.set_credential(user_id, "email_important_senders", "\n".join(senders))
+    store.set_credential(user_id, "email_important_keywords", "\n".join(keywords))
+    return {"status": "updated", "senders": senders, "keywords": keywords}
+
+
 # ---- Memories endpoints ----
 
 
@@ -1404,6 +1451,7 @@ async def delete_health_exercise(
 _MAX_EXPENSE_NAME_LEN = 200
 _MAX_EXPENSE_DESC_LEN = 500
 _MAX_BILL_NAME_LEN = 200
+_MAX_GOAL_TITLE_LEN = 120
 _MAX_AMOUNT = 99_999_999.99
 _VALID_FINANCE_CATEGORIES = {"Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Outros"}
 
@@ -1476,6 +1524,25 @@ class CreateBillRequest(BaseModel):
     category: str = "Outros"
     due_date: str | None = None
     reference_month: str | None = None
+
+
+class CreateFinancialGoalRequest(BaseModel):
+    title: str
+    goal_type: str
+    target_amount: float | None = None
+    current_amount: float | None = 0
+    monthly_contribution: float | None = None
+    monthly_limit: float | None = None
+    target_date: str | None = None
+
+
+class UpdateFinancialGoalRequest(BaseModel):
+    title: str | None = None
+    target_amount: float | None = None
+    current_amount: float | None = None
+    monthly_contribution: float | None = None
+    monthly_limit: float | None = None
+    target_date: str | None = None
 
 
 @app.post("/api/finance/bills")
@@ -1569,6 +1636,119 @@ async def delete_finance_bill(
     deleted = await asyncio.to_thread(store.delete_bill, user_id, bill_id.strip())
     if not deleted:
         raise HTTPException(status_code=404, detail="Bill not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/finance/goals")
+async def list_finance_goals(
+    month: str | None = Query(None, description="YYYY-MM, defaults to current month"),
+    user: dict = Depends(get_current_user),
+):
+    from assistant_connector.tools.finance_tools import build_financial_goal_analysis
+    import re
+    from utils.timezone_utils import today_iso_in_configured_timezone
+
+    if month:
+        if not re.match(r"^\d{4}-\d{2}$", month):
+            raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+        target_month = month
+    else:
+        target_month = today_iso_in_configured_timezone()[:7]
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    goals = await asyncio.to_thread(store.list_financial_goals, user_id)
+    analyses = await asyncio.to_thread(
+        build_financial_goal_analysis,
+        user_id=user_id,
+        month=target_month,
+        store=store,
+    )
+    return {"month": target_month, "goals": goals, "analysis": analyses}
+
+
+@app.post("/api/finance/goals")
+async def create_finance_goal(
+    body: CreateFinancialGoalRequest,
+    user: dict = Depends(get_current_user),
+):
+    import re
+
+    title = body.title.strip()
+    if not title or len(title) > _MAX_GOAL_TITLE_LEN:
+        raise HTTPException(status_code=400, detail=f"title must be 1-{_MAX_GOAL_TITLE_LEN} characters")
+
+    goal_type = body.goal_type.strip().lower()
+    if goal_type not in {"savings", "spending_limit"}:
+        raise HTTPException(status_code=400, detail="goal_type must be savings or spending_limit")
+
+    if body.target_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", body.target_date):
+        raise HTTPException(status_code=400, detail="target_date must be YYYY-MM-DD")
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    try:
+        goal = await asyncio.to_thread(
+            store.create_financial_goal,
+            user_id=user_id,
+            title=title,
+            goal_type=goal_type,
+            target_amount=body.target_amount,
+            current_amount=body.current_amount or 0.0,
+            monthly_contribution=body.monthly_contribution,
+            monthly_limit=body.monthly_limit,
+            target_date=body.target_date,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return {"status": "created", "goal": goal}
+
+
+@app.patch("/api/finance/goals/{goal_id}")
+async def update_finance_goal(
+    goal_id: str,
+    body: UpdateFinancialGoalRequest,
+    user: dict = Depends(get_current_user),
+):
+    import re
+
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="At least one field must be provided")
+    if "title" in updates:
+        updates["title"] = str(updates["title"]).strip()
+        if not updates["title"] or len(updates["title"]) > _MAX_GOAL_TITLE_LEN:
+            raise HTTPException(status_code=400, detail=f"title must be 1-{_MAX_GOAL_TITLE_LEN} characters")
+    if "target_date" in updates and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(updates["target_date"])):
+        raise HTTPException(status_code=400, detail="target_date must be YYYY-MM-DD")
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    try:
+        goal = await asyncio.to_thread(
+            store.update_financial_goal,
+            user_id=user_id,
+            goal_id=goal_id.strip(),
+            **updates,
+        )
+    except ValueError as error:
+        detail = str(error)
+        if "not found" in detail:
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+    return {"status": "updated", "goal": goal}
+
+
+@app.delete("/api/finance/goals/{goal_id}")
+async def delete_finance_goal(
+    goal_id: str,
+    user: dict = Depends(get_current_user),
+):
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    deleted = await asyncio.to_thread(store.delete_financial_goal, user_id, goal_id.strip())
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Financial goal not found")
     return {"status": "deleted"}
 
 
@@ -1833,6 +2013,7 @@ async def finance_dashboard(
     user: dict = Depends(get_current_user),
 ):
     """Monthly finance dashboard: expenses + bills + totals."""
+    from assistant_connector.tools.finance_tools import build_financial_goal_analysis
     import re
     from utils.timezone_utils import today_iso_in_configured_timezone
 
@@ -1858,7 +2039,18 @@ async def finance_dashboard(
         except Exception:
             return []
 
-    expenses, bills = await asyncio.gather(fetch_expenses(), fetch_bills())
+    async def fetch_goals():
+        try:
+            return await asyncio.to_thread(
+                build_financial_goal_analysis,
+                user_id=user_id,
+                month=target_month,
+                store=store,
+            )
+        except Exception:
+            return []
+
+    expenses, bills, goals = await asyncio.gather(fetch_expenses(), fetch_bills(), fetch_goals())
 
     total_expenses = sum(float(e.get("amount") or 0) for e in expenses)
     total_budget = sum(float(b.get("budget") or 0) for b in bills)
@@ -1876,6 +2068,7 @@ async def finance_dashboard(
         "month": target_month,
         "expenses": expenses,
         "bills": bills,
+        "goals": goals,
         "totals": {
             "total_expenses": round(total_expenses, 2),
             "total_budget": round(total_budget, 2),

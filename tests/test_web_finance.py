@@ -312,6 +312,94 @@ class TestDeleteBill:
         assert res.status_code == 404
 
 
+class TestFinancialGoals:
+    def test_create_savings_goal(self, client, auth_token):
+        res = client.post(
+            "/api/finance/goals",
+            json={
+                "title": "Comprar carro",
+                "goal_type": "savings",
+                "current_amount": 5000,
+                "target_amount": 30000,
+                "monthly_contribution": 1200,
+                "target_date": "2027-12-31",
+            },
+            headers=_auth(auth_token),
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "created"
+        assert data["goal"]["goal_type"] == "savings"
+
+    def test_create_spending_limit_goal(self, client, auth_token):
+        res = client.post(
+            "/api/finance/goals",
+            json={"title": "Segurar abril", "goal_type": "spending_limit", "monthly_limit": 2500},
+            headers=_auth(auth_token),
+        )
+        assert res.status_code == 200
+        assert res.json()["goal"]["goal_type"] == "spending_limit"
+
+    def test_create_goal_invalid(self, client, auth_token):
+        res = client.post(
+            "/api/finance/goals",
+            json={"title": "Ruim", "goal_type": "savings", "target_amount": 10000},
+            headers=_auth(auth_token),
+        )
+        assert res.status_code == 400
+
+    def test_list_goals_analysis(self, client, auth_token):
+        h = _auth(auth_token)
+        client.post(
+            "/api/finance/goals",
+            json={
+                "title": "Comprar carro",
+                "goal_type": "savings",
+                "current_amount": 5000,
+                "target_amount": 30000,
+                "monthly_contribution": 1500,
+                "target_date": "2027-12-31",
+            },
+            headers=h,
+        )
+        client.post(
+            "/api/finance/goals",
+            json={"title": "Teto mensal", "goal_type": "spending_limit", "monthly_limit": 2500},
+            headers=h,
+        )
+        client.post("/api/finance/expenses", json={"name": "Mercado", "amount": 400, "date": "2026-04-05"}, headers=h)
+
+        res = client.get("/api/finance/goals?month=2026-04", headers=h)
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["goals"]) == 2
+        assert len(data["analysis"]) == 2
+
+    def test_dashboard_includes_goals(self, client, auth_token):
+        h = _auth(auth_token)
+        client.post(
+            "/api/finance/goals",
+            json={"title": "Teto mensal", "goal_type": "spending_limit", "monthly_limit": 1500},
+            headers=h,
+        )
+        res = client.get("/api/finance/dashboard?month=2026-04", headers=h)
+        assert res.status_code == 200
+        assert "goals" in res.json()
+        assert len(res.json()["goals"]) == 1
+
+    def test_delete_goal(self, client, auth_token):
+        h = _auth(auth_token)
+        create = client.post(
+            "/api/finance/goals",
+            json={"title": "Reserva", "goal_type": "spending_limit", "monthly_limit": 1800},
+            headers=h,
+        )
+        goal_id = create.json()["goal"]["id"]
+        res = client.delete(f"/api/finance/goals/{goal_id}", headers=h)
+        assert res.status_code == 200
+        assert res.json()["status"] == "deleted"
+
+
 # ---- User isolation ----
 
 class TestFinanceUserIsolation:

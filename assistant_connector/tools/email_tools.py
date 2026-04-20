@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime, timezone
 
 from gmail_connector import gmail_connector
 
@@ -116,6 +117,81 @@ def analyze_email_attachment(arguments, context):
     )
 
 
+def summarize_important_emails(arguments, context):
+    days = _clamp_int(arguments.get("days", 3), minimum=1, maximum=30, default=3)
+    max_results = _clamp_int(arguments.get("max_results", 25), minimum=1, maximum=50, default=25)
+    unread_only = _read_boolean(arguments.get("unread_only", True), default=True)
+    include_body = _read_boolean(arguments.get("include_body", True), default=True)
+
+    rules = get_email_importance_rules(
+        store=context.user_credential_store,
+        user_id=context.user_id,
+    )
+    if not rules["senders"] and not rules["keywords"]:
+        return {
+            "status": "rules_missing",
+            "message": (
+                "Nenhuma regra de importância configurada ainda. "
+                "Defina remetentes prioritários ou palavras-chave para gerar o resumo."
+            ),
+            "rules": rules,
+            "emails": [],
+            "total_important": 0,
+        }
+
+    query_tokens = [f"newer_than:{days}d"]
+    if unread_only:
+        query_tokens.append("is:unread")
+    search_result = gmail_connector.search_emails(
+        project_logger=context.project_logger,
+        query=" ".join(query_tokens),
+        max_results=max_results,
+        include_body=include_body,
+        user_id=context.user_id,
+        credential_store=context.user_credential_store,
+    )
+
+    important_items = []
+    for item in search_result.get("emails", []):
+        sender_matches, keyword_matches = _match_email_importance(item, rules)
+        if not sender_matches and not keyword_matches:
+            continue
+        score = (len(sender_matches) * 3) + len(keyword_matches)
+        important_items.append(
+            {
+                "id": item.get("id"),
+                "thread_id": item.get("thread_id"),
+                "from": item.get("from", ""),
+                "subject": item.get("subject", ""),
+                "date": item.get("date", ""),
+                "snippet": item.get("snippet", ""),
+                "matched_senders": sender_matches,
+                "matched_keywords": keyword_matches,
+                "reason": _build_importance_reason(sender_matches, keyword_matches),
+                "score": score,
+            }
+        )
+
+    important_items.sort(
+        key=lambda item: (
+            -int(item.get("score", 0)),
+            -_parse_internal_date(search_result.get("emails", []), item.get("id")),
+        )
+    )
+
+    top_items = important_items[:max_results]
+    return {
+        "status": "ok",
+        "days": days,
+        "unread_only": unread_only,
+        "rules": rules,
+        "total_scanned": search_result.get("returned", 0),
+        "total_important": len(top_items),
+        "emails": top_items,
+        "summary": _build_important_email_summary(top_items),
+    }
+
+
 def _apply_subject_prefix(subject, context=None):
     store = getattr(context, "user_credential_store", None)
     user_id = getattr(context, "user_id", None)
@@ -153,6 +229,14 @@ def _get_email_signature(context=None):
     if store is not None and user_id is not None:
         return store.get_credential(user_id, "email_signature") or ""
     return str(os.getenv("EMAIL_ASSISTANT_SIGNATURE", "")).strip()
+
+
+def get_email_importance_rules(*, store=None, user_id=None) -> dict:
+    if store is None or user_id is None:
+        return {"senders": [], "keywords": []}
+    senders = _parse_rule_list(store.get_credential(user_id, "email_important_senders") or "")
+    keywords = _parse_rule_list(store.get_credential(user_id, "email_important_keywords") or "")
+    return {"senders": senders, "keywords": keywords}
 
 
 def _get_default_recipient(context=None):
@@ -225,3 +309,83 @@ def _resolve_default_contact_recipient(context=None) -> str:
 
 def _looks_like_email(value: str) -> bool:
     return bool(_EMAIL_PATTERN.fullmatch(str(value or "").strip()))
+
+
+def _parse_rule_list(raw_value) -> list[str]:
+    if isinstance(raw_value, list):
+        items = raw_value
+    else:
+        normalized = str(raw_value or "").replace(";", "\n").replace(",", "\n")
+        items = normalized.splitlines()
+    cleaned = []
+    seen = set()
+    for item in items:
+        value = str(item or "").strip()
+        if not value:
+            continue
+        lowered = value.casefold()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned.append(value)
+    return cleaned
+
+
+def _read_boolean(value, *, default):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "nao"}
+
+
+def _match_email_importance(item: dict, rules: dict) -> tuple[list[str], list[str]]:
+    sender_text = str(item.get("from", "")).casefold()
+    combined_text = " ".join(
+        str(item.get(field, "") or "")
+        for field in ("from", "subject", "snippet", "body")
+    ).casefold()
+
+    sender_matches = [
+        sender
+        for sender in rules.get("senders", [])
+        if str(sender).casefold() in sender_text
+    ]
+    keyword_matches = [
+        keyword
+        for keyword in rules.get("keywords", [])
+        if str(keyword).casefold() in combined_text
+    ]
+    return sender_matches, keyword_matches
+
+
+def _build_importance_reason(sender_matches: list[str], keyword_matches: list[str]) -> str:
+    reasons = []
+    if sender_matches:
+        reasons.append("remetente prioritario")
+    if keyword_matches:
+        reasons.append("palavra-chave importante")
+    return " + ".join(reasons) if reasons else "regra configurada"
+
+
+def _build_important_email_summary(items: list[dict]) -> str:
+    if not items:
+        return "Nenhum email importante encontrado no período."
+    lines = []
+    for item in items[:8]:
+        lines.append(
+            f"- {item.get('subject') or '(sem assunto)'} | {item.get('from') or 'remetente desconhecido'} | {item.get('reason')}"
+        )
+    return "\n".join(lines)
+
+
+def _parse_internal_date(items: list[dict], message_id: str) -> int:
+    for item in items:
+        if item.get("id") != message_id:
+            continue
+        raw_value = item.get("internal_date")
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            break
+    return int(datetime.now(timezone.utc).timestamp() * 1000)

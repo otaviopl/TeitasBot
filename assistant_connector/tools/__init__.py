@@ -6,12 +6,18 @@ from assistant_connector.tools.email_tools import (
     search_email_attachments,
     search_emails,
     send_email,
+    summarize_important_emails,
 )
 from assistant_connector.tools.finance_tools import (
     analyze_bills,
     analyze_expenses,
+    analyze_financial_goals,
+    delete_financial_goal,
+    edit_financial_goal,
     list_bills,
+    list_financial_goals,
     pay_bill,
+    register_financial_goal,
     register_expense,
 )
 from assistant_connector.tools.health_tools import (
@@ -50,6 +56,11 @@ __all__ = [
     "list_bills",
     "pay_bill",
     "analyze_bills",
+    "register_financial_goal",
+    "list_financial_goals",
+    "edit_financial_goal",
+    "delete_financial_goal",
+    "analyze_financial_goals",
     "list_tasks",
     "create_task",
     "edit_task",
@@ -67,6 +78,7 @@ __all__ = [
     "search_email_attachments",
     "search_emails",
     "send_email",
+    "summarize_important_emails",
     "list_available_agents",
     "list_available_tools",
     "list_tech_news",
