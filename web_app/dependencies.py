@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from web_app.auth import verify_token
 from web_app.google_oauth import WebGoogleOAuth
 from web_app.user_store import WebUserStore
+from utils.google_oauth_client import load_google_client_config_from_env
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -73,6 +74,7 @@ def get_google_oauth() -> Optional[WebGoogleOAuth]:
             credential_store=credential_store,
             callback_url=callback_url,
             credentials_path=os.getenv("GOOGLE_OAUTH_CREDENTIALS_PATH", "credentials.json"),
+            client_config=load_google_client_config_from_env(redirect_uri=callback_url),
             logger=logger,
         )
     return _google_oauth

@@ -52,29 +52,27 @@ class WebGoogleOAuth:
         *,
         callback_url: str,
         credentials_path: str = "credentials.json",
+        client_config: Optional[dict] = None,
         logger: Optional[logging.Logger] = None,
     ):
         self._store = credential_store
         self._callback_url = callback_url
         self._credentials_path = credentials_path
+        self._client_config = client_config
         self._logger = logger or logging.getLogger(__name__)
         self._pending: dict[str, dict] = {}
         self._lock = threading.Lock()
 
     def start_flow(self, user_id: str) -> str:
         """Create a pending auth state and return the Google authorization URL."""
-        if not os.path.exists(self._credentials_path):
+        if self._client_config is None and not os.path.exists(self._credentials_path):
             raise ValueError(
-                f"credentials.json not found at '{self._credentials_path}'. "
-                "Download it from the Google Cloud Console and place it in the project root."
+                f"Google OAuth client config not found. "
+                f"Expected credentials.json at '{self._credentials_path}' or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET in env."
             )
         self._purge_expired_states()
         state = secrets.token_urlsafe(32)
-        flow = Flow.from_client_secrets_file(
-            self._credentials_path,
-            scopes=SCOPES,
-            redirect_uri=self._callback_url,
-        )
+        flow = self._make_flow()
         auth_url, _ = flow.authorization_url(
             access_type="offline",
             state=state,
@@ -87,6 +85,19 @@ class WebGoogleOAuth:
                 "flow": flow,
             }
         return auth_url
+
+    def _make_flow(self) -> Flow:
+        if self._client_config is not None:
+            return Flow.from_client_config(
+                self._client_config,
+                scopes=SCOPES,
+                redirect_uri=self._callback_url,
+            )
+        return Flow.from_client_secrets_file(
+            self._credentials_path,
+            scopes=SCOPES,
+            redirect_uri=self._callback_url,
+        )
 
     def handle_callback(self, code: str, state: str) -> tuple[bool, str, Optional[str]]:
         """Exchange the authorization code for a token and store it.

@@ -36,6 +36,28 @@ class TestWebGoogleOAuthStartFlow(unittest.TestCase):
             oauth.start_flow("web:alice")
 
     @patch("web_app.google_oauth.Flow")
+    def test_start_flow_uses_client_config_when_provided(self, mock_flow_cls):
+        mock_flow = MagicMock()
+        mock_flow.authorization_url.return_value = ("https://accounts.google.com/auth?state=abc", "abc")
+        mock_flow_cls.from_client_config.return_value = mock_flow
+
+        oauth = _make_oauth(
+            client_config={
+                "web": {
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": ["https://example.com/auth/google/callback"],
+                }
+            }
+        )
+        url = oauth.start_flow("web:alice")
+
+        self.assertIn("accounts.google.com", url)
+        mock_flow_cls.from_client_config.assert_called_once()
+
+    @patch("web_app.google_oauth.Flow")
     def test_start_flow_returns_url_and_stores_state(self, mock_flow_cls):
         mock_flow = MagicMock()
         mock_flow.authorization_url.return_value = ("https://accounts.google.com/auth?state=abc", "abc")
@@ -245,6 +267,21 @@ class TestGoogleAuthUrlRoute:
         data = res.json()
         assert "auth_url" in data
         assert "accounts.google.com" in data["auth_url"]
+
+
+class TestDependenciesGoogleClientConfig:
+    def test_get_google_oauth_uses_env_client_config(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_OAUTH_CALLBACK_URL", "https://example.com/auth/google/callback")
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+
+        import web_app.dependencies as deps
+        deps._google_oauth = None
+
+        oauth = deps.get_google_oauth()
+        assert oauth is not None
+        assert oauth._client_config is not None
+        assert oauth._client_config["web"]["client_id"] == "client-id"
 
 
 class TestGoogleCallbackRoute:

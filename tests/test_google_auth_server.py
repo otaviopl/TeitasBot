@@ -28,6 +28,28 @@ class TestStartFlow(unittest.TestCase):
             server.start_flow("user123")
 
     @patch("google_auth_server.Flow")
+    def test_start_flow_uses_client_config_when_provided(self, mock_flow_cls):
+        mock_flow = MagicMock()
+        mock_flow.authorization_url.return_value = ("https://accounts.google.com/auth?state=abc", "abc")
+        mock_flow_cls.from_client_config.return_value = mock_flow
+
+        server = _make_server(
+            client_config={
+                "web": {
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": ["https://example.com/auth/google/callback"],
+                }
+            }
+        )
+        url = server.start_flow("user123")
+
+        self.assertIn("accounts.google.com", url)
+        mock_flow_cls.from_client_config.assert_called_once()
+
+    @patch("google_auth_server.Flow")
     def test_start_flow_returns_url_and_stores_state(self, mock_flow_cls):
         mock_flow = MagicMock()
         mock_flow.authorization_url.return_value = ("https://accounts.google.com/auth?state=abc", "abc")

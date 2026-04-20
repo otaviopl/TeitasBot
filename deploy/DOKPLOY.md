@@ -30,19 +30,25 @@ Defina no Dokploy pelo menos:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ALLOWED_USER_IDS`
 - `GOOGLE_OAUTH_CALLBACK_URL=https://teitas.com.br/auth/google/callback`
-- `GOOGLE_OAUTH_CREDENTIALS_PATH=/data/credentials.json`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
 Se usar Notion, Gmail, Calendar e outras integrações, configure também as variáveis já esperadas pelo projeto.
 
-## credentials.json do Google
+## Google OAuth em produção
 
-O OAuth web precisa do arquivo `credentials.json` do Google Cloud.
+Em produção, o recomendado é usar:
 
-Monte esse arquivo no container em:
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
-- `/data/credentials.json`
+O projeto monta o client OAuth em memória e não precisa de `credentials.json` nesse modo.
 
-Se o Dokploy estiver usando mount por arquivo, aponte o destino exatamente para esse path.
+Se quiser manter compatibilidade com o modo antigo, ainda é possível usar:
+
+- `GOOGLE_OAUTH_CREDENTIALS_PATH=/data/credentials.json`
+
+e montar esse arquivo manualmente no container.
 
 ## Observações
 

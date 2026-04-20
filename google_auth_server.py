@@ -20,6 +20,7 @@ from typing import Optional
 
 import requests as _http_requests
 from google_auth_oauthlib.flow import Flow
+from utils.google_oauth_client import load_google_client_config_from_env
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -62,6 +63,7 @@ class GoogleOAuthCallbackServer:
         callback_url: str,
         bot_token: Optional[str] = None,
         credentials_path: str = "credentials.json",
+        client_config: Optional[dict] = None,
         project_logger=None,
     ):
         self._store = credential_store
@@ -69,6 +71,7 @@ class GoogleOAuthCallbackServer:
         self._callback_url = callback_url
         self._bot_token = bot_token
         self._credentials_path = credentials_path
+        self._client_config = client_config
         self._logger = project_logger or logging.getLogger(__name__)
         self._pending: dict[str, dict] = {}  # state → {user_id, expires_at}
         self._lock = threading.Lock()
@@ -81,10 +84,10 @@ class GoogleOAuthCallbackServer:
 
     def start_flow(self, user_id: str) -> str:
         """Register a pending auth state and return the Google auth URL."""
-        if not os.path.exists(self._credentials_path):
+        if self._client_config is None and not os.path.exists(self._credentials_path):
             raise ValueError(
-                f"credentials.json not found at '{self._credentials_path}'. "
-                "Download it from the Google Cloud Console and place it in the project root."
+                f"Google OAuth client config not found. "
+                f"Expected credentials.json at '{self._credentials_path}' or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET in env."
             )
         self._purge_expired_states()
         state = secrets.token_urlsafe(32)
@@ -179,6 +182,16 @@ class GoogleOAuthCallbackServer:
     # ------------------------------------------------------------------ #
 
     def _make_flow(self) -> Flow:
+        if self._client_config is None:
+            self._client_config = load_google_client_config_from_env(
+                redirect_uri=self._callback_url
+            )
+        if self._client_config is not None:
+            return Flow.from_client_config(
+                self._client_config,
+                scopes=SCOPES,
+                redirect_uri=self._callback_url,
+            )
         return Flow.from_client_secrets_file(
             self._credentials_path,
             scopes=SCOPES,
