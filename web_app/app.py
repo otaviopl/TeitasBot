@@ -2217,6 +2217,127 @@ async def inter_import_confirm(
     return result
 
 
+def _get_card_cycle(closing_day: int, due_day: int, reference_date, offset: int = 0):
+    """Return (cycle_start, cycle_end, due_date, label) for the billing cycle."""
+    import datetime as _dt
+
+    # Find the cycle_end for offset=0
+    if reference_date.day <= closing_day:
+        cycle_end = reference_date.replace(day=closing_day)
+    else:
+        if reference_date.month == 12:
+            cycle_end = _dt.date(reference_date.year + 1, 1, closing_day)
+        else:
+            cycle_end = reference_date.replace(month=reference_date.month + 1, day=closing_day)
+
+    # Apply cycle offset (each unit = 1 month)
+    if offset != 0:
+        m = cycle_end.month + offset
+        y = cycle_end.year
+        while m > 12:
+            m -= 12
+            y += 1
+        while m < 1:
+            m += 12
+            y -= 1
+        cycle_end = _dt.date(y, m, closing_day)
+
+    # Cycle starts the day after the previous closing day
+    pm = cycle_end.month - 1 if cycle_end.month > 1 else 12
+    py = cycle_end.year if cycle_end.month > 1 else cycle_end.year - 1
+    prev_close = _dt.date(py, pm, closing_day)
+    cycle_start = prev_close + _dt.timedelta(days=1)
+
+    # Due date
+    if due_day > closing_day:
+        due_date = cycle_end.replace(day=due_day)
+    else:
+        if cycle_end.month == 12:
+            due_date = _dt.date(cycle_end.year + 1, 1, due_day)
+        else:
+            due_date = cycle_end.replace(month=cycle_end.month + 1, day=due_day)
+
+    MONTHS_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    label = f"{MONTHS_PT[cycle_end.month - 1]} {cycle_end.year}"
+    return cycle_start, cycle_end, due_date, label
+
+
+@app.get("/api/finance/card/config")
+async def get_card_config(user: dict = Depends(get_current_user)):
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    return await asyncio.to_thread(store.get_card_billing_config, user_id)
+
+
+class CardConfigRequest(BaseModel):
+    closing_day: int
+    due_day: int
+
+
+@app.put("/api/finance/card/config")
+async def set_card_config(body: CardConfigRequest, user: dict = Depends(get_current_user)):
+    if not (1 <= body.closing_day <= 28) or not (1 <= body.due_day <= 28):
+        raise HTTPException(status_code=400, detail="closing_day and due_day must be between 1 and 28")
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    result = await asyncio.to_thread(store.set_card_billing_config, user_id, body.closing_day, body.due_day)
+    return result
+
+
+@app.get("/api/finance/card/cycle")
+async def get_card_cycle(
+    offset: int = Query(0, description="Cycle offset: 0=current, -1=previous, +1=next"),
+    user: dict = Depends(get_current_user),
+):
+    """Return card expenses and metadata for a billing cycle."""
+    import datetime as _dt
+    from utils.timezone_utils import today_iso_in_configured_timezone
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+
+    config = await asyncio.to_thread(store.get_card_billing_config, user_id)
+    closing_day = config["closing_day"]
+    due_day = config["due_day"]
+
+    today_str = today_iso_in_configured_timezone()[:10]
+    today = _dt.date.fromisoformat(today_str)
+
+    cycle_start, cycle_end, due_date, label = _get_card_cycle(closing_day, due_day, today, offset)
+
+    expenses = await asyncio.to_thread(
+        store.list_card_expenses_by_date_range,
+        user_id,
+        cycle_start.isoformat(),
+        cycle_end.isoformat(),
+    )
+
+    total = round(sum(float(e.get("amount") or 0) for e in expenses), 2)
+
+    cat_map: dict[str, float] = {}
+    for e in expenses:
+        cat = e.get("category", "Outros")
+        cat_map[cat] = cat_map.get(cat, 0) + float(e.get("amount") or 0)
+    category_breakdown = [{"category": k, "total": round(v, 2)} for k, v in sorted(cat_map.items(), key=lambda x: -x[1])]
+
+    is_open = cycle_end >= today
+
+    return {
+        "label": label,
+        "cycle_start": cycle_start.isoformat(),
+        "cycle_end": cycle_end.isoformat(),
+        "due_date": due_date.isoformat(),
+        "closing_day": closing_day,
+        "due_day": due_day,
+        "is_open": is_open,
+        "offset": offset,
+        "expenses": expenses,
+        "total": total,
+        "category_breakdown": category_breakdown,
+    }
+
+
 @app.get("/api/finance/dashboard")
 async def finance_dashboard(
     month: str | None = Query(None, description="YYYY-MM, defaults to current month"),

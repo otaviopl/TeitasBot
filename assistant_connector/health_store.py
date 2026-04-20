@@ -265,6 +265,14 @@ class HealthStore:
                     updated_at TEXT NOT NULL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS card_billing_config (
+                    user_id TEXT PRIMARY KEY,
+                    closing_day INTEGER NOT NULL DEFAULT 19,
+                    due_day INTEGER NOT NULL DEFAULT 26,
+                    updated_at TEXT NOT NULL
+                )
+            """)
             # Migration: add duration_minutes to existing health_exercises tables
             try:
                 conn.execute("ALTER TABLE health_exercises ADD COLUMN duration_minutes INTEGER")
@@ -990,6 +998,30 @@ class HealthStore:
         start = month[:7] + "-01"
         end = month[:7] + "-31"
         return self.list_expenses_by_date_range(user_id, start, end)
+
+    def get_card_billing_config(self, user_id: str) -> dict:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT closing_day, due_day FROM card_billing_config WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        if row:
+            return {"closing_day": row["closing_day"], "due_day": row["due_day"]}
+        return {"closing_day": 19, "due_day": 26}
+
+    def set_card_billing_config(self, user_id: str, closing_day: int, due_day: int) -> dict:
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO card_billing_config (user_id, closing_day, due_day, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET closing_day=excluded.closing_day,
+                    due_day=excluded.due_day, updated_at=excluded.updated_at
+                """,
+                (user_id, closing_day, due_day, now),
+            )
+        return {"closing_day": closing_day, "due_day": due_day}
 
     def list_card_expenses_by_date_range(
         self,

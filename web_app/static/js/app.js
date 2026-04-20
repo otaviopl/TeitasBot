@@ -3370,6 +3370,7 @@
 
         renderFinanceGoals(data.goals || []);
         renderBills(data.bills);
+        loadCardCycle();
         renderExpensesByCategory(data.expenses, data.category_breakdown);
     }
 
@@ -4303,6 +4304,116 @@
             cardConfirmBtn.textContent = 'Importar selecionados';
         }
     });
+
+    // ---- Card billing cycle ----
+    var cardCycleEl = document.getElementById('finance-card-cycle');
+    var cardCycleOffset = 0;
+
+    var cardConfigOverlay = document.getElementById('card-config-overlay');
+    var cardConfigClose = document.getElementById('card-config-close');
+    var cardConfigForm = document.getElementById('card-config-form');
+    var cardClosingDayInput = document.getElementById('card-closing-day');
+    var cardDueDayInput = document.getElementById('card-due-day');
+
+    cardConfigClose.addEventListener('click', function () { cardConfigOverlay.classList.remove('visible'); });
+    cardConfigOverlay.addEventListener('click', function (e) {
+        if (e.target === cardConfigOverlay) cardConfigOverlay.classList.remove('visible');
+    });
+
+    cardConfigForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var closing = parseInt(cardClosingDayInput.value);
+        var due = parseInt(cardDueDayInput.value);
+        if (!closing || !due) return;
+        try {
+            await apiPut('/api/finance/card/config', { closing_day: closing, due_day: due });
+            showToast('Configuração salva ✓');
+            cardConfigOverlay.classList.remove('visible');
+            cardCycleOffset = 0;
+            loadCardCycle();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        }
+    });
+
+    async function loadCardCycle() {
+        if (!cardCycleEl) return;
+        try {
+            var data = await apiGet('/api/finance/card/cycle?offset=' + cardCycleOffset);
+            renderCardCycle(data);
+        } catch (err) {
+            cardCycleEl.innerHTML = '';
+        }
+    }
+
+    function renderCardCycle(data) {
+        if (!data || !data.expenses) { cardCycleEl.innerHTML = ''; return; }
+
+        var startFmt = data.cycle_start.split('-').reverse().join('/');
+        var endFmt = data.cycle_end.split('-').reverse().join('/');
+        var dueFmt = data.due_date.split('-').reverse().join('/');
+        var statusBadge = data.is_open
+            ? '<span class="cycle-badge cycle-open">Aberta</span>'
+            : '<span class="cycle-badge cycle-closed">Fechada</span>';
+
+        var catRows = (data.category_breakdown || []).map(function (b) {
+            return '<div class="cycle-cat-row"><span>' + escapeHtml(b.category) + '</span><span>' + formatBRL(b.total) + '</span></div>';
+        }).join('');
+
+        var expRows = data.expenses.map(function (e) {
+            var d = (e.date || '').split('-').reverse().join('/');
+            return '<div class="cycle-exp-row">' +
+                '<span class="cycle-exp-name" title="' + escapeHtml(e.description || e.name) + '">' + escapeHtml(e.name) + '</span>' +
+                '<span class="cycle-exp-meta">' + d + ' · ' + escapeHtml(e.category) + '</span>' +
+                '<span class="cycle-exp-amount">' + formatBRL(e.amount) + '</span>' +
+                '</div>';
+        }).join('');
+
+        var emptyMsg = data.expenses.length === 0
+            ? '<div class="finance-empty-state">Nenhuma transação de cartão neste ciclo</div>'
+            : '';
+
+        cardCycleEl.innerHTML =
+            '<div class="cycle-header">' +
+                '<div class="cycle-nav">' +
+                    '<button class="cycle-nav-btn" id="cycle-prev-btn">‹</button>' +
+                    '<div class="cycle-title-block">' +
+                        '<h3 class="finance-section-title cycle-title">Fatura do Cartão · ' + escapeHtml(data.label) + ' ' + statusBadge + '</h3>' +
+                        '<span class="cycle-dates">' + startFmt + ' a ' + endFmt + ' · Vencimento ' + dueFmt + '</span>' +
+                    '</div>' +
+                    '<button class="cycle-nav-btn" id="cycle-next-btn" ' + (data.offset >= 0 ? 'disabled' : '') + '>›</button>' +
+                '</div>' +
+                '<div class="cycle-total-row">' +
+                    '<span class="cycle-total-label">Total</span>' +
+                    '<span class="cycle-total-value">' + formatBRL(data.total) + '</span>' +
+                    '<button class="cycle-config-btn" id="cycle-config-btn" title="Configurar ciclo">⚙</button>' +
+                '</div>' +
+            '</div>' +
+            (data.category_breakdown && data.category_breakdown.length > 0
+                ? '<div class="cycle-cats">' + catRows + '</div>' : '') +
+            (data.expenses.length > 0
+                ? '<div class="cycle-exp-list">' + expRows + '</div>'
+                : emptyMsg);
+
+        document.getElementById('cycle-prev-btn').addEventListener('click', function () {
+            cardCycleOffset -= 1;
+            loadCardCycle();
+        });
+        var nextBtn = document.getElementById('cycle-next-btn');
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function () {
+                if (cardCycleOffset < 0) { cardCycleOffset += 1; loadCardCycle(); }
+            });
+        }
+        document.getElementById('cycle-config-btn').addEventListener('click', async function () {
+            try {
+                var cfg = await apiGet('/api/finance/card/config');
+                cardClosingDayInput.value = cfg.closing_day;
+                cardDueDayInput.value = cfg.due_day;
+            } catch (_) {}
+            cardConfigOverlay.classList.add('visible');
+        });
+    }
 
     // ---- Inter CSV import ----
     var interOverlay = document.getElementById('inter-import-overlay');

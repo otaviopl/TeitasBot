@@ -464,6 +464,11 @@
                         <!-- Dynamically populated -->
                     </div>
 
+                    <!-- Card billing cycle section -->
+                    <div class="finance-card-cycle" id="finance-card-cycle">
+                        <!-- Dynamically populated -->
+                    </div>
+
                     <!-- Expenses section -->
                     <div class="finance-expenses" id="finance-expenses">
                         <!-- Dynamically populated -->
@@ -996,6 +1001,21 @@
             </div>
 
             <button class="modal-close-btn" id="card-import-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Card billing config modal -->
+    <div class="health-modal-overlay" id="card-config-overlay">
+        <div class="health-modal" id="card-config-modal" style="max-width:360px">
+            <h3>Configurar Fatura do Cartão</h3>
+            <form id="card-config-form">
+                <label class="health-form-label" for="card-closing-day">Dia de fechamento</label>
+                <input type="number" id="card-closing-day" class="health-form-input" min="1" max="28" value="19">
+                <label class="health-form-label" for="card-due-day">Dia de vencimento</label>
+                <input type="number" id="card-due-day" class="health-form-input" min="1" max="28" value="26">
+                <button type="submit" class="btn btn-primary health-form-submit" id="card-config-submit-btn">Salvar</button>
+            </form>
+            <button class="modal-close-btn" id="card-config-close">Cancelar</button>
         </div>
     </div>
 
