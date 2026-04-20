@@ -17,6 +17,9 @@ services:
       LOG_PATH: /data/logs
       GOOGLE_OAUTH_CALLBACK_URL: ${GOOGLE_OAUTH_CALLBACK_URL:-https://teitas.com.br/auth/google/callback}
       GOOGLE_OAUTH_CREDENTIALS_PATH: ${GOOGLE_OAUTH_CREDENTIALS_PATH:-/data/credentials.json}
+      SEED_USERNAME: ${SEED_USERNAME:-}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+      SEED_DISPLAY_NAME: ${SEED_DISPLAY_NAME:-}
     ports:
       - "8001:8001"
     volumes:

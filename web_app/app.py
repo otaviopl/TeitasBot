@@ -1758,6 +1758,86 @@ def _make_card_hash(date_str: str, title: str, amount_str: str) -> str:
     return "card:" + hashlib.sha256(raw.encode()).hexdigest()[:20]
 
 
+def _parse_inter_csv(content: str) -> list[dict]:
+    import csv as _csv
+    import io as _io
+    import hashlib as _hashlib
+
+    SKIP_HISTORICO_KEYWORDS = {"aplica", "crédito b3", "credito b3", "crédito resgate", "credito resgate"}
+
+    lines = content.splitlines()
+    header_idx = None
+    for i, line in enumerate(lines):
+        if "Valor" in line and ("Data" in line or "Hist" in line):
+            header_idx = i
+            break
+
+    if header_idx is None:
+        return []
+
+    reader = _csv.reader(_io.StringIO("\n".join(lines[header_idx:])), delimiter=';')
+    headers = next(reader, None)
+    if not headers:
+        return []
+
+    col_date = col_hist = col_desc = col_valor = -1
+    for i, h in enumerate(headers):
+        hl = h.strip().lower()
+        if "data" in hl:
+            col_date = i
+        elif "hist" in hl:
+            col_hist = i
+        elif "descri" in hl:
+            col_desc = i
+        elif hl == "valor":
+            col_valor = i
+
+    if col_date == -1 or col_valor == -1:
+        return []
+
+    rows = []
+    for row in reader:
+        def _get(col):
+            return row[col].strip() if 0 <= col < len(row) else ""
+
+        date_str = _get(col_date)
+        historico = _get(col_hist)
+        descricao = _get(col_desc)
+        valor_str = _get(col_valor)
+
+        if not date_str or not valor_str:
+            continue
+        try:
+            amount = float(valor_str.replace(".", "").replace(",", "."))
+        except ValueError:
+            continue
+
+        if amount >= 0:
+            continue
+        if any(kw in historico.lower() for kw in SKIP_HISTORICO_KEYWORDS):
+            continue
+
+        try:
+            d, m_part, y = date_str.split("/")
+            iso_date = f"{y}-{m_part.zfill(2)}-{d.zfill(2)}"
+        except ValueError:
+            continue
+
+        name = descricao if descricao else historico
+        raw = f"{iso_date}|{historico}|{valor_str}"
+        inter_id = "inter:" + _hashlib.sha256(raw.encode()).hexdigest()[:20]
+        description = f"{historico} - {descricao}" if descricao else historico
+
+        rows.append({
+            "nubank_id": inter_id,
+            "date": iso_date,
+            "amount": round(abs(amount), 2),
+            "name": name,
+            "description": description,
+        })
+    return rows
+
+
 def _parse_nubank_card_csv(content: str) -> list[dict]:
     import csv as _csv
     import io as _io
@@ -1985,6 +2065,79 @@ async def nubank_import_confirm(
     user: dict = Depends(get_current_user),
 ):
     """Bulk import selected Nubank expenses, deduplicating by nubank_id."""
+    if not body.rows:
+        raise HTTPException(status_code=400, detail="No rows to import")
+
+    expenses = [
+        {
+            "nubank_id": r.nubank_id,
+            "date": r.date,
+            "amount": r.amount,
+            "name": r.name.strip()[:200],
+            "category": r.category or "Outros",
+            "description": r.description[:500],
+        }
+        for r in body.rows
+        if r.amount > 0 and r.name.strip()
+    ]
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    result = await asyncio.to_thread(store.bulk_import_expenses, user_id, expenses)
+    return result
+
+
+@app.post("/api/finance/import/inter/preview")
+async def inter_import_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Parse a Banco Inter account CSV and return expense rows with AI-suggested categories."""
+    content_bytes = await file.read()
+    try:
+        content = content_bytes.decode("latin-1")
+    except UnicodeDecodeError:
+        content = content_bytes.decode("utf-8")
+
+    rows = _parse_inter_csv(content)
+    if not rows:
+        return {"rows": [], "total_amount": 0.0, "count": 0}
+
+    user_id = f"web:{user['username']}"
+    store = get_health_store()
+    all_ids = [r["nubank_id"] for r in rows]
+    existing_ids = await asyncio.to_thread(store.check_nubank_ids_exist, user_id, all_ids)
+
+    for row in rows:
+        row["already_imported"] = row["nubank_id"] in existing_ids
+
+    from openai_connector.llm_api import categorize_expenses_batch
+
+    to_categorize = [r for r in rows if not r["already_imported"]]
+    if to_categorize:
+        categories = await asyncio.to_thread(
+            categorize_expenses_batch, [r["name"] for r in to_categorize]
+        )
+        for row, cat in zip(to_categorize, categories):
+            row["category"] = cat
+
+    for row in rows:
+        row.setdefault("category", "Outros")
+
+    new_rows = [r for r in rows if not r["already_imported"]]
+    return {
+        "rows": rows,
+        "total_amount": round(sum(r["amount"] for r in new_rows), 2),
+        "count": len(new_rows),
+    }
+
+
+@app.post("/api/finance/import/inter/confirm")
+async def inter_import_confirm(
+    body: NubankImportConfirmRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Bulk import selected Inter expenses, deduplicating by hash id."""
     if not body.rows:
         raise HTTPException(status_code=400, detail="No rows to import")
 
