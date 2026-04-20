@@ -17,58 +17,118 @@
     <div class="login-wrapper">
         <div class="login-card">
             <h1><img src="/static/icons/bot-icon.png" alt="Assistente" class="login-bot-icon"> Assistente</h1>
-            <p class="subtitle">Entre com suas credenciais</p>
-            <form id="login-form" autocomplete="on">
-                <div class="form-group">
-                    <label for="username">Usuário</label>
-                    <input
-                        id="username"
-                        name="username"
-                        type="text"
-                        class="input-field"
-                        placeholder="seu usuário"
-                        autocomplete="username"
-                        required
-                    >
-                </div>
-                <div class="form-group">
-                    <label for="password">Senha</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        class="input-field"
-                        placeholder="sua senha"
-                        autocomplete="current-password"
-                        required
-                    >
-                </div>
-                <button type="submit" class="btn btn-primary" id="login-btn">Entrar</button>
-                <p class="login-error" id="login-error"></p>
-            </form>
+
+            <!-- Login form -->
+            <div id="view-login">
+                <p class="subtitle">Entre com suas credenciais</p>
+                <form id="login-form" autocomplete="on">
+                    <div class="form-group">
+                        <label for="login-username">Usuário</label>
+                        <input id="login-username" name="username" type="text" class="input-field"
+                            placeholder="seu usuário" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Senha</label>
+                        <input id="login-password" name="password" type="password" class="input-field"
+                            placeholder="sua senha" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="login-btn">Entrar</button>
+                    <p class="login-error" id="login-error"></p>
+                </form>
+                <p id="register-toggle-link" class="login-switch-link" style="display:none">
+                    Não tem conta? <a href="#" id="go-to-register">Criar conta</a>
+                </p>
+            </div>
+
+            <!-- Register form -->
+            <div id="view-register" style="display:none">
+                <p class="subtitle">Criar nova conta</p>
+                <form id="register-form" autocomplete="on">
+                    <div class="form-group">
+                        <label for="reg-display-name">Nome</label>
+                        <input id="reg-display-name" name="display_name" type="text" class="input-field"
+                            placeholder="seu nome" autocomplete="name">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-username">Usuário</label>
+                        <input id="reg-username" name="username" type="text" class="input-field"
+                            placeholder="escolha um usuário" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password">Senha</label>
+                        <input id="reg-password" name="password" type="password" class="input-field"
+                            placeholder="mínimo 6 caracteres" autocomplete="new-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password2">Confirmar senha</label>
+                        <input id="reg-password2" name="password2" type="password" class="input-field"
+                            placeholder="repita a senha" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="register-btn">Criar conta</button>
+                    <p class="login-error" id="register-error"></p>
+                </form>
+                <p class="login-switch-link">
+                    Já tem conta? <a href="#" id="go-to-login">Entrar</a>
+                </p>
+            </div>
         </div>
     </div>
+
+    <style>
+        .login-switch-link {
+            margin-top: 14px;
+            font-size: 0.85rem;
+            color: var(--color-text-muted, #6b7280);
+            text-align: center;
+        }
+        .login-switch-link a {
+            color: var(--color-primary, #6366f1);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .login-switch-link a:hover { text-decoration: underline; }
+    </style>
+
     <script>
         (function () {
-            // Redirect if already logged in
             const token = localStorage.getItem('pa_token');
-            if (token) {
-                window.location.href = '/chat';
-                return;
-            }
+            if (token) { window.location.href = '/chat'; return; }
 
-            const form = document.getElementById('login-form');
-            const errorEl = document.getElementById('login-error');
-            const btn = document.getElementById('login-btn');
+            // Check if registration is enabled
+            fetch('/api/auth/registration-status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.registration_enabled) {
+                        document.getElementById('register-toggle-link').style.display = 'block';
+                    }
+                })
+                .catch(() => {});
 
-            form.addEventListener('submit', async (e) => {
+            // Toggle views
+            document.getElementById('go-to-register').addEventListener('click', (e) => {
                 e.preventDefault();
+                document.getElementById('view-login').style.display = 'none';
+                document.getElementById('view-register').style.display = 'block';
+                document.getElementById('register-error').textContent = '';
+            });
+            document.getElementById('go-to-login').addEventListener('click', (e) => {
+                e.preventDefault();
+                document.getElementById('view-register').style.display = 'none';
+                document.getElementById('view-login').style.display = 'block';
+                document.getElementById('login-error').textContent = '';
+            });
+
+            // Login
+            document.getElementById('login-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const errorEl = document.getElementById('login-error');
+                const btn = document.getElementById('login-btn');
                 errorEl.textContent = '';
                 btn.disabled = true;
                 btn.textContent = 'Entrando…';
 
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value;
+                const username = document.getElementById('login-username').value.trim();
+                const password = document.getElementById('login-password').value;
 
                 try {
                     const res = await fetch('/api/auth/login', {
@@ -76,12 +136,10 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password }),
                     });
-
                     if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
                         throw new Error(data.detail || 'Credenciais inválidas');
                     }
-
                     const data = await res.json();
                     localStorage.setItem('pa_token', data.token);
                     localStorage.setItem('pa_user', JSON.stringify(data.user));
@@ -90,6 +148,47 @@
                     errorEl.textContent = err.message;
                     btn.disabled = false;
                     btn.textContent = 'Entrar';
+                }
+            });
+
+            // Register
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const errorEl = document.getElementById('register-error');
+                const btn = document.getElementById('register-btn');
+                errorEl.textContent = '';
+
+                const username = document.getElementById('reg-username').value.trim();
+                const password = document.getElementById('reg-password').value;
+                const password2 = document.getElementById('reg-password2').value;
+                const display_name = document.getElementById('reg-display-name').value.trim();
+
+                if (password !== password2) {
+                    errorEl.textContent = 'As senhas não coincidem.';
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = 'Criando conta…';
+
+                try {
+                    const res = await fetch('/api/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password, display_name }),
+                    });
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data.detail || 'Erro ao criar conta');
+                    }
+                    const data = await res.json();
+                    localStorage.setItem('pa_token', data.token);
+                    localStorage.setItem('pa_user', JSON.stringify(data.user));
+                    window.location.href = '/chat';
+                } catch (err) {
+                    errorEl.textContent = err.message;
+                    btn.disabled = false;
+                    btn.textContent = 'Criar conta';
                 }
             });
         })();

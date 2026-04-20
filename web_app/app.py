@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse
@@ -28,6 +30,12 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str = ""
 
 
 class ChatRequest(BaseModel):
@@ -86,6 +94,25 @@ class TaskUpdate(BaseModel):
     always_on: bool | None = None
     tags: list[str] | None = None
     observations: str | None = "__unset__"
+
+
+# ---- Telegram notification ----
+
+async def _notify_login(username: str, display_name: str) -> None:
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "").split(",")[0].strip()
+    if not bot_token or not chat_id:
+        return
+    name = display_name or username
+    text = f"🔐 Login: *{name}* (`{username}`)"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            )
+    except Exception:
+        logging.getLogger(__name__).warning("Failed to send Telegram login notification", exc_info=True)
 
 
 # ---- Helpers ----
@@ -156,6 +183,7 @@ async def login(req: LoginRequest, store: WebUserStore = Depends(get_user_store)
     user = store.authenticate(req.username, req.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    asyncio.create_task(_notify_login(user["username"], user.get("display_name", "")))
     token = create_access_token(user_id=user["id"], username=user["username"])
     return {
         "token": token,
@@ -174,6 +202,35 @@ async def auth_me(user: dict = Depends(get_current_user)):
         "username": user["username"],
         "display_name": user["display_name"],
     }
+
+
+@app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
+async def register(req: RegisterRequest, store: WebUserStore = Depends(get_user_store)):
+    if os.getenv("ALLOW_REGISTRATION", "false").strip().lower() != "true":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Registro desabilitado.")
+    try:
+        user = store.create_user(
+            username=req.username,
+            password=req.password,
+            display_name=req.display_name or req.username,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    token = create_access_token(user_id=user["id"], username=user["username"])
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "display_name": user["display_name"],
+        },
+    }
+
+
+@app.get("/api/auth/registration-status")
+async def registration_status():
+    enabled = os.getenv("ALLOW_REGISTRATION", "false").strip().lower() == "true"
+    return {"registration_enabled": enabled}
 
 
 # ---- Conversation endpoints ----
