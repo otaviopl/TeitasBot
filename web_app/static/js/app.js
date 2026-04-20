@@ -4304,6 +4304,230 @@
         }
     });
 
+    // ---- Inter CSV import ----
+    var interOverlay = document.getElementById('inter-import-overlay');
+    var interClose = document.getElementById('inter-import-close');
+    var interCsvInput = document.getElementById('inter-csv-input');
+    var interFileLabel = document.getElementById('inter-file-name');
+    var interFileLabelWrap = interCsvInput ? interCsvInput.previousElementSibling : null;
+    var interUploadBtn = document.getElementById('inter-upload-btn');
+    var interStepUpload = document.getElementById('inter-step-upload');
+    var interStepLoading = document.getElementById('inter-step-loading');
+    var interStepPreview = document.getElementById('inter-step-preview');
+    var interPreviewBody = document.getElementById('inter-preview-body');
+    var interSelectAll = document.getElementById('inter-select-all');
+    var interConfirmBtn = document.getElementById('inter-confirm-btn');
+    var interSelectedCount = document.getElementById('inter-selected-count');
+    var interSummaryText = document.getElementById('inter-summary-text');
+
+    var _interRows = [];
+
+    function showInterStep(step) {
+        interStepUpload.classList.toggle('hidden', step !== 'upload');
+        interStepLoading.classList.toggle('hidden', step !== 'loading');
+        interStepPreview.classList.toggle('hidden', step !== 'preview');
+    }
+
+    function interResetModal() {
+        showInterStep('upload');
+        interCsvInput.value = '';
+        interFileLabel.textContent = 'Escolher arquivo .csv';
+        if (interFileLabelWrap) interFileLabelWrap.classList.remove('has-file');
+        interUploadBtn.disabled = true;
+        _interRows = [];
+    }
+
+    document.getElementById('btn-import-inter').addEventListener('click', function () {
+        interResetModal();
+        interOverlay.classList.add('visible');
+    });
+
+    interClose.addEventListener('click', function () { interOverlay.classList.remove('visible'); });
+    interOverlay.addEventListener('click', function (e) {
+        if (e.target === interOverlay) interOverlay.classList.remove('visible');
+    });
+
+    interCsvInput.addEventListener('change', function () {
+        var f = interCsvInput.files[0];
+        if (f) {
+            interFileLabel.textContent = f.name;
+            if (interFileLabelWrap) interFileLabelWrap.classList.add('has-file');
+            interUploadBtn.disabled = false;
+        } else {
+            interFileLabel.textContent = 'Escolher arquivo .csv';
+            if (interFileLabelWrap) interFileLabelWrap.classList.remove('has-file');
+            interUploadBtn.disabled = true;
+        }
+    });
+
+    function interUpdateSelectedCount() {
+        var checked = interPreviewBody.querySelectorAll('input[type=checkbox]:checked').length;
+        var total = _interRows.filter(function (r) { return !r.already_imported; }).length;
+        interSelectedCount.textContent = checked + ' de ' + total + ' selecionados';
+        interConfirmBtn.disabled = checked === 0;
+    }
+
+    function interBuildTable(rows) {
+        _interRows = rows;
+        interPreviewBody.innerHTML = '';
+
+        rows.forEach(function (row, idx) {
+            var tr = document.createElement('tr');
+            if (row.already_imported) tr.classList.add('already-imported');
+
+            var tdCheck = document.createElement('td');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.idx = idx;
+            cb.checked = !row.already_imported;
+            cb.disabled = !!row.already_imported;
+            cb.addEventListener('change', function () {
+                tr.classList.toggle('row-unchecked', !cb.checked);
+                interUpdateSelectedCount();
+                var allNew = Array.from(interPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)'));
+                interSelectAll.checked = allNew.length > 0 && allNew.every(function (c) { return c.checked; });
+            });
+            tdCheck.appendChild(cb);
+
+            var tdDate = document.createElement('td');
+            tdDate.textContent = row.date ? row.date.split('-').reverse().join('/') : '';
+
+            var tdName = document.createElement('td');
+            tdName.textContent = row.name;
+            tdName.title = row.description || '';
+            tdName.style.maxWidth = '200px';
+            tdName.style.overflow = 'hidden';
+            tdName.style.textOverflow = 'ellipsis';
+            tdName.style.whiteSpace = 'nowrap';
+            if (row.already_imported) {
+                tdName.insertAdjacentHTML('beforeend', '<span class="card-type-badge badge-already">Já importado</span>');
+            }
+
+            var tdAmount = document.createElement('td');
+            tdAmount.className = 'nubank-amount';
+            tdAmount.textContent = 'R$ ' + row.amount.toFixed(2).replace('.', ',');
+
+            var tdCat = document.createElement('td');
+            if (row.already_imported) {
+                tdCat.textContent = row.category || 'Outros';
+                tdCat.style.color = 'var(--color-text-muted)';
+                tdCat.style.fontSize = '0.8rem';
+            } else {
+                var sel = document.createElement('select');
+                sel.className = 'nubank-cat-select';
+                sel.dataset.idx = idx;
+                FINANCE_CATEGORIES.forEach(function (cat) {
+                    var opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    if (cat === row.category) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                sel.addEventListener('change', function () { _interRows[idx].category = sel.value; });
+                tdCat.appendChild(sel);
+            }
+
+            tr.appendChild(tdCheck);
+            tr.appendChild(tdDate);
+            tr.appendChild(tdName);
+            tr.appendChild(tdAmount);
+            tr.appendChild(tdCat);
+            interPreviewBody.appendChild(tr);
+        });
+
+        interUpdateSelectedCount();
+    }
+
+    interSelectAll.addEventListener('change', function () {
+        interPreviewBody.querySelectorAll('input[type=checkbox]:not(:disabled)').forEach(function (cb) {
+            cb.checked = interSelectAll.checked;
+            cb.closest('tr').classList.toggle('row-unchecked', !interSelectAll.checked);
+        });
+        interUpdateSelectedCount();
+    });
+
+    interUploadBtn.addEventListener('click', async function () {
+        var f = interCsvInput.files[0];
+        if (!f) return;
+        showInterStep('loading');
+        interUploadBtn.disabled = true;
+        try {
+            var fd = new FormData();
+            fd.append('file', f);
+            var resp = await fetch('/api/finance/import/inter/preview', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd,
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao processar CSV');
+            }
+            var data = await resp.json();
+            if (!data.rows || data.rows.length === 0) {
+                showToast('Nenhuma despesa encontrada no arquivo.');
+                interOverlay.classList.remove('visible');
+                return;
+            }
+            var newCount = data.count;
+            var totalStr = 'R$ ' + (data.total_amount || 0).toFixed(2).replace('.', ',');
+            interSummaryText.textContent = newCount + ' despesas novas · ' + totalStr + ' total';
+            interBuildTable(data.rows);
+            showInterStep('preview');
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+            showInterStep('upload');
+        } finally {
+            interUploadBtn.disabled = false;
+        }
+    });
+
+    interConfirmBtn.addEventListener('click', async function () {
+        var checkboxes = Array.from(interPreviewBody.querySelectorAll('input[type=checkbox]:checked'));
+        var selectedRows = checkboxes.map(function (cb) {
+            return _interRows[parseInt(cb.dataset.idx)];
+        }).filter(Boolean);
+
+        if (selectedRows.length === 0) { showToast('Nenhuma despesa selecionada.'); return; }
+
+        interConfirmBtn.disabled = true;
+        interConfirmBtn.textContent = 'Importando…';
+        try {
+            var payload = {
+                rows: selectedRows.map(function (r) {
+                    return {
+                        nubank_id: r.nubank_id,
+                        date: r.date,
+                        amount: r.amount,
+                        name: r.name,
+                        category: r.category || 'Outros',
+                        description: r.description || '',
+                    };
+                }),
+            };
+            var resp = await fetch('/api/finance/import/inter/confirm', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return { detail: 'Erro desconhecido' }; });
+                throw new Error(err.detail || 'Erro ao importar');
+            }
+            var result = await resp.json();
+            var msg = result.imported + ' despesa(s) importada(s)';
+            if (result.skipped > 0) msg += ', ' + result.skipped + ' duplicada(s) ignorada(s)';
+            showToast(msg + ' ✓');
+            interOverlay.classList.remove('visible');
+            loadFinanceDashboard();
+        } catch (err) {
+            showToast('Erro: ' + err.message);
+        } finally {
+            interConfirmBtn.disabled = false;
+            interConfirmBtn.textContent = 'Importar selecionados';
+        }
+    });
+
     // ---- Init ----
     inputEl.focus();
     updateSendButton();

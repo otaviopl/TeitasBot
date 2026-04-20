@@ -19,8 +19,10 @@ RUN pip install --upgrade pip && \
 
 COPY . /app
 
-RUN mkdir -p /data /data/memories /data/files /data/logs
+RUN mkdir -p /data /data/memories /data/files /data/logs && \
+    chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8001
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python", "run_web.py"]

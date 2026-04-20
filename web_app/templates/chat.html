@@ -426,6 +426,7 @@
                         <button class="btn btn-outline btn-finance-add" id="btn-add-bill" title="Registrar conta">+ Conta</button>
                         <button class="btn btn-outline btn-finance-add" id="btn-import-nubank" title="Importar extrato Nubank">↑ Extrato</button>
                         <button class="btn btn-outline btn-finance-add" id="btn-import-card" title="Importar fatura do cartão">↑ Fatura</button>
+                        <button class="btn btn-outline btn-finance-add" id="btn-import-inter" title="Importar extrato Inter">↑ Inter</button>
                     </div>
                 </div>
 
@@ -995,6 +996,55 @@
             </div>
 
             <button class="modal-close-btn" id="card-import-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Inter CSV import modal -->
+    <div class="health-modal-overlay" id="inter-import-overlay">
+        <div class="health-modal nubank-import-modal" id="inter-import-modal">
+            <h3>Importar Extrato Inter</h3>
+
+            <!-- Step 1: upload -->
+            <div id="inter-step-upload">
+                <p class="nubank-hint">Selecione o arquivo CSV exportado pelo Banco Inter (extrato de conta).</p>
+                <label class="nubank-file-label" for="inter-csv-input">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span id="inter-file-name">Escolher arquivo .csv</span>
+                </label>
+                <input type="file" id="inter-csv-input" accept=".csv" style="display:none">
+                <button class="btn btn-primary" id="inter-upload-btn" disabled>Analisar</button>
+            </div>
+
+            <!-- Step 2: loading -->
+            <div id="inter-step-loading" class="hidden">
+                <div class="health-loading-spinner"></div>
+                <p class="nubank-hint">Analisando transações e categorizando com IA…</p>
+            </div>
+
+            <!-- Step 3: preview table -->
+            <div id="inter-step-preview" class="hidden">
+                <p class="nubank-summary" id="inter-summary-text"></p>
+                <div class="nubank-table-wrap">
+                    <table class="nubank-table" id="inter-preview-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="inter-select-all" title="Selecionar todos" checked></th>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Valor</th>
+                                <th>Categoria</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inter-preview-body"></tbody>
+                    </table>
+                </div>
+                <div class="nubank-preview-actions">
+                    <span id="inter-selected-count" class="nubank-selected-info"></span>
+                    <button class="btn btn-primary" id="inter-confirm-btn">Importar selecionados</button>
+                </div>
+            </div>
+
+            <button class="modal-close-btn" id="inter-import-close">Cancelar</button>
         </div>
     </div>
 
