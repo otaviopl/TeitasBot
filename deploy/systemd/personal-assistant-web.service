@@ -1,0 +1,15 @@
+[Unit]
+Description=Personal Assistant Web PWA
+After=network.target
+
+[Service]
+Type=simple
+User=carlos
+WorkingDirectory=/home/carlos/Projects/personal-assistant
+EnvironmentFile=/home/carlos/Projects/personal-assistant/.env
+ExecStart=/home/carlos/Projects/personal-assistant/env/bin/python /home/carlos/Projects/personal-assistant/run_web.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

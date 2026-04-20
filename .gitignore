@@ -8,9 +8,13 @@ credentials.json
 notion_credentials.json
 token.json
 email_config.json
+openai_prompt.txt
 
 # C extensions
 *.so
+
+# Log files
+log_file.txt
 
 # Distribution / packaging
 .Python
@@ -66,6 +70,8 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3
+*.sqlite3-*
 
 # Flask stuff:
 instance/
@@ -164,3 +170,9 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Memories content (keep only folder + README tracked)
+memories/*
+!memories/README.md
+
+# Web app generated files (keep icons tracked)

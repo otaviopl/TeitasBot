@@ -1,0 +1,52 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python run_web.py
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 8001
+      WEB_RELOAD: 0
+      ASSISTANT_MEMORY_PATH: /data/assistant_memory.sqlite3
+      ASSISTANT_MEMORIES_DIR: /data/memories
+      ASSISTANT_FILES_DIR: /data/files
+      LOG_PATH: /data/logs
+      GOOGLE_OAUTH_CALLBACK_URL: ${GOOGLE_OAUTH_CALLBACK_URL:-https://teitas.com.br/auth/google/callback}
+      GOOGLE_OAUTH_CREDENTIALS_PATH: ${GOOGLE_OAUTH_CREDENTIALS_PATH:-/data/credentials.json}
+    ports:
+      - "8001:8001"
+    volumes:
+      - assistant_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python run.py
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASSISTANT_MEMORY_PATH: /data/assistant_memory.sqlite3
+      ASSISTANT_MEMORIES_DIR: /data/memories
+      ASSISTANT_FILES_DIR: /data/files
+      LOG_PATH: /data/logs
+      GOOGLE_OAUTH_CREDENTIALS_PATH: ${GOOGLE_OAUTH_CREDENTIALS_PATH:-/data/credentials.json}
+    volumes:
+      - assistant_data:/data
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  assistant_data:

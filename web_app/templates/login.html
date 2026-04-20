@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#FFFFFF">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Assistente">
+    <title>Assistente Pessoal</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/static/icons/bot-icon.png">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <h1><img src="/static/icons/bot-icon.png" alt="Assistente" class="login-bot-icon"> Assistente</h1>
+            <p class="subtitle">Entre com suas credenciais</p>
+            <form id="login-form" autocomplete="on">
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        class="input-field"
+                        placeholder="seu usuário"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        class="input-field"
+                        placeholder="sua senha"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+                <button type="submit" class="btn btn-primary" id="login-btn">Entrar</button>
+                <p class="login-error" id="login-error"></p>
+            </form>
+        </div>
+    </div>
+    <script>
+        (function () {
+            // Redirect if already logged in
+            const token = localStorage.getItem('pa_token');
+            if (token) {
+                window.location.href = '/chat';
+                return;
+            }
+
+            const form = document.getElementById('login-form');
+            const errorEl = document.getElementById('login-error');
+            const btn = document.getElementById('login-btn');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                errorEl.textContent = '';
+                btn.disabled = true;
+                btn.textContent = 'Entrando…';
+
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value;
+
+                try {
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password }),
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data.detail || 'Credenciais inválidas');
+                    }
+
+                    const data = await res.json();
+                    localStorage.setItem('pa_token', data.token);
+                    localStorage.setItem('pa_user', JSON.stringify(data.user));
+                    window.location.href = '/chat';
+                } catch (err) {
+                    errorEl.textContent = err.message;
+                    btn.disabled = false;
+                    btn.textContent = 'Entrar';
+                }
+            });
+        })();
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/js/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

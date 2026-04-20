@@ -1,35 +1,36 @@
 import json
 
 
+def _normalize_json_text(raw_text):
+    return raw_text.replace('\t', '').replace('\n', '').replace('\'', '\"')
+
+
 def parse_chatgpt_message(message, project_logger):
+    cleaned_message = (
+        message.strip()
+        .replace("```json", "")
+        .replace("```", "")
+        .strip()
+    )
 
-    # Break original message in lines.
-    message_lines = message.splitlines()
+    json_as_str = cleaned_message
+    general_message = ""
 
-    if ('' in message_lines):
-        message_lines.remove('')
+    if "\n\n" in cleaned_message:
+        possible_json, possible_comment = cleaned_message.rsplit("\n\n", 1)
+        try:
+            json.loads(_normalize_json_text(possible_json))
+            json_as_str = possible_json
+            general_message = possible_comment.strip().replace('/', '')
+        except json.JSONDecodeError:
+            json_as_str = cleaned_message
 
-    project_logger.debug(message_lines)
-
-    # Get the last line general comment.
-    general_message = message_lines[-1]
-    general_message = general_message.replace('/', '')
-
-    json_as_str = ""
-
-    for single_line in message_lines[:-1]:
-        json_as_str += single_line
-
-    # Discard the last 2 lines, and get the JSON from answer.
-    json_as_str = json_as_str.replace('\t', '')
-    json_as_str = json_as_str.replace('\n', '')
-    json_as_str = json_as_str.replace('\'', '\"')
+    project_logger.debug(json_as_str)
 
     try:
-        json_obj = json.loads(json_as_str)
+        json_obj = json.loads(_normalize_json_text(json_as_str))
         return json_obj, general_message
-    except Exception:
+    except json.JSONDecodeError:
         project_logger.error("Failed to parse ChatGPT answer.")
-        # Implement retry for ChatGPT (?).
 
     return None, None

@@ -1,0 +1,2248 @@
+{
+  "tools": [
+    {
+      "name": "list_available_tools",
+      "description": "Lista as tools disponíveis para o agente atual, com descrição e schema.",
+      "handler": "assistant_connector.tools.meta_tools:list_available_tools",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_available_agents",
+      "description": "Lista os agentes disponíveis e qual está ativo.",
+      "handler": "assistant_connector.tools.meta_tools:list_available_agents",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_tasks",
+      "description": "Busca tarefas pendentes no banco local com prazo próximo e atrasadas.",
+      "handler": "assistant_connector.tools.health_tools:list_tasks",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "n_days": {
+            "type": "integer",
+            "description": "Quantidade de dias à frente para incluir na busca. 0 inclui hoje + atrasadas.",
+            "minimum": 0,
+            "maximum": 30
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de tarefas retornadas.",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_task",
+      "description": "Cria uma tarefa no banco local de tarefas.",
+      "handler": "assistant_connector.tools.health_tools:create_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_name": {
+            "type": "string",
+            "description": "Nome da tarefa."
+          },
+          "project": {
+            "type": "string",
+            "description": "Projeto da tarefa."
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Data no formato YYYY-MM-DD."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags de contexto/esforço."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "task_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_task",
+      "description": "Edita uma tarefa existente no banco local. Use o id retornado por list_tasks.",
+      "handler": "assistant_connector.tools.health_tools:edit_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa (UUID retornado por list_tasks ou create_task)."
+          },
+          "task_name": {
+            "type": "string",
+            "description": "Novo nome da tarefa."
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Nova data no formato YYYY-MM-DD."
+          },
+          "project": {
+            "type": "string",
+            "description": "Novo projeto da tarefa."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Nova lista de tags."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Marca tarefa como concluída (true) ou pendente (false)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_task",
+      "description": "Exclui permanentemente uma tarefa pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_task",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa a ser excluída"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
+      "name": "list_scheduled_tasks",
+      "description": "Lista tarefas agendadas persistidas no SQLite do assistente.",
+      "handler": "assistant_connector.tools.scheduled_task_tools:list_scheduled_tasks",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filtra por status (pending, retrying, running, succeeded, failed, cancelled)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de tarefas retornadas.",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "include_all_users": {
+            "type": "boolean",
+            "description": "Quando true, ignora filtro do usuário atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_scheduled_task",
+      "description": "Cria uma nova tarefa agendada no SQLite para execução futura via scheduler. O resultado é entregue por mensagem direta e opcionalmente por email.",
+      "prompt_guidance": "Ao criar tarefas de lembrete sobre refeições, alimentação, exercícios ou atividade física, use task_type='logging_reminder'. Para todas as outras tarefas, use task_type='general' (padrão).",
+      "handler": "assistant_connector.tools.scheduled_task_tools:create_scheduled_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Mensagem a ser executada pelo assistente."
+          },
+          "scheduled_for": {
+            "type": "string",
+            "description": "Data/hora ISO 8601. Se vier sem timezone, usa TIMEZONE do ambiente ou o campo timezone."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone opcional (ex.: America/Sao_Paulo ou GMT-3) para interpretar scheduled_for sem offset."
+          },
+          "notify_email_to": {
+            "type": "string",
+            "description": "Email opcional para receber também o resultado da tarefa por email."
+          },
+          "recurrence": {
+            "type": "string",
+            "description": "Recorrência opcional da tarefa.",
+            "enum": [
+              "none",
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "max_attempts": {
+            "type": "integer",
+            "description": "Total máximo de tentativas.",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Usuário alvo opcional; padrão é o usuário atual."
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "Canal alvo opcional; padrão é o canal atual."
+          },
+          "guild_id": {
+            "type": "string",
+            "description": "Servidor alvo opcional; padrão é o servidor atual (ou null em DM)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          },
+          "task_type": {
+            "type": "string",
+            "description": "Tipo da tarefa. Use 'logging_reminder' para lembretes de registro de refeições ou exercícios.",
+            "enum": [
+              "general",
+              "logging_reminder"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "scheduled_for"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_scheduled_task",
+      "description": "Edita tarefa agendada (pendente/retrying) no SQLite.",
+      "handler": "assistant_connector.tools.scheduled_task_tools:edit_scheduled_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa agendada."
+          },
+          "message": {
+            "type": "string",
+            "description": "Nova mensagem da tarefa."
+          },
+          "scheduled_for": {
+            "type": "string",
+            "description": "Nova data/hora ISO 8601. Se vier sem timezone, usa TIMEZONE do ambiente ou o campo timezone."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone opcional (ex.: America/Sao_Paulo ou GMT-3) para interpretar scheduled_for sem offset."
+          },
+          "notify_email_to": {
+            "type": "string",
+            "description": "Email opcional complementar para entrega do resultado da tarefa."
+          },
+          "recurrence": {
+            "type": "string",
+            "description": "Nova recorrência da tarefa.",
+            "enum": [
+              "none",
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "max_attempts": {
+            "type": "integer",
+            "description": "Novo total máximo de tentativas.",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          },
+          "task_type": {
+            "type": "string",
+            "description": "Novo tipo da tarefa. Use 'logging_reminder' para lembretes de registro de refeições ou exercícios.",
+            "enum": [
+              "general",
+              "logging_reminder"
+            ]
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "cancel_scheduled_task",
+      "description": "Cancela uma tarefa agendada no SQLite.",
+      "handler": "assistant_connector.tools.scheduled_task_tools:cancel_scheduled_task",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID da tarefa agendada."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo opcional do cancelamento."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_application_hardware_status",
+      "description": "Retorna status de execução da aplicação (bot/scheduler), consumo de memória e uptime.",
+      "handler": "assistant_connector.tools.system_tools:get_application_hardware_status",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_expenses",
+      "description": "Lista despesas de um mês específico (padrão: mês atual).",
+      "handler": "assistant_connector.tools.finance_tools:list_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM (padrão: mês atual)"
+          }
+        }
+      }
+    },
+    {
+      "name": "register_expense",
+      "description": "Registra um gasto no banco local de despesas com categoria consistente para análises futuras.",
+      "prompt_guidance": "Quando registrar gastos, priorize categorias consistentes e úteis para análises futuras. Se houver ambiguidade de categoria, escolha a mais estável para relatórios mensais.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.finance_tools:register_expense",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Descrição do gasto."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Valor do gasto em reais."
+          },
+          "category": {
+            "type": "string",
+            "description": "Categoria opcional. Quando omitida, será inferida da descrição."
+          },
+          "expense_date": {
+            "type": "string",
+            "description": "Data do gasto no formato YYYY-MM-DD. Padrão: hoje."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "description",
+          "amount"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_expense",
+      "description": "Edita uma despesa existente pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_expense",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expense_id": {
+            "type": "string",
+            "description": "ID da despesa a ser editada"
+          },
+          "description": {
+            "type": "string",
+            "description": "Nova descrição da despesa"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Novo valor"
+          },
+          "category": {
+            "type": "string",
+            "description": "Nova categoria"
+          },
+          "expense_date": {
+            "type": "string",
+            "description": "Nova data (YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "expense_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_expense",
+      "description": "Exclui permanentemente uma despesa pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_expense",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expense_id": {
+            "type": "string",
+            "description": "ID da despesa a ser excluída"
+          }
+        },
+        "required": [
+          "expense_id"
+        ]
+      }
+    },
+    {
+      "name": "analyze_expenses",
+      "description": "Consulta e analisa gastos do mês no banco local de despesas, com totais, breakdowns e lista detalhada (inclusive filtro por dia).",
+      "prompt_guidance": "Quando o usuário pedir gastos de hoje ou de um dia específico, use o parâmetro date (YYYY-MM-DD) para retornar lista detalhada do dia, além de totais.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.finance_tools:analyze_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          },
+          "date": {
+            "type": "string",
+            "description": "Data opcional no formato YYYY-MM-DD para filtrar e detalhar apenas um dia (ex.: hoje)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de despesas detalhadas retornadas na resposta.",
+            "minimum": 1,
+            "maximum": 300
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_calendar_events",
+      "description": "Lista eventos da agenda para os próximos 7 dias.",
+      "handler": "assistant_connector.tools.calendar_tools:list_calendar_events",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "max_results": {
+            "type": "integer",
+            "description": "Máximo de eventos retornados.",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_calendar_event",
+      "description": "Cria um evento no Google Calendar.",
+      "handler": "assistant_connector.tools.calendar_tools:create_calendar_event",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "Título do evento."
+          },
+          "start_datetime": {
+            "type": "string",
+            "description": "Data/hora inicial no formato YYYY-MM-DDTHH:MM."
+          },
+          "end_datetime": {
+            "type": "string",
+            "description": "Data/hora final no formato YYYY-MM-DDTHH:MM."
+          },
+          "description": {
+            "type": "string",
+            "description": "Descrição opcional do evento."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone IANA, ex: America/Sao_Paulo."
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista de emails a convidar para o evento. Use sempre que o usuário mencionar convidar alguém ou adicionar participantes."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "summary",
+          "start_datetime",
+          "end_datetime"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_tech_news",
+      "description": "Busca notícias recentes por tema/query na web (Google News RSS, com opção de incluir Hacker News).",
+      "handler": "assistant_connector.tools.news_tools:list_tech_news",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Consulta de busca (ex.: IA, economia, política internacional)."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Alias de compatibilidade para query."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de notícias retornadas.",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "include_hacker_news": {
+            "type": "boolean",
+            "description": "Quando true, inclui itens do Hacker News."
+          },
+          "max_age_hours": {
+            "type": "integer",
+            "description": "Idade máxima das notícias em horas.",
+            "minimum": 6,
+            "maximum": 168
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_news",
+      "description": "Busca notícias recentes por tema/query na web (Google News RSS, com opção de incluir Hacker News).",
+      "handler": "assistant_connector.tools.news_tools:list_news",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Consulta de busca (ex.: IA, economia, política internacional)."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Alias de compatibilidade para query."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de notícias retornadas.",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "include_hacker_news": {
+            "type": "boolean",
+            "description": "Quando true, inclui itens do Hacker News."
+          },
+          "max_age_hours": {
+            "type": "integer",
+            "description": "Idade máxima das notícias em horas.",
+            "minimum": 6,
+            "maximum": 168
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_contacts",
+      "description": "Busca contatos em /memories/contacts.csv por nome, email, telefone ou relacionamento.",
+      "prompt_guidance": "Use search_contacts para resolver destinatários citados de forma natural (ex.: 'meu email pessoal', 'contato profissional', 'minha esposa'). Se houver um único contato claro, use o email retornado na próxima ação sem pedir confirmação extra de identificação.",
+      "guidance_priority": 15,
+      "handler": "assistant_connector.tools.contacts_tools:search_contacts",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Texto para busca parcial (case-insensitive). Se vazio, retorna lista completa."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de contatos retornados.",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_contact_memory",
+      "description": "Registra um contato em memória persistente (contacts.csv).",
+      "prompt_guidance": "Use register_contact_memory quando o usuário pedir para salvar ou registrar um contato na memória, ou quando o usuário confirmar o salvamento após um email enviado a um endereço direto (suggest_save_contact). Exija ao menos email ou telefone.",
+      "guidance_priority": 20,
+      "handler": "assistant_connector.tools.contacts_tools:register_contact_memory",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nome do contato."
+          },
+          "email": {
+            "type": "string",
+            "description": "Email do contato."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Telefone do contato."
+          },
+          "relationship": {
+            "type": "string",
+            "description": "Relação com o usuário (ex.: amigo, cliente, família)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_emails",
+      "description": "Busca emails no Gmail por query, remetente, assunto ou outros filtros da sintaxe Gmail.",
+      "handler": "assistant_connector.tools.email_tools:search_emails",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Query de busca Gmail (ex.: from:pessoa@exemplo.com subject:projeto)."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Máximo de emails retornados.",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Quando true, inclui corpo textual do email retornado."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "summarize_important_emails",
+      "description": "Resume emails importantes com base em remetentes e palavras-chave prioritárias configurados pelo usuário.",
+      "prompt_guidance": "Use para gerar o resumo diário de emails importantes, especialmente em rotinas agendadas. Se não houver regras configuradas, oriente o usuário a defini-las primeiro.",
+      "guidance_priority": 35,
+      "handler": "assistant_connector.tools.email_tools:summarize_important_emails",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "description": "Janela de busca em dias.",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Máximo de emails analisados/retornados.",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "unread_only": {
+            "type": "boolean",
+            "description": "Quando true, considera apenas emails não lidos."
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Quando true, usa também o corpo do email para bater palavras-chave."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_email",
+      "description": "Lê um email específico pelo message_id.",
+      "handler": "assistant_connector.tools.email_tools:read_email",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "ID da mensagem no Gmail."
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Quando true, inclui corpo textual do email."
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_email_attachments",
+      "description": "Busca anexos em emails e retorna metadados (arquivo, tipo e tamanho).",
+      "handler": "assistant_connector.tools.email_tools:search_email_attachments",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Query Gmail para restringir mensagens com anexos."
+          },
+          "filename_contains": {
+            "type": "string",
+            "description": "Filtro opcional por trecho do nome do arquivo."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Máximo de emails analisados para encontrar anexos.",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_email_attachment",
+      "description": "Baixa e extrai o conteúdo textual de um anexo de email (PDF, planilhas XLSX e documentos de texto).",
+      "handler": "assistant_connector.tools.email_tools:analyze_email_attachment",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "ID da mensagem no Gmail."
+          },
+          "attachment_id": {
+            "type": "string",
+            "description": "ID do anexo retornado por search_email_attachments."
+          },
+          "filename": {
+            "type": "string",
+            "description": "Nome do arquivo do anexo (alternativa ao attachment_id)."
+          },
+          "max_chars": {
+            "type": "integer",
+            "description": "Máximo de caracteres retornados no preview.",
+            "minimum": 200,
+            "maximum": 20000
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "send_email",
+      "description": "Envia email pelo Gmail. O destinatário deve ser informado explicitamente pelo usuário e o assunto deve ser definido pela LLM.",
+      "prompt_guidance": "No uso de send_email, preserve fidelidade ao texto solicitado pelo usuário e não invente conteúdo adicional. O destinatário pode ser um email direto ou uma referência de contato explícita do usuário (ex.: 'meu email pessoal', 'contato profissional'). Se a identificação do contato for ambígua, peça desambiguação; se for única e clara, prossiga. Após o envio, se o resultado incluir 'suggest_save_contact: true', pergunte ao usuário se deseja salvar este contato na memória de contatos (contacts.csv), sugerindo o email já usado. Se confirmar, colete nome e relacionamento (e opcionalmente telefone) e chame register_contact_memory.",
+      "guidance_priority": 20,
+      "handler": "assistant_connector.tools.email_tools:send_email",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "recipient_email": {
+            "type": "string",
+            "description": "Email de destino. Se omitido, usa EMAIL_TO do .env."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Assunto do email."
+          },
+          "body": {
+            "type": "string",
+            "description": "Corpo do email em texto/Markdown."
+          },
+          "reply_to_message_id": {
+            "type": "string",
+            "description": "ID opcional da mensagem original para responder na mesma thread do Gmail."
+          },
+          "tone_override": {
+            "type": "string",
+            "description": "Tom opcional para este email específico."
+          },
+          "include_signature": {
+            "type": "boolean",
+            "description": "Parâmetro legado: a assinatura definida em EMAIL_ASSISTANT_SIGNATURE é sempre aplicada."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "recipient_email",
+          "subject",
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_bills",
+      "description": "Lista contas fixas mensais ainda não pagas no banco local.",
+      "prompt_guidance": "Para contas fixas mensais, use esta tool para consultar pendências antes de recomendar pagamento ou ajustes.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.finance_tools:list_bills",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de contas retornadas.",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_bill",
+      "description": "Registra uma nova conta fixa mensal (ex: aluguel, internet, energia).",
+      "handler": "assistant_connector.tools.finance_tools:register_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_name": {
+            "type": "string",
+            "description": "Nome da conta (ex: Aluguel, Internet)"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Valor previsto da conta"
+          },
+          "category": {
+            "type": "string",
+            "description": "Categoria (Moradia, Saúde, etc.)"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Data de vencimento (YYYY-MM-DD)"
+          },
+          "reference_month": {
+            "type": "string",
+            "description": "Mês de referência (YYYY-MM, padrão: mês atual)"
+          }
+        },
+        "required": [
+          "bill_name",
+          "budget"
+        ]
+      }
+    },
+    {
+      "name": "pay_bill",
+      "description": "Marca uma conta fixa mensal como paga no banco local, com valor pago opcional.",
+      "prompt_guidance": "Use esta tool para registrar pagamento de conta fixa mensal somente após confirmação explícita do usuário.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.finance_tools:pay_bill",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_id": {
+            "type": "string",
+            "description": "ID da conta no banco local (UUID retornado por list_bills ou analyze_bills)."
+          },
+          "paid_amount": {
+            "type": "number",
+            "description": "Valor efetivamente pago (opcional)."
+          },
+          "payment_date": {
+            "type": "string",
+            "description": "Data opcional do pagamento no formato YYYY-MM-DD."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "bill_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_bill",
+      "description": "Edita uma conta fixa existente pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_id": {
+            "type": "string",
+            "description": "ID da conta a ser editada"
+          },
+          "bill_name": {
+            "type": "string",
+            "description": "Novo nome da conta"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Novo valor previsto"
+          },
+          "category": {
+            "type": "string",
+            "description": "Nova categoria"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Nova data de vencimento (YYYY-MM-DD)"
+          },
+          "paid": {
+            "type": "boolean",
+            "description": "Status de pagamento"
+          },
+          "paid_amount": {
+            "type": "number",
+            "description": "Valor efetivamente pago"
+          }
+        },
+        "required": [
+          "bill_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_bill",
+      "description": "Exclui permanentemente uma conta fixa pelo seu ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_bill",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "bill_id": {
+            "type": "string",
+            "description": "ID da conta a ser excluída"
+          }
+        },
+        "required": [
+          "bill_id"
+        ]
+      }
+    },
+    {
+      "name": "analyze_bills",
+      "description": "Analisa contas fixas mensais no banco local, com totais, pendências e breakdown por categoria.",
+      "prompt_guidance": "Use esta tool para análises de contas fixas mensais (totais, pendências e categorias) e para orientar priorização de pagamentos.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.finance_tools:analyze_bills",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_financial_goal",
+      "description": "Cria uma meta financeira do usuário, seja para juntar dinheiro até uma data ou para limitar gastos mensais.",
+      "handler": "assistant_connector.tools.finance_tools:register_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Nome curto da meta (ex.: Comprar carro, Segurar gastos do mês)."
+          },
+          "goal_type": {
+            "type": "string",
+            "enum": [
+              "savings",
+              "spending_limit"
+            ],
+            "description": "Tipo da meta: savings para juntar dinheiro; spending_limit para limitar gastos mensais."
+          },
+          "target_amount": {
+            "type": "number",
+            "description": "Valor alvo total da meta de savings."
+          },
+          "current_amount": {
+            "type": "number",
+            "description": "Quanto já foi guardado até agora na meta de savings."
+          },
+          "monthly_contribution": {
+            "type": "number",
+            "description": "Quanto o usuário pretende guardar por mês na meta de savings."
+          },
+          "target_date": {
+            "type": "string",
+            "description": "Data limite no formato YYYY-MM-DD para a meta de savings."
+          },
+          "monthly_limit": {
+            "type": "number",
+            "description": "Teto de gasto mensal para a meta do tipo spending_limit."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "title",
+          "goal_type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_financial_goals",
+      "description": "Lista as metas financeiras cadastradas pelo usuário.",
+      "handler": "assistant_connector.tools.finance_tools:list_financial_goals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_financial_goal",
+      "description": "Edita uma meta financeira existente pelo ID.",
+      "handler": "assistant_connector.tools.finance_tools:edit_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "description": "ID da meta financeira."
+          },
+          "title": {
+            "type": "string",
+            "description": "Novo título da meta."
+          },
+          "target_amount": {
+            "type": "number",
+            "description": "Novo valor alvo da meta savings."
+          },
+          "current_amount": {
+            "type": "number",
+            "description": "Novo valor já guardado da meta savings."
+          },
+          "monthly_contribution": {
+            "type": "number",
+            "description": "Novo valor mensal planejado para a meta savings."
+          },
+          "target_date": {
+            "type": "string",
+            "description": "Nova data limite YYYY-MM-DD."
+          },
+          "monthly_limit": {
+            "type": "number",
+            "description": "Novo teto mensal da meta spending_limit."
+          }
+        },
+        "required": [
+          "goal_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_financial_goal",
+      "description": "Exclui uma meta financeira pelo ID.",
+      "handler": "assistant_connector.tools.finance_tools:delete_financial_goal",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "description": "ID da meta financeira."
+          }
+        },
+        "required": [
+          "goal_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_financial_goals",
+      "description": "Analisa metas financeiras cadastradas, mostrando progresso, projeção e se o plano atual parece realista.",
+      "prompt_guidance": "Use quando o usuário quiser entender se vai bater uma meta financeira, quanto precisa guardar por mês ou se está extrapolando um teto de gastos.",
+      "guidance_priority": 31,
+      "handler": "assistant_connector.tools.finance_tools:analyze_financial_goals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM para analisar metas de teto mensal."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_card_expenses",
+      "description": "Analisa despesas importadas via fatura do cartão Nubank (CSV da fatura) para um determinado mês, com total gasto, breakdown por categoria e lista de transações do cartão.",
+      "prompt_guidance": "Use quando o usuário perguntar sobre gastos no cartão de crédito, fatura Nubank, compras parceladas ou quiser analisar o que foi gasto no cartão em determinado mês.",
+      "guidance_priority": 29,
+      "handler": "assistant_connector.tools.finance_tools:analyze_card_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "analyze_imported_expenses",
+      "description": "Analisa despesas importadas via extrato Nubank (CSV da conta corrente) para um determinado mês, com total gasto, breakdown por categoria e lista de transações do extrato.",
+      "prompt_guidance": "Use quando o usuário perguntar sobre despesas importadas do extrato da conta Nubank, Pix enviados, boletos pagos ou quiser entender de onde vieram as despesas de determinado mês.",
+      "guidance_priority": 28,
+      "handler": "assistant_connector.tools.finance_tools:analyze_imported_expenses",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mês no formato YYYY-MM. Se omitido, usa mês atual."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_meals",
+      "description": "Lista refeições registradas nos últimos N dias.",
+      "handler": "assistant_connector.tools.health_tools:list_meals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "n_days": {
+            "type": "integer",
+            "description": "Número de dias para listar (padrão: 1 = hoje)",
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (padrão: 50)",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "register_meal",
+      "description": "Registra uma refeição com um ou mais alimentos no banco local, usando calorias estimadas pela LLM para itens sem valor informado.",
+      "prompt_guidance": "Use esta tool para registrar qualquer refeição. Passe todos os alimentos da refeição de uma só vez no campo 'alimentos' — nunca chame a tool repetidas vezes para a mesma refeição. Para cada item sem 'calorias_estimadas', o sistema chamará a LLM automaticamente para inferir. Use categorias exatamente entre ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ e SUPLEMENTO. Use SUPLEMENTO para proteínas em pó, creatina, vitaminas e pré-treinos. Para SUPLEMENTO: (1) se o usuário não informar a quantidade, consulte health.md para obter a quantidade rotineira; (2) para calorias, consulte health.md — use exatamente o valor registrado. Se não houver kcal em health.md, pergunte antes de registrar. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.health_tools:register_meal",
+      "write_operation": true,
+      "auto_confirm": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "refeicao": {
+            "type": "string",
+            "description": "Categoria da refeição. Use exatamente um dos valores permitidos.",
+            "enum": [
+              "ALMOÇO",
+              "JANTAR",
+              "LANCHE",
+              "CAFÉ DA MANHÃ",
+              "SUPLEMENTO"
+            ]
+          },
+          "data": {
+            "type": "string",
+            "description": "Data da refeição no formato YYYY-MM-DD. Padrão: hoje."
+          },
+          "alimentos": {
+            "type": "array",
+            "description": "Lista de alimentos da refeição. Inclua todos os itens em uma única chamada.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "alimento": {
+                  "type": "string",
+                  "description": "Nome do alimento consumido."
+                },
+                "quantidade": {
+                  "type": "string",
+                  "description": "Quantidade com unidade (ex.: '150 g', '2 unidades', '250 ml')."
+                },
+                "calorias_estimadas": {
+                  "type": "number",
+                  "description": "Estimativa de calorias para a porção. Se omitida, o sistema infere via LLM automaticamente."
+                }
+              },
+              "required": ["alimento", "quantidade"],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "refeicao",
+          "alimentos"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_meal_group",
+      "description": "Edita a categoria (tipo) e/ou a data de todos os alimentos de uma refeição identificada pelo meal_group_id.",
+      "handler": "assistant_connector.tools.health_tools:edit_meal_group",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_group_id": {
+            "type": "string",
+            "description": "ID do grupo de refeição a ser editado."
+          },
+          "refeicao": {
+            "type": "string",
+            "description": "Novo tipo de refeição (ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ, SUPLEMENTO).",
+            "enum": ["ALMOÇO", "JANTAR", "LANCHE", "CAFÉ DA MANHÃ", "SUPLEMENTO"]
+          },
+          "data": {
+            "type": "string",
+            "description": "Nova data no formato YYYY-MM-DD."
+          }
+        },
+        "required": ["meal_group_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_meal_group",
+      "description": "Exclui permanentemente todos os alimentos de uma refeição identificada pelo meal_group_id.",
+      "handler": "assistant_connector.tools.health_tools:delete_meal_group",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_group_id": {
+            "type": "string",
+            "description": "ID do grupo de refeição a ser excluído."
+          }
+        },
+        "required": ["meal_group_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_meal",
+      "description": "Edita um alimento individual de uma refeição pelo seu ID. Use para corrigir nome, quantidade, calorias ou data de um item específico.",
+      "handler": "assistant_connector.tools.health_tools:edit_meal",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string",
+            "description": "ID da refeição a ser editada"
+          },
+          "alimento": {
+            "type": "string",
+            "description": "Novo nome do alimento"
+          },
+          "refeicao": {
+            "type": "string",
+            "description": "Novo tipo de refeição (ALMOÇO, JANTAR, LANCHE, CAFÉ DA MANHÃ, SUPLEMENTO)"
+          },
+          "quantidade": {
+            "type": "string",
+            "description": "Nova quantidade"
+          },
+          "calorias_estimadas": {
+            "type": "number",
+            "description": "Novas calorias estimadas"
+          },
+          "data": {
+            "type": "string",
+            "description": "Nova data (YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "meal_id"
+        ]
+      }
+    },
+    {
+      "name": "delete_meal",
+      "description": "Exclui permanentemente uma refeição pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_meal",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string",
+            "description": "ID da refeição a ser excluída"
+          }
+        },
+        "required": [
+          "meal_id"
+        ]
+      }
+    },
+    {
+      "name": "analyze_meals",
+      "description": "Analisa refeições registradas no banco local e retorna métricas + insights nutricionais.",
+      "prompt_guidance": "Ao analisar refeições, entregue orientações incisivas e diretas sobre qualidade alimentar e cobre plano de correção com ações concretas quando identificar desvios.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.health_tools:analyze_meals",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "days_back": {
+            "type": "integer",
+            "description": "Quantidade de dias para trás a incluir.",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "days_forward": {
+            "type": "integer",
+            "description": "Quantidade de dias para frente a incluir.",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de registros de refeições retornados na resposta.",
+            "minimum": 1,
+            "maximum": 300
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_exercise",
+      "description": "Registra atividade física no banco local de exercícios com calorias e status de conclusão (Done), incluindo planejamento futuro. Detecta duplicatas automaticamente.",
+      "prompt_guidance": "Antes de registrar um exercício, verifique se já existe um registro planejado (done=false) para a mesma atividade e data. Se register_exercise retornar 'duplicate_exercise_found', use edit_exercise com o exercise_id retornado para atualizar o registro existente (preencher detalhes e marcar done=true). Use done=false ao planejar atividades futuras e done=true quando a atividade estiver concluída. Não peça confirmação ao usuário — registre diretamente e informe o que foi registrado.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.health_tools:register_exercise",
+      "write_operation": true,
+      "auto_confirm": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "atividade": {
+            "type": "string",
+            "description": "Nome da atividade/exercício."
+          },
+          "calorias": {
+            "type": "number",
+            "description": "Calorias gastas na atividade (valor > 0). Se omitida, o sistema usa LLM para inferir automaticamente."
+          },
+          "data": {
+            "type": "string",
+            "description": "Data da atividade no formato YYYY-MM-DD. Se omitida, usa hoje."
+          },
+          "observacoes": {
+            "type": "string",
+            "description": "Observações opcionais sobre o treino."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Status de conclusão da atividade. Use false para planejar atividades futuras e true quando concluída."
+          }
+        },
+        "required": [
+          "atividade"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_exercises",
+      "description": "Lista exercícios registrados nos últimos N dias.",
+      "handler": "assistant_connector.tools.health_tools:list_exercises",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "n_days": {
+            "type": "integer",
+            "description": "Número de dias para listar (padrão: 1 = hoje)",
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (padrão: 50)",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "edit_exercise",
+      "description": "Edita um registro de atividade física no banco local, incluindo o campo de conclusão (Done).",
+      "prompt_guidance": "Use edit_exercise para atualizar exercícios já existentes. O exercise_id pode ser obtido via analyze_exercises ou pela resposta de duplicate_exercise_found de register_exercise. Ao registrar conclusão de exercício planejado, atualize os campos necessários e marque done=true. Não peça confirmação ao usuário — execute diretamente e informe o que foi atualizado.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.health_tools:edit_exercise",
+      "write_operation": true,
+      "auto_confirm": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "description": "ID do exercício no banco local (UUID retornado por analyze_exercises ou register_exercise)."
+          },
+          "atividade": {
+            "type": "string",
+            "description": "Novo nome da atividade."
+          },
+          "calorias": {
+            "type": "number",
+            "description": "Novo valor de calorias gastas (> 0)."
+          },
+          "data": {
+            "type": "string",
+            "description": "Nova data no formato YYYY-MM-DD."
+          },
+          "observacoes": {
+            "type": "string",
+            "description": "Novas observações (pode ser vazio para limpar)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Sempre use true. Este tipo de registro não requer confirmação explícita do usuário."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Atualiza o status de conclusão da atividade (Done)."
+          }
+        },
+        "required": [
+          "exercise_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_exercise",
+      "description": "Exclui permanentemente um exercício pelo seu ID.",
+      "handler": "assistant_connector.tools.health_tools:delete_exercise",
+      "write_operation": true,
+      "auto_confirm": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "description": "ID do exercício a ser excluído"
+          }
+        },
+        "required": [
+          "exercise_id"
+        ]
+      }
+    },
+    {
+      "name": "analyze_exercises",
+      "description": "Analisa atividades físicas no banco local considerando o campo Done e correlaciona com refeições.",
+      "prompt_guidance": "Ao analisar exercícios, acompanhe pendências vs concluídas com base no campo Done e, quando relevante, correlacione calorias de refeições com exercícios.",
+      "guidance_priority": 30,
+      "handler": "assistant_connector.tools.health_tools:analyze_exercises",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "days_back": {
+            "type": "integer",
+            "description": "Quantidade de dias para trás a incluir.",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "days_forward": {
+            "type": "integer",
+            "description": "Quantidade de dias para frente a incluir.",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de exercícios retornados na resposta.",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "include_meals": {
+            "type": "boolean",
+            "description": "Quando true, correlaciona calorias das refeições no mesmo período."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_daily_logging_status",
+      "description": "Verifica se refeições e exercícios já foram registrados hoje no banco local. Retorna contagens e tipos registrados.",
+      "prompt_guidance": "Use esta ferramenta em lembretes agendados de refeição/exercício. Se o usuário já registrou, parabenize pelo comprometimento como reforço positivo. Se não registrou, cobre o preenchimento de forma direta e motivadora.",
+      "guidance_priority": 35,
+      "handler": "assistant_connector.tools.health_tools:check_daily_logging_status",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "calculate_metabolism_profile",
+      "description": "Calcula metabolismo basal (BMR) e gasto diário total (TDEE) com base em dados corporais e atividade.",
+      "prompt_guidance": "Use esta tool para calcular estimativas de metabolismo de forma confiável antes de recomendações nutricionais ou de treino.",
+      "guidance_priority": 40,
+      "handler": "assistant_connector.tools.metabolism_tools:calculate_metabolism_profile",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "metabolismo_basal": {
+            "type": "number",
+            "description": "BMR já conhecido. Se informado, é usado como base."
+          },
+          "peso_kg": {
+            "type": "number",
+            "description": "Peso em quilogramas."
+          },
+          "altura_cm": {
+            "type": "number",
+            "description": "Altura em centímetros."
+          },
+          "idade": {
+            "type": "integer",
+            "description": "Idade em anos."
+          },
+          "sexo": {
+            "type": "string",
+            "description": "Sexo biológico para fórmula Mifflin-St Jeor.",
+            "enum": [
+              "masculino",
+              "feminino",
+              "outro"
+            ]
+          },
+          "gordura_corporal_percentual": {
+            "type": "number",
+            "description": "Percentual de gordura corporal (0-100)."
+          },
+          "fator_atividade": {
+            "type": "number",
+            "description": "Fator de atividade física (ex.: 1.2, 1.55, 1.725)."
+          },
+          "nivel_atividade": {
+            "type": "string",
+            "description": "Nível de atividade para mapear automaticamente o fator.",
+            "enum": [
+              "sedentario",
+              "sedentário",
+              "leve",
+              "moderado",
+              "alto",
+              "muito_alto",
+              "muito alto"
+            ]
+          },
+          "gasto_total_diario": {
+            "type": "number",
+            "description": "TDEE já conhecido. Se informado, pode inferir o fator de atividade."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "register_metabolism_profile",
+      "description": "Registra no SQLite local um novo histórico de metabolismo (BMR/TDEE) com timestamp e contexto corporal.",
+      "prompt_guidance": "Quando houver atualização confirmada de metabolismo, registre no SQLite local para manter histórico como fonte de verdade.",
+      "guidance_priority": 40,
+      "handler": "assistant_connector.tools.metabolism_tools:register_metabolism_profile",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "metabolismo_basal": {
+            "type": "number",
+            "description": "BMR já conhecido. Se informado, é usado como base."
+          },
+          "peso_kg": {
+            "type": "number",
+            "description": "Peso em quilogramas."
+          },
+          "altura_cm": {
+            "type": "number",
+            "description": "Altura em centímetros."
+          },
+          "idade": {
+            "type": "integer",
+            "description": "Idade em anos."
+          },
+          "sexo": {
+            "type": "string",
+            "description": "Sexo biológico para fórmula Mifflin-St Jeor.",
+            "enum": [
+              "masculino",
+              "feminino",
+              "outro"
+            ]
+          },
+          "gordura_corporal_percentual": {
+            "type": "number",
+            "description": "Percentual de gordura corporal (0-100)."
+          },
+          "fator_atividade": {
+            "type": "number",
+            "description": "Fator de atividade física (ex.: 1.2, 1.55, 1.725)."
+          },
+          "nivel_atividade": {
+            "type": "string",
+            "description": "Nível de atividade para mapear automaticamente o fator.",
+            "enum": [
+              "sedentario",
+              "sedentário",
+              "leve",
+              "moderado",
+              "alto",
+              "muito_alto",
+              "muito alto"
+            ]
+          },
+          "gasto_total_diario": {
+            "type": "number",
+            "description": "TDEE já conhecido. Se informado, pode inferir o fator de atividade."
+          },
+          "data_referencia": {
+            "type": "string",
+            "description": "Timestamp UTC em ISO 8601 (ex.: 2026-03-06T21:00:00Z). Se omitido, usa agora."
+          },
+          "fonte": {
+            "type": "string",
+            "description": "Origem do valor (ex.: assistant, smart_scale, manual)."
+          },
+          "notas": {
+            "type": "string",
+            "description": "Observações opcionais sobre contexto da medição."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_metabolism_history",
+      "description": "Consulta histórico metabólico salvo no SQLite local (BMR/TDEE), retornando também o registro mais recente.",
+      "prompt_guidance": "Antes de recomendar ajustes metabólicos, consulte o histórico para evitar conclusões sem contexto temporal.",
+      "guidance_priority": 40,
+      "handler": "assistant_connector.tools.metabolism_tools:get_metabolism_history",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Máximo de registros retornados (1-50).",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_user_credentials",
+      "description": "Gerencia as credenciais pessoais do usuário armazenadas de forma segura no banco de dados. Use para configurar, listar ou remover chaves de API (Email, Google, etc.) e verificar quais integrações estão disponíveis. IMPORTANTE: nunca mostre ou repita o valor de uma credencial ao usuário.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "set",
+              "list_configured",
+              "delete",
+              "check_integrations"
+            ],
+            "description": "Ação a executar: 'set' para salvar uma credencial, 'list_configured' para listar chaves configuradas (sem valores), 'delete' para remover, 'check_integrations' para ver status das integrações."
+          },
+          "key": {
+            "type": "string",
+            "description": "Nome da credencial. Valores válidos: email_from, email_to, display_name, email_tone, email_signature, email_style_guide, email_subject_prefix, email_important_senders, email_important_keywords. Obrigatório para ações 'set' e 'delete'."
+          },
+          "value": {
+            "type": "string",
+            "description": "Valor da credencial. Obrigatório apenas para ação 'set'. Nunca leia ou repita este valor para o usuário."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Confirmar a operação (obrigatório para 'set' e 'delete')."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "handler": "assistant_connector.tools.user_credential_tools:manage_user_credentials",
+      "write_operation": true,
+      "prompt_guidance": "Use manage_user_credentials quando o usuário quiser configurar, ver ou remover suas credenciais de integração (email, Google, etc.). Após um 'set' bem-sucedido, confirme que foi salvo e mostre o status das integrações. NUNCA mostre, repita ou confirme o valor exato de uma credencial.",
+      "guidance_priority": 10
+    },
+    {
+      "name": "list_memory_files",
+      "description": "Lista todos os arquivos de memória do usuário atual (arquivos .md na pasta de memórias do usuário).",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "handler": "assistant_connector.tools.memory_tools:list_memory_files"
+    },
+    {
+      "name": "read_memory_file",
+      "description": "Lê o conteúdo completo de um arquivo de memória do usuário. Use para verificar o que já está salvo antes de editar.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_name": {
+            "type": "string",
+            "description": "Nome do arquivo a ser lido (ex: 'about-me.md', 'health.md'). Deve terminar com .md."
+          }
+        },
+        "required": [
+          "file_name"
+        ]
+      },
+      "handler": "assistant_connector.tools.memory_tools:read_memory_file"
+    },
+    {
+      "name": "edit_memory_file",
+      "description": "Cria ou atualiza um arquivo de memória do usuário. Use mode='replace' para substituir o conteúdo completo ou mode='append' para adicionar ao final. Arquivos de memória persistem entre sessões e são injetados no contexto do assistente.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_name": {
+            "type": "string",
+            "description": "Nome do arquivo de memória (ex: 'about-me.md', 'health.md', 'work.md'). Deve terminar com .md."
+          },
+          "content": {
+            "type": "string",
+            "description": "Conteúdo a ser escrito ou adicionado ao arquivo. Use Markdown para formatar."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace"
+            ],
+            "description": "'append' adiciona ao final do arquivo (padrão). 'replace' substitui o conteúdo completo."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a ação de escrita."
+          }
+        },
+        "required": [
+          "file_name",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "handler": "assistant_connector.tools.memory_tools:edit_memory_file",
+      "write_operation": true,
+      "prompt_guidance": "Use edit_memory_file para salvar informações persistentes sobre o usuário que devem ser lembradas em conversas futuras. Sempre leia o arquivo com read_memory_file antes de substituir (mode='replace') para não perder dados. Prefira mode='append' para adicionar informações novas. Crie arquivos temáticos (health.md, work.md, preferences.md) para organizar melhor. Nunca salve credenciais ou dados sensíveis em memórias.",
+      "guidance_priority": 20
+    },
+    {
+      "name": "list_user_files",
+      "description": "Lista todos os arquivos enviados pelo usuário. Retorna nome, tamanho, contexto e data de upload de cada arquivo.",
+      "handler": "assistant_connector.tools.file_tools:list_user_files",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_file_content",
+      "description": "Extrai e retorna o conteúdo textual de um arquivo armazenado do usuário. Suporta PDF, TXT, CSV, MD e DOCX.",
+      "handler": "assistant_connector.tools.file_tools:read_file_content",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "ID do arquivo retornado por list_user_files."
+          },
+          "max_chars": {
+            "type": "integer",
+            "description": "Número máximo de caracteres a retornar (padrão: 8000)."
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_user_file",
+      "description": "Remove um arquivo armazenado do usuário do sistema.",
+      "handler": "assistant_connector.tools.file_tools:delete_user_file",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "ID do arquivo a ser deletado."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a exclusão."
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "generate_nutrition_chart",
+      "description": "Gera um gráfico visual (PNG) com o resumo de nutrição e/ou exercícios do usuário e retorna como anexo na resposta. Use após coletar os dados de refeições (analyze_meals) e/ou exercícios (analyze_exercises). Informe as metas salvas nas memórias do usuário quando disponíveis.",
+      "handler": "assistant_connector.tools.chart_tools:generate_nutrition_chart",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Título do gráfico, ex: 'Nutrição — 09/03/2026'."
+          },
+          "calories_consumed": {
+            "type": "number",
+            "description": "Total de calorias consumidas (kcal).",
+            "minimum": 0
+          },
+          "calories_goal": {
+            "type": "number",
+            "description": "Meta diária de calorias (kcal). Use o valor das memórias do usuário se disponível.",
+            "minimum": 0
+          },
+          "protein_g": {
+            "type": "number",
+            "description": "Proteínas consumidas em gramas.",
+            "minimum": 0
+          },
+          "protein_goal_g": {
+            "type": "number",
+            "description": "Meta diária de proteínas em gramas.",
+            "minimum": 0
+          },
+          "carbs_g": {
+            "type": "number",
+            "description": "Carboidratos consumidos em gramas.",
+            "minimum": 0
+          },
+          "carbs_goal_g": {
+            "type": "number",
+            "description": "Meta diária de carboidratos em gramas.",
+            "minimum": 0
+          },
+          "fat_g": {
+            "type": "number",
+            "description": "Gordura consumida em gramas.",
+            "minimum": 0
+          },
+          "fat_goal_g": {
+            "type": "number",
+            "description": "Meta diária de gordura em gramas.",
+            "minimum": 0
+          },
+          "calories_burned": {
+            "type": "number",
+            "description": "Calorias gastas em exercícios no dia.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "prompt_guidance": "Gere o gráfico somente quando o usuário pedir explicitamente uma visualização, gráfico ou chart. Para consultas simples de texto (ex.: 'o que eu comi hoje?', 'quantas calorias?'), responda em texto sem chamar esta tool. Por padrão, para gráficos de nutrição, inclua apenas calories_consumed, calories_goal, protein_g e protein_goal_g (mais calories_burned se disponível). Somente inclua carbs_g, carbs_goal_g, fat_g ou fat_goal_g se o usuário pedir explicitamente essas métricas.",
+      "guidance_priority": 90
+    },
+    {
+      "name": "list_notes",
+      "description": "Lista as anotações do usuário, opcionalmente filtrando por tag.",
+      "handler": "assistant_connector.tools.notes_tools:list_notes",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de anotações a retornar (1-100, padrão 20)."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filtrar por tag específica (ex: 'trabalho', 'pessoal')."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_note",
+      "description": "Lê o conteúdo completo de uma anotação específica pelo ID.",
+      "handler": "assistant_connector.tools.notes_tools:read_note",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser lida."
+          }
+        },
+        "required": [
+          "note_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_note",
+      "description": "Cria uma nova anotação com título, conteúdo markdown e tags opcionais.",
+      "handler": "assistant_connector.tools.notes_tools:create_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Título da anotação."
+          },
+          "content": {
+            "type": "string",
+            "description": "Conteúdo da anotação em markdown."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags para categorizar a anotação (ex: ['trabalho', 'projeto-x'])."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a criação."
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edit_note",
+      "description": "Edita uma anotação existente — pode alterar título, conteúdo e/ou tags.",
+      "handler": "assistant_connector.tools.notes_tools:edit_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser editada."
+          },
+          "title": {
+            "type": "string",
+            "description": "Novo título (omitir para manter o atual)."
+          },
+          "content": {
+            "type": "string",
+            "description": "Novo conteúdo markdown (omitir para manter o atual)."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Novas tags (omitir para manter as atuais)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a edição."
+          }
+        },
+        "required": [
+          "note_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_note",
+      "description": "Exclui uma anotação pelo ID.",
+      "handler": "assistant_connector.tools.notes_tools:delete_note",
+      "write_operation": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "ID da anotação a ser excluída."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Use true apenas quando o usuário confirmar explicitamente a exclusão."
+          }
+        },
+        "required": [
+          "note_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_notes",
+      "description": "Busca anotações por texto no título ou conteúdo. Retorna snippets com até 300 caracteres do conteúdo.",
+      "handler": "assistant_connector.tools.notes_tools:search_notes",
+      "write_operation": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Texto a buscar no título ou conteúdo das anotações."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Número máximo de resultados (1-50, padrão 20)."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "agents": [
+    {
+      "id": "personal_assistant",
+      "description": "Assistente pessoal principal com foco em produtividade e saúde pessoal.",
+      "model": "gpt-4.1-mini",
+      "max_tool_rounds": 6,
+      "memory_window": 10,
+      "system_prompt": "Você é um assistente pessoal direto, inteligente e sem enrolação — como um amigo esperto que fala o que precisa ser dito, sem floreios. Responda em português do Brasil.\n\nPersonalidade e tom:\n- Seja direto e objetivo: vá ao ponto, sem introduções genéricas ('Claro!', 'Ótima pergunta!') ou conclusões redundantes.\n- Quando o usuário pedir motivação ou encorajamento, seja genuíno e com energia — sem frases de calendário ou autoajuda barata.\n- Pode ser levemente irônico ou bem-humorado quando o contexto permitir, sem forçar.\n- Nunca seja excessivamente formal. Trate o usuário como adulto capaz de lidar com respostas diretas.\n- Adapte o tom ao contexto: se o usuário está desabafando, seja humano; se está pedindo dados, seja conciso; se está animado, combine essa energia.\n\nComportamento:\n- Use ferramentas quando necessário para recuperar dados reais e executar ações solicitadas.\n- Para ações de escrita, só use confirmed=true quando houver confirmação explícita do usuário.\n- Ao listar eventos de agenda, não inclua links automaticamente: mostre apenas nome, dia e horário; só inclua links se o usuário pedir explicitamente detalhes do evento.\n- Preserve fidelidade ao pedido do usuário e não invente conteúdo adicional não solicitado.\n\nIntegrações disponíveis e credenciais necessárias:\n- Tarefas, notas, refeições, exercícios, despesas e contas fixas: armazenados localmente no banco de dados, sempre disponíveis sem configuração.\n- Email (envio de emails e resumos): requer email_from e email_to.\n- Gmail (leitura e busca de emails via search_emails/read_email): usa a mesma autenticação Google do Calendar, sem credenciais adicionais.\n- Google Calendar (agenda e eventos): autenticação gerenciada pelo sistema, sem credenciais adicionais do usuário.\n- Configurações opcionais de email: email_tone, email_signature, email_style_guide, email_subject_prefix, display_name, email_important_senders, email_important_keywords.\n\nQuando uma ferramenta falhar por integração não configurada, informe o usuário de forma natural e amigável (nunca mostre JSON, stack traces ou detalhes técnicos internos). Explique qual integração está faltando e o que ela permite fazer. Para credenciais de email, use manage_user_credentials. Para autorizar o Google (Gmail e Calendar), o usuário deve usar o botão de conexão Google na interface.\n\nQuando o usuário iniciar o fluxo de setup (mensagem começa com [SETUP]), analise o status das integrações listado, explique de forma amigável o que cada integração ativa/inativa significa, oriente sobre as credenciais faltantes e pergunte por qual integração o usuário quer começar. Para autorizar o Google (Gmail e Calendar), o usuário deve clicar no botão de conexão Google disponível nas configurações da interface. Após isso, as integrações de Gmail e Calendar ficam disponíveis para esse usuário.\n\nContexto financeiro:\n- Ao registrar despesas, sugira uma categoria consistente e útil para análises futuras (ex.: Alimentação, Transporte, Lazer, Saúde, Moradia, Educação, Assinatura).\n- Quando o usuário pedir análise de gastos, identifique: total por categoria, categoria com maior gasto, e se alguma categoria subiu significativamente em relação ao que foi mencionado antes.\n- Se perceber que uma despesa tem características de recorrência (ex.: \"mensalidade\", \"plano\", \"assinatura\"), pergunte ao usuário se quer registrar como conta fixa.\n- Ao analisar metas financeiras, seja direto sobre a realidade: mostre quanto falta, quanto precisa guardar por mês e se o plano atual parece suficiente no prazo definido.\n- Nunca armazene valores financeiros absolutos (saldos, dívidas, renda) em memórias — apenas preferências de categorização e padrões de comportamento financeiro.\n\nContexto de saúde e nutrição:\n- Ao discutir refeições ou pedir análise nutricional, consulte health.md para verificar restrições alimentares, alergias ou preferências conhecidas antes de fazer recomendações.\n- Quando o usuário tiver meta calórica configurada, mencione o progresso em relação à meta ao fazer análises nutricionais — não apenas a média absoluta.\n- Ao registrar exercícios, se houver dados da semana disponíveis, mencione o acumulado de calorias gastas quando relevante.\n- Ao identificar mudanças de peso, metas ou restrições alimentares na conversa, salve em health.md imediatamente.\n\nMemórias permanentes:\n- Você tem acesso a arquivos de memória (.md) com informações persistentes sobre o usuário.\n- Sempre que identificar fatos pessoais relevantes na conversa que o usuário não teria motivo para repetir (preferências alimentares, alergias, mudanças de peso, metas, nomes de pessoas próximas, rotinas, etc.), use edit_memory_file para salvar no arquivo temático adequado (health.md, work.md, preferences.md, etc.).\n- Informações de saúde (peso, alergias, metas calóricas, restrições alimentares): sempre salvar em health.md especificamente.\n- Antes de usar mode='replace', SEMPRE leia o arquivo com read_memory_file para não perder dados existentes.\n- Prefira mode='append' para adicionar informações novas incrementalmente.\n- Nunca salve credenciais, senhas, valores financeiros absolutos (saldos, dívidas, renda) ou dados sensíveis em memórias — apenas preferências, padrões e fatos comportamentais.\n- Se o usuário corrigir uma informação previamente salva, leia o arquivo, atualize o dado específico e use mode='replace' com o conteúdo completo atualizado.",
+      "tools": [
+        "list_available_tools",
+        "list_available_agents",
+        "list_tasks",
+        "create_task",
+        "edit_task",
+        "list_scheduled_tasks",
+        "create_scheduled_task",
+        "edit_scheduled_task",
+        "cancel_scheduled_task",
+        "get_application_hardware_status",
+        "register_expense",
+        "analyze_expenses",
+        "analyze_bills",
+        "register_financial_goal",
+        "list_financial_goals",
+        "edit_financial_goal",
+        "delete_financial_goal",
+        "analyze_financial_goals",
+        "pay_bill",
+        "list_bills",
+        "edit_exercise",
+        "list_calendar_events",
+        "create_calendar_event",
+        "list_tech_news",
+        "list_news",
+        "search_contacts",
+        "register_contact_memory",
+        "search_emails",
+        "summarize_important_emails",
+        "read_email",
+        "search_email_attachments",
+        "analyze_email_attachment",
+        "send_email",
+        "register_meal",
+        "register_exercise",
+        "analyze_meals",
+        "analyze_exercises",
+        "check_daily_logging_status",
+        "calculate_metabolism_profile",
+        "register_metabolism_profile",
+        "get_metabolism_history",
+        "manage_user_credentials",
+        "list_memory_files",
+        "read_memory_file",
+        "edit_memory_file",
+        "list_user_files",
+        "read_file_content",
+        "delete_user_file",
+        "generate_nutrition_chart",
+        "list_notes",
+        "read_note",
+        "create_note",
+        "edit_note",
+        "delete_note",
+        "search_notes",
+        "delete_task",
+        "list_meals",
+        "edit_meal",
+        "edit_meal_group",
+        "delete_meal",
+        "delete_meal_group",
+        "list_exercises",
+        "delete_exercise",
+        "list_expenses",
+        "edit_expense",
+        "delete_expense",
+        "register_bill",
+        "edit_bill",
+        "delete_bill"
+      ]
+    }
+  ]
+}

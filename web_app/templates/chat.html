@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#FFFFFF">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Assistente">
+    <title>Assistente Pessoal</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/static/icons/bot-icon.png?v=2">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png?v=2">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar overlay (mobile) -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-top">
+                <button class="btn-collapse-sidebar" id="btn-collapse-sidebar" title="Recolher menu">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="11 17 6 12 11 7"/>
+                        <polyline points="18 17 13 12 18 7"/>
+                    </svg>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <button class="sidebar-nav-item" id="sidebar-nav-tasks" data-nav="tasks">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 11l3 3L22 4"/>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                    </svg>
+                    <span>Tarefas</span>
+                </button>
+                <button class="sidebar-nav-item active" id="sidebar-nav-chat" data-nav="chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>Conversas</span>
+                </button>
+                <button class="sidebar-nav-item" id="sidebar-nav-notes" data-nav="notes">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <span>Anotações</span>
+                </button>
+                <button class="sidebar-nav-item" id="sidebar-nav-health" data-nav="health">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                    <span>Saúde</span>
+                </button>
+                <button class="sidebar-nav-item" id="sidebar-nav-finance" data-nav="finance">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="1" x2="12" y2="23"/>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    <span>Finanças</span>
+                </button>
+            </nav>
+            <div class="sidebar-header">
+                <h2>Conversas</h2>
+                <div class="sidebar-header-actions">
+                    <button class="btn btn-primary btn-new-chat" id="btn-new-chat">+ Nova</button>
+                </div>
+            </div>
+            <div class="sidebar-conversations" id="conversation-list">
+                <!-- Dynamically populated -->
+            </div>
+            <div class="sidebar-notes" id="notes-list-section" style="display:none">
+                <div class="sidebar-notes-header">
+                    <h2>Anotações</h2>
+                    <div class="sidebar-notes-actions">
+                        <button class="btn-search-notes" id="btn-search-notes" title="Buscar por tag">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </button>
+                        <button class="btn-new-folder" id="btn-new-folder" title="Nova pasta">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                <line x1="12" y1="11" x2="12" y2="17"/>
+                                <line x1="9" y1="14" x2="15" y2="14"/>
+                            </svg>
+                        </button>
+                        <button class="btn btn-primary btn-new-note" id="btn-new-note">+ Nova</button>
+                    </div>
+                </div>
+                <div class="sidebar-notes-search hidden" id="notes-search">
+                    <div class="notes-search-wrapper">
+                        <input type="text" class="notes-search-input" id="notes-search-input" placeholder="Filtrar por tag…" autocomplete="off">
+                        <button class="notes-search-clear" id="notes-search-clear" title="Limpar filtro">✕</button>
+                    </div>
+                    <div class="notes-search-autocomplete hidden" id="notes-search-autocomplete">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                <div class="sidebar-notes-list" id="notes-list">
+                    <!-- Dynamically populated: folders + unfoldered notes -->
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-icons">
+                    <button class="sidebar-footer-icon btn-google-connect" id="btn-google-connect" title="Google">
+                        <img src="/static/icons/google-logo.png" width="20" height="20" alt="Google" style="display:block;">
+                    </button>
+                    <button class="sidebar-footer-icon" id="btn-email-rules" title="Emails importantes">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16v16H4z"/>
+                            <path d="M22 6l-10 7L2 6"/>
+                        </svg>
+                    </button>
+                    <button class="sidebar-footer-icon btn-memories" id="btn-memories" title="Memórias">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </button>
+
+                </div>
+            </div>
+        </aside>
+
+        <!-- Chat main area -->
+        <div class="chat-main">
+            <!-- Header (fixed, full-width, blur) -->
+            <header class="chat-header">
+                <div class="chat-header-left">
+                    <button class="btn-hamburger" id="btn-hamburger" title="Menu">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <button class="btn-expand-sidebar" id="btn-expand-sidebar" title="Expandir menu">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="13 17 18 12 13 7"/>
+                            <polyline points="6 17 11 12 6 7"/>
+                        </svg>
+                    </button>
+                    <!-- Tasks context: title (left-aligned, shown only on tasks tab) -->
+                    <div class="header-tasks-ctx hidden" id="header-tasks-ctx">
+                        <h2 class="header-tasks-title">Tarefas</h2>
+                    </div>
+                </div>
+                <!-- Notes context: title + tags (flex:1, shown only on notes tab with a note open) -->
+                <div class="header-notes-ctx hidden" id="header-notes-ctx">
+                    <div class="note-title-area">
+                        <h2 class="note-title-display" id="note-title-display">Nova anotação</h2>
+                        <div class="note-tags-row">
+                            <button class="btn-edit-tags" id="btn-edit-tags" title="Editar tags">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </button>
+                            <div class="note-tags" id="note-tags">
+                                <!-- Dynamically populated with tag pills -->
+                            </div>
+                        </div>
+                        <div class="note-tags-edit hidden" id="note-tags-edit">
+                            <input type="text" class="note-tags-input" id="note-tags-input" placeholder="tag1, tag2, tag3…">
+                            <button class="note-tags-save" id="note-tags-save" title="Salvar tags">✓</button>
+                            <button class="note-tags-cancel" id="note-tags-cancel" title="Cancelar">✕</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <div class="health-date-nav-header hidden" id="health-date-nav-header">
+                        <button class="health-date-btn" id="health-prev-day" title="Dia anterior">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <span class="health-date-label" id="health-date-label">Hoje</span>
+                        <button class="health-date-btn" id="health-next-day" title="Próximo dia">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="health-date-nav-header hidden" id="finance-month-nav-header">
+                        <button class="health-date-btn" id="finance-prev-month" title="Mês anterior">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <span class="health-date-label" id="finance-month-label">Abril 2026</span>
+                        <button class="health-date-btn" id="finance-next-month" title="Próximo mês">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-header-right">
+                    <button class="btn btn-primary btn-header-new hidden" id="btn-header-new">+ Nova</button>
+                    <!-- Tasks context buttons -->
+                    <button class="btn btn-primary btn-new-task hidden" id="btn-new-task">+ Nova tarefa</button>
+                    <!-- Notes context buttons (hidden by default) -->
+                    <span class="note-save-status hidden" id="note-save-status"></span>
+                    <button class="btn btn-ghost btn-icon-only hidden" id="btn-export-pdf" title="Exportar como PDF">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="12" y1="18" x2="12" y2="12"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-edit-note hidden" id="btn-edit-note" title="Editar anotação">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Editar
+                    </button>
+                    <button class="btn btn-done-editing hidden" id="btn-done-editing" title="Concluir edição">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Concluir
+                    </button>
+                    <button class="btn btn-primary btn-header-new-note hidden" id="btn-header-new-note">+ Nova nota</button>
+                    <button class="btn btn-ghost hidden" id="btn-delete-note" title="Excluir anotação">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6"/>
+                            <path d="M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-ghost" id="btn-reset" title="Limpar conversa">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6"/>
+                            <path d="M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-ghost" id="btn-logout" title="Sair">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Messages -->
+            <main class="chat-messages" id="chat-messages">
+                <div class="typing-indicator" id="typing-indicator">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                </div>
+            </main>
+
+            <!-- Chat empty state -->
+            <div class="chat-empty hidden" id="chat-empty">
+                <div class="empty-state-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <h3>Selecione uma Conversa</h3>
+                    <p>Escolha uma conversa na lista ou inicie uma nova</p>
+                    <button class="btn btn-primary" id="btn-new-chat-empty">+ Nova conversa</button>
+                </div>
+            </div>
+
+            <!-- Input wrapper (blur + transparency) -->
+            <div class="chat-input-wrapper">
+                <!-- File preview -->
+                <div class="file-preview" id="file-preview">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span class="file-name" id="file-name"></span>
+                    <span class="remove-file" id="remove-file">✕</span>
+                </div>
+
+                <!-- Input bar -->
+                <div class="chat-input-bar">
+                    <input type="file" id="file-input" class="sr-only" accept="*/*">
+                    <button class="btn-icon" id="btn-attach" title="Anexar arquivo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
+                    </button>
+                    <button class="btn-icon" id="btn-mic" title="Gravar áudio">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </button>
+                    <textarea
+                        id="chat-input"
+                        rows="1"
+                        placeholder="Digite uma mensagem…"
+                        inputmode="text"
+                        autocomplete="off"
+                        autocorrect="on"
+                        autocapitalize="sentences"
+                        enterkeyhint="send"
+                    ></textarea>
+                    <button class="btn btn-primary btn-send" id="btn-send" title="Enviar" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Notes editor (hidden by default) -->
+            <div class="notes-editor hidden" id="notes-editor">
+                <!-- Note view body (read-only rendered markdown) -->
+                <div class="note-view-body" id="note-view-body">
+                    <div class="note-view-content" id="note-view-content"></div>
+                </div>
+                <div class="notes-editor-body">
+                    <textarea id="note-content"></textarea>
+                </div>
+            </div>
+
+            <!-- Notes empty state (hidden by default) -->
+            <div class="notes-empty hidden" id="notes-empty">
+                <div class="empty-state-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    <h3>Selecione uma Nota</h3>
+                    <p>Escolha uma anotação na lista ou crie uma nova</p>
+                    <button class="btn btn-primary" id="btn-new-note-empty">+ Nova nota</button>
+                </div>
+            </div>
+
+            <!-- Health view (hidden by default) -->
+            <div class="health-view hidden" id="health-view">
+                <!-- Action buttons bar -->
+                <div class="health-date-nav">
+                    <div class="health-actions">
+                        <button class="btn btn-ghost btn-health-add" id="btn-health-goals" title="Editar metas">🎯 Metas</button>
+                        <button class="btn btn-ghost btn-health-add" id="btn-health-analysis" title="Análise nutricional semanal">📊 Análise</button>
+                        <button class="btn btn-primary btn-health-add" id="btn-add-meal" title="Registrar refeição">+ Refeição</button>
+                        <button class="btn btn-outline btn-health-add" id="btn-add-exercise" title="Registrar exercício">+ Exercício</button>
+                    </div>
+                </div>
+
+                <!-- Loading state -->
+                <div class="health-loading hidden" id="health-loading">
+                    <div class="loading-spinner"></div>
+                </div>
+
+                <!-- Daily content (scrollable) -->
+                <div class="health-content hidden" id="health-content">
+                    <!-- Summary card -->
+                    <div class="health-summary" id="health-summary">
+                        <div class="health-stats-grid">
+                            <div class="health-stat-tile">
+                                <div class="health-stat-label">🔥 Consumidas</div>
+                                <div class="health-stat-value" id="health-calories-consumed">0</div>
+                                <div class="health-stat-sub" id="health-calories-goal">/ 2400 kcal</div>
+                                <div class="health-progress-bar">
+                                    <div class="health-progress-fill" id="health-progress-fill"></div>
+                                </div>
+                            </div>
+                            <div class="health-stat-tile" id="health-burned-tile">
+                                <div class="health-stat-label">💪 Queimadas</div>
+                                <div class="health-stat-value" id="health-calories-burned">0</div>
+                                <div class="health-stat-sub" id="health-calories-burned-sub">kcal</div>
+                            </div>
+                        </div>
+                        <div class="health-balance-row">
+                            <span class="health-balance-label">Saldo do dia</span>
+                            <span class="health-balance-value" id="health-balance">0 kcal</span>
+                        </div>
+                    </div>
+
+                    <!-- Meal groups -->
+                    <div class="health-meals" id="health-meals">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Exercises -->
+                    <div class="health-exercises" id="health-exercises">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Weekly summary -->
+                    <div class="health-weekly" id="health-weekly">
+                        <h3 class="health-section-title">Últimos 7 dias</h3>
+                        <div class="health-weekly-bars" id="health-weekly-bars">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Finance view -->
+            <div class="finance-view hidden" id="finance-view">
+                <!-- Month navigator actions bar -->
+                <div class="finance-month-nav">
+                    <div class="finance-actions">
+                        <button class="btn btn-outline btn-finance-add" id="btn-add-finance-goal" title="Criar meta">🎯 Meta</button>
+                        <button class="btn btn-primary btn-finance-add" id="btn-add-expense" title="Registrar despesa">+ Despesa</button>
+                        <button class="btn btn-outline btn-finance-add" id="btn-add-bill" title="Registrar conta">+ Conta</button>
+                        <button class="btn btn-outline btn-finance-add" id="btn-import-nubank" title="Importar extrato Nubank">↑ Extrato</button>
+                        <button class="btn btn-outline btn-finance-add" id="btn-import-card" title="Importar fatura do cartão">↑ Fatura</button>
+                    </div>
+                </div>
+
+                <!-- Loading state -->
+                <div class="finance-loading hidden" id="finance-loading">
+                    <div class="loading-spinner"></div>
+                </div>
+
+                <!-- Monthly content -->
+                <div class="finance-content hidden" id="finance-content">
+                    <div class="finance-goals" id="finance-goals">
+                        <!-- Dynamically populated -->
+                    </div>
+                    <!-- Summary card -->
+                    <div class="finance-summary" id="finance-summary">
+                        <div class="finance-summary-row">
+                            <span class="finance-summary-icon">💸</span>
+                            <span class="finance-summary-text" id="finance-total-expenses">R$ 0,00 em despesas</span>
+                        </div>
+                        <div class="finance-summary-row">
+                            <span class="finance-summary-icon">📋</span>
+                            <span class="finance-summary-text" id="finance-total-bills">R$ 0,00 em contas fixas</span>
+                        </div>
+                        <div class="finance-progress-bar">
+                            <div class="finance-progress-fill" id="finance-progress-fill"></div>
+                        </div>
+                        <div class="finance-summary-row finance-pending-row">
+                            <span class="finance-summary-icon">⏳</span>
+                            <span class="finance-summary-text" id="finance-pending">R$ 0,00 pendente</span>
+                        </div>
+                    </div>
+
+                    <!-- Bills section -->
+                    <div class="finance-bills" id="finance-bills">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <!-- Expenses section -->
+                    <div class="finance-expenses" id="finance-expenses">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tasks view -->
+            <div class="tasks-view hidden" id="tasks-view">
+                <!-- Add task form (hidden by default) -->
+                <div class="tasks-add-form hidden" id="tasks-add-form">
+                    <div class="tasks-form-row">
+                        <input type="text" class="tasks-form-name" id="task-form-name" placeholder="Nome da tarefa…" maxlength="200" autocomplete="off">
+                    </div>
+                    <div class="tasks-form-row tasks-form-meta">
+                        <div class="tasks-form-field">
+                            <label class="tasks-form-label">Prazo</label>
+                            <div class="ios-dp-wrap">
+                                <button type="button" class="ios-dp-trigger tasks-form-date" id="task-form-deadline-btn">
+                                    <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                                    <span class="ios-dp-text">Selecionar</span>
+                                </button>
+                                <input type="hidden" id="task-form-deadline">
+                            </div>
+                        </div>
+                        <div class="tasks-form-field tasks-form-ac-wrap">
+                            <label class="tasks-form-label">Projeto</label>
+                            <input type="text" class="tasks-form-project" id="task-form-project" placeholder="Projeto…" autocomplete="off">
+                            <div class="tasks-autocomplete hidden" id="task-form-project-ac"></div>
+                        </div>
+                        <div class="tasks-form-field tasks-form-ac-wrap">
+                            <label class="tasks-form-label">Tags</label>
+                            <input type="text" class="tasks-form-tags" id="task-form-tags" placeholder="tag1, tag2…" autocomplete="off">
+                            <div class="tasks-autocomplete hidden" id="task-form-tags-ac"></div>
+                        </div>
+                    </div>
+                    <div class="tasks-form-row">
+                        <textarea class="tasks-form-observations" id="task-form-observations" placeholder="Observações (opcional)…" rows="3" maxlength="2000"></textarea>
+                    </div>
+                    <div class="tasks-form-actions">
+                        <label class="tasks-always-on-toggle" title="Tarefas fixas sempre visíveis (máx. 5)">
+                            <input type="checkbox" id="task-form-always-on">
+                            <span class="tasks-always-on-label">📌 Always ON</span>
+                        </label>
+                        <div class="tasks-form-buttons">
+                            <button class="btn btn-primary" id="task-form-save">Salvar</button>
+                            <button class="btn btn-ghost" id="task-form-cancel">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Always ON tasks card -->
+                <div class="always-on-card hidden" id="always-on-card">
+                    <div class="always-on-header">
+                        <span class="always-on-icon">📌</span>
+                        <span class="always-on-title">Always ON</span>
+                    </div>
+                    <div class="always-on-list" id="always-on-list"></div>
+                </div>
+
+                <!-- Task groups content -->
+                <div class="tasks-content" id="tasks-content">
+                    <div class="tasks-loading" id="tasks-loading"><div class="loading-spinner"></div></div>
+                </div>
+
+                <!-- Show done toggle -->
+                <div class="tasks-footer">
+                    <label class="tasks-show-done-label">
+                        <input type="checkbox" id="tasks-show-done"> Mostrar concluídas
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <!-- Task detail/edit modal (bottom-sheet on mobile, centered on desktop) -->
+    <div class="health-modal-overlay" id="task-detail-overlay">
+        <div class="health-modal task-detail-modal" id="task-detail-modal">
+            <!-- View mode -->
+            <div id="task-detail-view">
+                <div class="task-detail-header">
+                    <h3 id="task-detail-title"></h3>
+                    <span class="task-detail-status-badge" id="task-detail-status-badge"></span>
+                </div>
+                <div class="task-detail-meta-grid" id="task-detail-meta-grid"></div>
+                <div class="task-detail-observations-block hidden" id="task-detail-observations-block">
+                    <div class="task-detail-obs-label">Observações</div>
+                    <div class="task-detail-obs-text" id="task-detail-obs-text"></div>
+                </div>
+                <div class="task-detail-created" id="task-detail-created"></div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="task-detail-edit-btn">✏ Editar</button>
+                    <button class="modal-close-btn" id="task-detail-close">Fechar</button>
+                </div>
+            </div>
+            <!-- Edit mode -->
+            <div id="task-edit-view" class="hidden">
+                <h3>Editar Tarefa</h3>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-name">Nome</label>
+                    <input type="text" class="health-form-input" id="task-edit-name" maxlength="200" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label">Prazo</label>
+                    <div class="ios-dp-wrap">
+                        <button type="button" class="ios-dp-trigger tasks-form-date" id="task-edit-deadline-btn">
+                            <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                            <span class="ios-dp-text" id="task-edit-deadline-text">Selecionar</span>
+                        </button>
+                        <input type="hidden" id="task-edit-deadline">
+                    </div>
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-project">Projeto</label>
+                    <input type="text" class="health-form-input" id="task-edit-project" placeholder="Projeto…" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-tags">Tags</label>
+                    <input type="text" class="health-form-input" id="task-edit-tags" placeholder="tag1, tag2…" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="task-edit-observations">Observações</label>
+                    <textarea class="health-form-input task-edit-observations" id="task-edit-observations" rows="4" maxlength="2000" placeholder="Observações…"></textarea>
+                </div>
+                <div class="health-form-group">
+                    <label class="tasks-always-on-toggle">
+                        <input type="checkbox" id="task-edit-always-on">
+                        <span class="tasks-always-on-label">📌 Always ON</span>
+                    </label>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="task-edit-save-btn">Salvar</button>
+                    <button class="btn btn-ghost" id="task-edit-cancel-btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exercise detail/edit modal -->
+    <div class="health-modal-overlay" id="exercise-detail-overlay">
+        <div class="health-modal task-detail-modal" id="exercise-detail-modal">
+            <!-- View mode -->
+            <div id="exercise-detail-view">
+                <div class="task-detail-header">
+                    <h3 id="exercise-detail-title"></h3>
+                    <span class="task-detail-status-badge" id="exercise-detail-status-badge"></span>
+                </div>
+                <div class="task-detail-meta-grid" id="exercise-detail-meta-grid"></div>
+                <div class="task-detail-observations-block hidden" id="exercise-detail-observations-block">
+                    <div class="task-detail-obs-label">Observações</div>
+                    <div class="task-detail-obs-text" id="exercise-detail-obs-text"></div>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="exercise-detail-edit-btn">✏ Editar</button>
+                    <button class="btn btn-danger" id="exercise-detail-delete-btn">🗑 Excluir</button>
+                    <button class="modal-close-btn" id="exercise-detail-close">Fechar</button>
+                </div>
+            </div>
+            <!-- Edit mode -->
+            <div id="exercise-edit-view" class="hidden">
+                <h3>Editar Exercício</h3>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-activity">Atividade</label>
+                    <input type="text" class="health-form-input" id="exercise-edit-activity" maxlength="200" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-calories">Calorias queimadas (kcal)</label>
+                    <input type="number" class="health-form-input" id="exercise-edit-calories" min="1" max="50000" step="any">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-duration">Duração (min, opcional)</label>
+                    <input type="number" class="health-form-input" id="exercise-edit-duration" min="1" max="1440" step="1">
+                </div>
+                <div class="health-form-group">
+                    <label class="health-form-label" for="exercise-edit-observations">Observações (opcional)</label>
+                    <input type="text" class="health-form-input" id="exercise-edit-observations" maxlength="500" autocomplete="off">
+                </div>
+                <div class="health-form-group">
+                    <label class="tasks-always-on-toggle">
+                        <input type="checkbox" id="exercise-edit-done">
+                        <span class="tasks-always-on-label">✓ Concluído</span>
+                    </label>
+                </div>
+                <div class="task-detail-footer">
+                    <button class="btn btn-primary" id="exercise-edit-save-btn">Salvar</button>
+                    <button class="btn btn-ghost" id="exercise-edit-cancel-btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google status modal -->
+    <div class="google-modal-overlay" id="google-modal-overlay">
+        <div class="google-modal">
+            <div class="google-modal-header">
+                <img src="/static/icons/google-logo.png" width="24" height="24" alt="Google">
+                <h3>Google</h3>
+            </div>
+            <p class="google-modal-status" id="google-modal-status">Verificando...</p>
+            <button class="google-modal-btn google-modal-btn--disconnect" id="google-modal-disconnect" style="display:none;">Desconectar</button>
+            <button class="google-modal-btn google-modal-btn--connect" id="google-modal-connect" style="display:none;">Conectar</button>
+            <button class="google-modal-btn google-modal-btn--back" id="google-modal-back">Voltar</button>
+        </div>
+    </div>
+
+    <!-- Memories modal -->
+    <div class="memories-modal-overlay" id="memories-modal-overlay">
+        <div class="memories-modal">
+            <h3>🧠 Memórias</h3>
+            <div class="memories-modal-body" id="memories-modal-content">
+                <div class="loading-spinner"></div>
+            </div>
+            <button class="modal-close-btn" id="memories-modal-close">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Health: Add meal modal (bottom-sheet on mobile) -->
+    <div class="health-modal-overlay" id="health-meal-overlay">
+        <div class="health-modal" id="health-meal-modal">
+            <h3 id="meal-modal-title">Registrar Refeição</h3>
+            <form id="health-meal-form" autocomplete="off">
+                <label class="health-form-label">Tipo de refeição</label>
+                <div class="health-chip-group" id="meal-type-chips">
+                    <button type="button" class="health-chip" data-value="CAFÉ DA MANHÃ">Café</button>
+                    <button type="button" class="health-chip active" data-value="ALMOÇO">Almoço</button>
+                    <button type="button" class="health-chip" data-value="LANCHE">Lanche</button>
+                    <button type="button" class="health-chip" data-value="JANTAR">Jantar</button>
+                    <button type="button" class="health-chip" data-value="SUPLEMENTO">Suplemento</button>
+                </div>
+
+                <div class="meal-items-header">
+                    <span class="health-form-label" style="margin:0">Alimentos</span>
+                    <button type="button" class="meal-add-item-btn" id="meal-add-item-btn">&#43;</button>
+                </div>
+                <div class="meal-items-list" id="meal-items-list">
+                    <!-- rows injected by JS -->
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="meal-submit-btn">Registrar Refeição</button>
+            </form>
+            <button class="modal-close-btn" id="health-meal-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Health: Add exercise modal (bottom-sheet on mobile) -->
+    <div class="health-modal-overlay" id="health-exercise-overlay">
+        <div class="health-modal" id="health-exercise-modal">
+            <h3>Registrar Exercício</h3>
+            <form id="health-exercise-form" autocomplete="off">
+                <label class="health-form-label" for="exercise-activity">Atividade</label>
+                <input type="text" id="exercise-activity" class="health-form-input" placeholder="Ex: Corrida 5km" maxlength="200" required>
+
+                <label class="health-form-label" for="exercise-calories">Calorias queimadas</label>
+                <input type="number" id="exercise-calories" class="health-form-input" placeholder="350" min="1" max="50000" step="any" required>
+
+                <label class="health-form-label" for="exercise-duration">Duração (min, opcional)</label>
+                <input type="number" id="exercise-duration" class="health-form-input" placeholder="30" min="1" max="600" step="1">
+
+                <label class="health-form-label" for="exercise-observations">Observações (opcional)</label>
+                <input type="text" id="exercise-observations" class="health-form-input" placeholder="Ritmo, séries, etc." maxlength="500">
+
+                <label class="health-form-checkbox">
+                    <input type="checkbox" id="exercise-done" checked>
+                    <span>Já realizado</span>
+                </label>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="exercise-submit-btn">Registrar Exercício</button>
+            </form>
+            <button class="modal-close-btn" id="health-exercise-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Health: Goals modal -->
+    <div class="health-modal-overlay" id="health-goals-overlay">
+        <div class="health-modal" id="health-goals-modal">
+            <h3>🎯 Metas Diárias</h3>
+            <form id="health-goals-form" autocomplete="off">
+                <label class="health-form-label" for="goal-calorie-goal">Meta de calorias consumidas (kcal)</label>
+                <input type="number" id="goal-calorie-goal" class="health-form-input" placeholder="2400" min="0" max="99999" step="1">
+
+                <label class="health-form-label" for="goal-exercise-calorie-goal">Meta de calorias queimadas em exercício (kcal)</label>
+                <input type="number" id="goal-exercise-calorie-goal" class="health-form-input" placeholder="0" min="0" max="99999" step="1">
+
+                <label class="health-form-label" for="goal-exercise-time-goal">Meta de tempo de exercício (min)</label>
+                <input type="number" id="goal-exercise-time-goal" class="health-form-input" placeholder="0" min="0" max="1440" step="1">
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="goal-save-btn">Salvar Metas</button>
+            </form>
+            <button class="modal-close-btn" id="health-goals-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Health: Nutritional analysis modal -->
+    <div class="health-modal-overlay" id="health-analysis-overlay">
+        <div class="health-modal health-analysis-modal" id="health-analysis-modal">
+            <h3>📊 Análise Nutricional — 7 dias</h3>
+            <div class="health-analysis-chart-wrap" id="health-analysis-chart-wrap">
+                <canvas id="health-analysis-chart"></canvas>
+            </div>
+            <div class="health-analysis-loading" id="health-analysis-loading">
+                <div class="analysis-loading-icon" id="analysis-loading-icon">🏃</div>
+                <p class="analysis-loading-phrase" id="analysis-loading-phrase">Analisando seus nutrientes da semana...</p>
+            </div>
+            <div class="health-analysis-content hidden" id="health-analysis-content"></div>
+            <button class="modal-close-btn" id="health-analysis-close">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Add expense modal -->
+    <div class="health-modal-overlay" id="finance-expense-overlay">
+        <div class="health-modal" id="finance-expense-modal">
+            <h3>Registrar Despesa</h3>
+            <form id="finance-expense-form" autocomplete="off">
+                <label class="health-form-label" for="expense-name">Descrição</label>
+                <input type="text" id="expense-name" class="health-form-input" placeholder="Ex: Supermercado" maxlength="200" required>
+
+                <label class="health-form-label" for="expense-amount">Valor (R$)</label>
+                <input type="number" id="expense-amount" class="health-form-input" placeholder="150.00" min="0.01" max="99999999.99" step="0.01" required>
+
+                <label class="health-form-label">Categoria</label>
+                <div class="health-chip-group" id="expense-category-chips">
+                    <button type="button" class="health-chip" data-value="Alimentação">Alimentação</button>
+                    <button type="button" class="health-chip" data-value="Transporte">Transporte</button>
+                    <button type="button" class="health-chip" data-value="Moradia">Moradia</button>
+                    <button type="button" class="health-chip" data-value="Saúde">Saúde</button>
+                    <button type="button" class="health-chip" data-value="Lazer">Lazer</button>
+                    <button type="button" class="health-chip active" data-value="Outros">Outros</button>
+                </div>
+
+                <label class="health-form-label">Data</label>
+                <div class="ios-dp-wrap">
+                    <button type="button" class="ios-dp-trigger health-form-input" id="expense-date-btn">
+                        <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                        <span class="ios-dp-text">Selecionar</span>
+                    </button>
+                    <input type="hidden" id="expense-date">
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="expense-submit-btn">Registrar Despesa</button>
+            </form>
+            <button class="modal-close-btn" id="finance-expense-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Add bill modal -->
+    <div class="health-modal-overlay" id="finance-bill-overlay">
+        <div class="health-modal" id="finance-bill-modal">
+            <h3>Registrar Conta Fixa</h3>
+            <form id="finance-bill-form" autocomplete="off">
+                <label class="health-form-label" for="bill-name">Nome da conta</label>
+                <input type="text" id="bill-name" class="health-form-input" placeholder="Ex: Aluguel" maxlength="200" required>
+
+                <label class="health-form-label" for="bill-budget">Valor esperado (R$)</label>
+                <input type="number" id="bill-budget" class="health-form-input" placeholder="1500.00" min="0.01" max="99999999.99" step="0.01" required>
+
+                <label class="health-form-label">Categoria</label>
+                <div class="health-chip-group" id="bill-category-chips">
+                    <button type="button" class="health-chip" data-value="Moradia">Moradia</button>
+                    <button type="button" class="health-chip" data-value="Transporte">Transporte</button>
+                    <button type="button" class="health-chip" data-value="Saúde">Saúde</button>
+                    <button type="button" class="health-chip" data-value="Alimentação">Alimentação</button>
+                    <button type="button" class="health-chip" data-value="Lazer">Lazer</button>
+                    <button type="button" class="health-chip active" data-value="Outros">Outros</button>
+                </div>
+
+                <label class="health-form-label">Vencimento</label>
+                <div class="ios-dp-wrap">
+                    <button type="button" class="ios-dp-trigger health-form-input" id="bill-due-date-btn">
+                        <svg class="ios-dp-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5" y1="1" x2="5" y2="4"/><line x1="11" y1="1" x2="11" y2="4"/></svg>
+                        <span class="ios-dp-text">Selecionar</span>
+                    </button>
+                    <input type="hidden" id="bill-due-date">
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="bill-submit-btn">Registrar Conta</button>
+            </form>
+            <button class="modal-close-btn" id="finance-bill-close">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="health-modal-overlay" id="finance-goal-overlay">
+        <div class="health-modal" id="finance-goal-modal">
+            <h3>Nova Meta Financeira</h3>
+            <form id="finance-goal-form" autocomplete="off">
+                <label class="health-form-label" for="finance-goal-title">Nome da meta</label>
+                <input type="text" id="finance-goal-title" class="health-form-input" placeholder="Ex: Comprar carro" maxlength="120" required>
+
+                <label class="health-form-label" for="finance-goal-type">Tipo</label>
+                <select id="finance-goal-type" class="health-form-input">
+                    <option value="savings">Juntar dinheiro</option>
+                    <option value="spending_limit">Limitar gastos do mês</option>
+                </select>
+
+                <div id="finance-goal-savings-fields">
+                    <label class="health-form-label" for="finance-goal-current-amount">Quanto já guardou (R$)</label>
+                    <input type="number" id="finance-goal-current-amount" class="health-form-input" placeholder="0.00" min="0" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-target-amount">Valor alvo (R$)</label>
+                    <input type="number" id="finance-goal-target-amount" class="health-form-input" placeholder="50000.00" min="0.01" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-monthly-contribution">Quanto pretende guardar por mês (R$)</label>
+                    <input type="number" id="finance-goal-monthly-contribution" class="health-form-input" placeholder="1500.00" min="0" max="99999999.99" step="0.01">
+
+                    <label class="health-form-label" for="finance-goal-target-date">Prazo</label>
+                    <input type="date" id="finance-goal-target-date" class="health-form-input">
+                </div>
+
+                <div id="finance-goal-spending-fields" class="hidden">
+                    <label class="health-form-label" for="finance-goal-monthly-limit">Teto mensal de gastos (R$)</label>
+                    <input type="number" id="finance-goal-monthly-limit" class="health-form-input" placeholder="3000.00" min="0.01" max="99999999.99" step="0.01">
+                </div>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="finance-goal-submit-btn">Salvar Meta</button>
+            </form>
+            <button class="modal-close-btn" id="finance-goal-close">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="health-modal-overlay" id="email-rules-overlay">
+        <div class="health-modal" id="email-rules-modal">
+            <h3>Emails Importantes</h3>
+            <form id="email-rules-form" autocomplete="off">
+                <p class="finance-goal-hint">Essas regras alimentam o resumo diário enviado no Telegram.</p>
+
+                <label class="health-form-label" for="email-important-senders">Remetentes prioritários</label>
+                <textarea id="email-important-senders" class="health-form-input finance-goal-textarea" placeholder="empresa@cliente.com&#10;banco@avisos.com&#10;dominio-importante.com"></textarea>
+
+                <label class="health-form-label" for="email-important-keywords">Palavras-chave importantes</label>
+                <textarea id="email-important-keywords" class="health-form-input finance-goal-textarea" placeholder="boleto&#10;prazo&#10;pagamento&#10;contrato"></textarea>
+
+                <button type="submit" class="btn btn-primary health-form-submit" id="email-rules-submit-btn">Salvar Regras</button>
+            </form>
+            <button class="modal-close-btn" id="email-rules-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Nubank CSV import modal -->
+    <div class="health-modal-overlay" id="nubank-import-overlay">
+        <div class="health-modal nubank-import-modal" id="nubank-import-modal">
+            <h3>Importar Extrato Nubank</h3>
+
+            <!-- Step 1: upload -->
+            <div id="nubank-step-upload">
+                <p class="nubank-hint">Selecione o arquivo CSV exportado pelo Nubank (extrato de conta).</p>
+                <label class="nubank-file-label" for="nubank-csv-input">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span id="nubank-file-name">Escolher arquivo .csv</span>
+                </label>
+                <input type="file" id="nubank-csv-input" accept=".csv" style="display:none">
+                <button class="btn btn-primary" id="nubank-upload-btn" disabled>Analisar</button>
+            </div>
+
+            <!-- Step 2: loading -->
+            <div id="nubank-step-loading" class="hidden">
+                <div class="health-loading-spinner"></div>
+                <p class="nubank-hint">Analisando transações e categorizando com IA…</p>
+            </div>
+
+            <!-- Step 3: preview table -->
+            <div id="nubank-step-preview" class="hidden">
+                <p class="nubank-summary" id="nubank-summary-text"></p>
+                <div class="nubank-table-wrap">
+                    <table class="nubank-table" id="nubank-preview-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="nubank-select-all" title="Selecionar todos" checked></th>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Valor</th>
+                                <th>Categoria</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nubank-preview-body"></tbody>
+                    </table>
+                </div>
+                <div class="nubank-preview-actions">
+                    <span id="nubank-selected-count" class="nubank-selected-info"></span>
+                    <button class="btn btn-primary" id="nubank-confirm-btn">Importar selecionados</button>
+                </div>
+            </div>
+
+            <button class="modal-close-btn" id="nubank-import-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Finance: Nubank card (fatura) import modal -->
+    <div class="health-modal-overlay" id="card-import-overlay">
+        <div class="health-modal nubank-import-modal" id="card-import-modal">
+            <h3>Importar Fatura do Cartão Nubank</h3>
+
+            <!-- Step 1: upload -->
+            <div id="card-step-upload">
+                <p class="nubank-hint">Selecione o arquivo CSV exportado pelo Nubank (fatura do cartão).</p>
+                <label class="nubank-file-label" for="card-csv-input">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span id="card-file-name">Escolher arquivo .csv</span>
+                </label>
+                <input type="file" id="card-csv-input" accept=".csv" style="display:none">
+                <button class="btn btn-primary" id="card-upload-btn" disabled>Analisar</button>
+            </div>
+
+            <!-- Step 2: loading -->
+            <div id="card-step-loading" class="hidden">
+                <div class="health-loading-spinner"></div>
+                <p class="nubank-hint">Analisando fatura e categorizando com IA…</p>
+            </div>
+
+            <!-- Step 3: preview table -->
+            <div id="card-step-preview" class="hidden">
+                <p class="nubank-summary" id="card-summary-text"></p>
+                <div class="nubank-table-wrap">
+                    <table class="nubank-table" id="card-preview-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="card-select-all" title="Selecionar todos" checked></th>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Valor</th>
+                                <th>Categoria</th>
+                            </tr>
+                        </thead>
+                        <tbody id="card-preview-body"></tbody>
+                    </table>
+                </div>
+                <div class="nubank-preview-actions">
+                    <span id="card-selected-count" class="nubank-selected-info"></span>
+                    <button class="btn btn-primary" id="card-confirm-btn">Importar selecionados</button>
+                </div>
+            </div>
+
+            <button class="modal-close-btn" id="card-import-close">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Markdown renderer (lightweight) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/audio.js"></script>
+    <script src="/static/js/app.js"></script>
+
+    <!-- Service worker registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/js/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>
