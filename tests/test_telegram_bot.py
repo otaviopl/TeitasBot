@@ -11,7 +11,10 @@ _telegram_stub = types.ModuleType("telegram")
 _telegram_ext_stub = types.ModuleType("telegram.ext")
 _telegram_constants_stub = types.ModuleType("telegram.constants")
 _telegram_stub.Update = object
+_telegram_stub.InlineKeyboardButton = object
+_telegram_stub.InlineKeyboardMarkup = object
 _telegram_ext_stub.Application = object
+_telegram_ext_stub.CallbackQueryHandler = object
 _telegram_ext_stub.CommandHandler = object
 _telegram_ext_stub.MessageHandler = object
 _telegram_ext_stub.ContextTypes = object
@@ -345,11 +348,16 @@ class TestTelegramBot(unittest.TestCase):
             telegram_bot, "CommandHandler", side_effect=lambda name, cb: ("command", name, cb)
         ), unittest.mock.patch.object(
             telegram_bot, "MessageHandler", side_effect=lambda flt, cb: ("message", flt, cb)
+        ), unittest.mock.patch.object(
+            telegram_bot,
+            "CallbackQueryHandler",
+            side_effect=lambda cb, pattern: ("callback", pattern, cb),
         ):
             app = telegram_bot.create_telegram_application(project_logger=unittest.mock.Mock())
 
         self.assertEqual(app._token, "token-x")
-        self.assertEqual(len(app.handlers), 7)
+        self.assertEqual(len(app.handlers), 8)
+        self.assertIn(("callback", r"^vovo:"), [h[:2] for h in app.handlers])
         self.assertTrue(callable(app.assistant_scheduler_runner_getter))
 
         google_auth_handler = [h[2] for h in app.handlers if h[0] == "command" and h[1] == "google_auth"][0]
@@ -398,6 +406,10 @@ class TestTelegramBot(unittest.TestCase):
             telegram_bot, "CommandHandler", side_effect=lambda name, cb: ("command", name, cb)
         ), unittest.mock.patch.object(
             telegram_bot, "MessageHandler", side_effect=lambda flt, cb: ("message", flt, cb)
+        ), unittest.mock.patch.object(
+            telegram_bot,
+            "CallbackQueryHandler",
+            side_effect=lambda cb, pattern: ("callback", pattern, cb),
         ):
             app = telegram_bot.create_telegram_application(project_logger=unittest.mock.Mock())
 
@@ -436,6 +448,137 @@ class TestTelegramBot(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 telegram_bot.create_telegram_application(project_logger=unittest.mock.Mock())
+
+    # --- Vovô do Git button forwarding ---
+
+    _VOVO_CODE = "a1b2c3d4e5f6a1b2c3d4e5f6"
+
+    def _make_vovo_update(self, data, user_id=42):
+        query = types.SimpleNamespace(
+            data=data,
+            answer=unittest.mock.AsyncMock(),
+            edit_message_reply_markup=unittest.mock.AsyncMock(),
+        )
+        update = types.SimpleNamespace(
+            callback_query=query,
+            effective_user=types.SimpleNamespace(id=user_id, is_bot=False),
+        )
+        return update, query
+
+    def _run_vovo(self, update, post_mock):
+        logger = unittest.mock.Mock()
+        with unittest.mock.patch.object(
+            telegram_bot, "_post_vovo_aprovacao", post_mock
+        ), unittest.mock.patch.object(
+            telegram_bot, "InlineKeyboardButton", side_effect=lambda text, callback_data: (text, callback_data)
+        ), unittest.mock.patch.object(
+            telegram_bot, "InlineKeyboardMarkup", side_effect=lambda rows: ("markup", rows)
+        ):
+            asyncio.run(telegram_bot._handle_vovo_callback(update, {42}, logger))
+        return logger
+
+    def _fake_httpx_response(self, status_code, payload):
+        response = unittest.mock.Mock()
+        response.status_code = status_code
+        response.json.return_value = payload
+        return response
+
+    def test_vovo_callback_denies_unauthorized_user(self):
+        update, query = self._make_vovo_update(f"vovo:ok:{self._VOVO_CODE}", user_id=999)
+        post = unittest.mock.AsyncMock()
+        self._run_vovo(update, post)
+        query.answer.assert_awaited_once_with("Sem permissão")
+        post.assert_not_awaited()
+        query.edit_message_reply_markup.assert_not_awaited()
+
+    def test_vovo_callback_feito_only_answers(self):
+        update, query = self._make_vovo_update("vovo:feito:0")
+        post = unittest.mock.AsyncMock()
+        self._run_vovo(update, post)
+        query.answer.assert_awaited_once_with("Já resolvido")
+        post.assert_not_awaited()
+        query.edit_message_reply_markup.assert_not_awaited()
+
+    def test_vovo_callback_invalid_data_is_rejected(self):
+        update, query = self._make_vovo_update("vovo:ok:nao-hex")
+        post = unittest.mock.AsyncMock()
+        self._run_vovo(update, post)
+        query.answer.assert_awaited_once_with("Botão inválido")
+        post.assert_not_awaited()
+
+    def test_vovo_callback_ok_replaces_keyboard_with_result(self):
+        update, query = self._make_vovo_update(f"vovo:ok:{self._VOVO_CODE}")
+        post = unittest.mock.AsyncMock(return_value="✅ Postado")
+        self._run_vovo(update, post)
+        post.assert_awaited_once_with("ok", self._VOVO_CODE)
+        query.answer.assert_awaited_once_with("✅ Postado")
+        query.edit_message_reply_markup.assert_awaited_once_with(
+            reply_markup=("markup", [[("✅ Postado", "vovo:feito:0")]])
+        )
+
+    def test_vovo_callback_network_error_keeps_buttons(self):
+        update, query = self._make_vovo_update(f"vovo:pula:{self._VOVO_CODE}")
+        post = unittest.mock.AsyncMock(side_effect=telegram_bot.httpx.ConnectError("boom"))
+        self._run_vovo(update, post)
+        query.answer.assert_awaited_once_with(telegram_bot.VOVO_UNAVAILABLE_MESSAGE)
+        query.edit_message_reply_markup.assert_not_awaited()
+
+    def test_post_vovo_aprovacao_200_returns_texto(self):
+        response = self._fake_httpx_response(200, {"texto": "✅ Postado"})
+        with unittest.mock.patch.dict(os.environ, {"VOVO_APROVACAO_URL": ""}, clear=False), \
+                unittest.mock.patch.object(
+                    telegram_bot.httpx.AsyncClient, "post",
+                    unittest.mock.AsyncMock(return_value=response),
+                ) as post:
+            texto = asyncio.run(telegram_bot._post_vovo_aprovacao("ok", self._VOVO_CODE))
+        self.assertEqual(texto, "✅ Postado")
+        post.assert_awaited_once_with(
+            "https://vovo.teitas.com.br/aprovacao",
+            json={"acao": "ok", "codigo": self._VOVO_CODE},
+        )
+
+    def test_post_vovo_aprovacao_409_returns_texto(self):
+        response = self._fake_httpx_response(409, {"texto": "Já foi resolvido"})
+        with unittest.mock.patch.object(
+            telegram_bot.httpx.AsyncClient, "post", unittest.mock.AsyncMock(return_value=response)
+        ):
+            texto = asyncio.run(telegram_bot._post_vovo_aprovacao("pula", self._VOVO_CODE))
+        self.assertEqual(texto, "Já foi resolvido")
+
+    def test_vovo_callback_409_replaces_keyboard(self):
+        update, query = self._make_vovo_update(f"vovo:ok:{self._VOVO_CODE}")
+        response = self._fake_httpx_response(409, {"texto": "Já foi resolvido"})
+        logger = unittest.mock.Mock()
+        with unittest.mock.patch.object(
+            telegram_bot.httpx.AsyncClient, "post", unittest.mock.AsyncMock(return_value=response)
+        ), unittest.mock.patch.object(
+            telegram_bot, "InlineKeyboardButton", side_effect=lambda text, callback_data: (text, callback_data)
+        ), unittest.mock.patch.object(
+            telegram_bot, "InlineKeyboardMarkup", side_effect=lambda rows: ("markup", rows)
+        ):
+            asyncio.run(telegram_bot._handle_vovo_callback(update, {42}, logger))
+        query.answer.assert_awaited_once_with("Já foi resolvido")
+        query.edit_message_reply_markup.assert_awaited_once_with(
+            reply_markup=("markup", [[("Já foi resolvido", "vovo:feito:0")]])
+        )
+
+    def test_post_vovo_aprovacao_unexpected_status_returns_none(self):
+        response = self._fake_httpx_response(502, {"texto": "Bad gateway"})
+        with unittest.mock.patch.object(
+            telegram_bot.httpx.AsyncClient, "post", unittest.mock.AsyncMock(return_value=response)
+        ):
+            texto = asyncio.run(telegram_bot._post_vovo_aprovacao("ok", self._VOVO_CODE))
+        self.assertIsNone(texto)
+
+    def test_post_vovo_aprovacao_uses_env_override(self):
+        response = self._fake_httpx_response(200, {"texto": "ok"})
+        with unittest.mock.patch.dict(
+            os.environ, {"VOVO_APROVACAO_URL": "http://vovo.local/aprovacao"}, clear=False
+        ), unittest.mock.patch.object(
+            telegram_bot.httpx.AsyncClient, "post", unittest.mock.AsyncMock(return_value=response)
+        ) as post:
+            asyncio.run(telegram_bot._post_vovo_aprovacao("ok", self._VOVO_CODE))
+        self.assertEqual(post.await_args.args[0], "http://vovo.local/aprovacao")
 
     # --- Markdown → HTML converter ---
 
