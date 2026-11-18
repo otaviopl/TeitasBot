@@ -3,10 +3,18 @@ import os
 import re
 from html import escape as _html_escape
 
+import httpx
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from assistant_connector import app_health, create_assistant_service
 from assistant_connector.models import ChatResponse
@@ -20,6 +28,16 @@ TELEGRAM_CHUNK_TARGET = 3800
 ACCESS_DENIED_MESSAGE = (
     "🔒 Access denied: this assistant is restricted to an authorized user."
 )
+
+# "Vovô do Git" (first-drop-reels) sends Reels with approval buttons through this
+# same bot. Only one process can poll a bot, so clicks are forwarded over HTTP.
+VOVO_APROVACAO_URL_DEFAULT = "https://vovo.teitas.com.br/aprovacao"
+VOVO_HTTP_TIMEOUT_SECONDS = 10
+VOVO_CALLBACK_PATTERN = r"^vovo:"
+VOVO_CALLBACK_DATA_RE = re.compile(r"^vovo:(ok|pula|feito):([0-9a-f]{24}|0)$")
+VOVO_DONE_CALLBACK_DATA = "vovo:feito:0"
+VOVO_EXPECTED_STATUSES = {200, 400, 404, 409}
+VOVO_UNAVAILABLE_MESSAGE = "Vovô fora do ar, tenta de novo"
 
 
 def _truncate_text(text, limit):
@@ -226,6 +244,67 @@ def _resolve_scheduled_delivery_chat_id(task):
     if channel_id:
         return channel_id
     return str(task_payload.get("user_id", "")).strip()
+
+
+def _get_vovo_aprovacao_url():
+    return str(os.getenv("VOVO_APROVACAO_URL", "")).strip() or VOVO_APROVACAO_URL_DEFAULT
+
+
+async def _post_vovo_aprovacao(acao, codigo):
+    """POST the click to the Vovô service. Returns the button text, or None on failure."""
+    async with httpx.AsyncClient(timeout=VOVO_HTTP_TIMEOUT_SECONDS) as client:
+        response = await client.post(
+            _get_vovo_aprovacao_url(), json={"acao": acao, "codigo": codigo}
+        )
+    if response.status_code not in VOVO_EXPECTED_STATUSES:
+        return None
+    payload = response.json()
+    texto = str(payload.get("texto", "")).strip() if isinstance(payload, dict) else ""
+    return texto or None
+
+
+async def _handle_vovo_callback(update, allowed_user_ids, logger):
+    """Forward a Vovô do Git button click (vovo:<acao>:<codigo>) to its service."""
+    query = update.callback_query
+    if query is None:
+        return
+    user = update.effective_user
+    if not user or user.is_bot or not _is_authorized_telegram_user(user.id, allowed_user_ids):
+        logger.warning(
+            "Unauthorized vovo callback by user_id=%s", getattr(user, "id", None)
+        )
+        await query.answer("Sem permissão")
+        return
+
+    match = VOVO_CALLBACK_DATA_RE.match(str(query.data or ""))
+    if not match:
+        await query.answer("Botão inválido")
+        return
+    acao, codigo = match.group(1), match.group(2)
+
+    if acao == "feito":
+        await query.answer("Já resolvido")
+        return
+
+    try:
+        texto = await _post_vovo_aprovacao(acao, codigo)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Vovo approval request failed: %s", error)
+        texto = None
+
+    if not texto:
+        await query.answer(VOVO_UNAVAILABLE_MESSAGE)
+        return
+
+    await query.answer(texto)
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton(texto, callback_data=VOVO_DONE_CALLBACK_DATA)]]
+            )
+        )
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Failed to update vovo buttons: %s", error)
 
 
 def _build_setup_trigger_message(user_id: str, credential_store) -> str:
@@ -602,6 +681,9 @@ def create_telegram_application(project_logger=None):
             logger.exception("Error starting Google OAuth flow")
             await update.effective_message.reply_text(build_error_response(error))
 
+    async def vovo_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await _handle_vovo_callback(update, allowed_user_ids, logger)
+
     async def post_init(application: Application) -> None:
         event_loop_holder[0] = asyncio.get_running_loop()
         runner = _init_scheduler_runner(application)
@@ -650,6 +732,9 @@ def create_telegram_application(project_logger=None):
     application.add_handler(CommandHandler("new_chat", reset_handler))
     application.add_handler(CommandHandler("setup", setup_handler))
     application.add_handler(CommandHandler("google_auth", google_auth_handler))
+    application.add_handler(
+        CallbackQueryHandler(vovo_callback_handler, pattern=VOVO_CALLBACK_PATTERN)
+    )
     application.add_handler(MessageHandler(filters.Document.ALL, document_handler))
     application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
